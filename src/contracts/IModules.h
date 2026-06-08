@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "contracts/IDockingBackend.h"
 #include "data/Domain.h"
 
 namespace stimlab {
@@ -65,6 +66,15 @@ public:
     virtual ~IDockingModule() = default;
     virtual std::vector<std::string> targets() const = 0;
     virtual DockingResult dock(const Molecule& m, const std::string& target) const = 0;
+
+    // Phase D: richer result carrying 3D poses (for the molecular viewer) and the
+    // engine/fallback provenance. Default = no 3D detail, so legacy/fake impls keep
+    // compiling; the real backend-backed impl overrides both.
+    virtual DockJobResult dockDetailed(const Molecule& m, const std::string& target) const {
+        (void)m; (void)target; return {};
+    }
+    // CNS receptor presets (PDB ref + binding-site box). Default = none.
+    virtual std::vector<ReceptorTarget> presets() const { return {}; }
 };
 
 // Run history.

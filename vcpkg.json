@@ -10,6 +10,7 @@
     "fmt",
     "sqlite3",
     "yaml-cpp",
+    "eigen3",
     "implot",
     {
       "name": "imgui",

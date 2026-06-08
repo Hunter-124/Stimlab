@@ -6,6 +6,7 @@ add_executable(stimlab_tests
   test_fakes.cpp
   test_chem.cpp
   test_modules.cpp
+  test_embed3d.cpp
 )
 
 target_link_libraries(stimlab_tests PRIVATE

@@ -7,4 +7,5 @@ target_include_directories(stimlab_contracts INTERFACE
 
 target_link_libraries(stimlab_contracts INTERFACE
   stimlab_data
+  stimlab_chem
 )
