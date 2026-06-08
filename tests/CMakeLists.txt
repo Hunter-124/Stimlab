@@ -1,0 +1,23 @@
+# ---- Catch2 unit tests ----
+find_package(Catch2 CONFIG REQUIRED)
+
+add_executable(stimlab_tests
+  test_core.cpp
+  test_fakes.cpp
+  test_chem.cpp
+  test_modules.cpp
+)
+
+target_link_libraries(stimlab_tests PRIVATE
+  Catch2::Catch2WithMain
+  stimlab_core
+  stimlab_data
+  stimlab_fakes
+  stimlab_chem
+  stimlab_modules
+)
+
+target_compile_features(stimlab_tests PRIVATE cxx_std_20)
+
+include(Catch)
+catch_discover_tests(stimlab_tests)

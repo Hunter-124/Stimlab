@@ -1,0 +1,15 @@
+# Normalize line endings; keep Windows scripts CRLF
+* text=auto eol=lf
+*.ps1   text eol=crlf
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.sln   text eol=crlf
+*.vcxproj text eol=crlf
+
+# Treat binary assets as binary
+*.png binary
+*.ico binary
+*.onnx binary
+*.pdb binary
+*.sdf binary
+*.pdbqt binary

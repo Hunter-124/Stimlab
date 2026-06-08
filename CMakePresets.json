@@ -1,0 +1,59 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 27,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "windows",
+      "displayName": "Windows x64 (Ninja, vcpkg) - skeleton deps",
+      "description": "Phase B/0: light deps only (ImGui/ImPlot/SQLite/json/yaml/Catch2). No RDKit yet.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/windows",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "VCPKG_TARGET_TRIPLET": "x64-windows",
+        "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
+        "STIMLAB_ENABLE_CUDA": "OFF",
+        "STIMLAB_ENABLE_SCIENCE": "OFF"
+      }
+    },
+    {
+      "name": "windows-science",
+      "inherits": "windows",
+      "displayName": "Windows x64 + science (RDKit/curl) - Phase C",
+      "description": "Enables the heavy science vcpkg feature (RDKit, libcurl). Long first build.",
+      "binaryDir": "${sourceDir}/build/windows-science",
+      "cacheVariables": {
+        "VCPKG_MANIFEST_FEATURES": "science",
+        "STIMLAB_ENABLE_SCIENCE": "ON"
+      }
+    },
+    {
+      "name": "windows-cuda",
+      "inherits": "windows-science",
+      "displayName": "Windows x64 + science + CUDA - Phase D",
+      "description": "Full stack incl. CUDA-accelerated engines (needs CUDA Toolkit w/ nvcc).",
+      "binaryDir": "${sourceDir}/build/windows-cuda",
+      "cacheVariables": {
+        "STIMLAB_ENABLE_CUDA": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "windows", "configurePreset": "windows" },
+    { "name": "windows-science", "configurePreset": "windows-science" },
+    { "name": "windows-cuda", "configurePreset": "windows-cuda" }
+  ],
+  "testPresets": [
+    {
+      "name": "windows",
+      "configurePreset": "windows",
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error", "stopOnFailure": false }
+    }
+  ]
+}

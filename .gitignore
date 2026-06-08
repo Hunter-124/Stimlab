@@ -1,0 +1,31 @@
+# Build output
+/build/
+/out/
+/install/
+
+# vcpkg
+/vcpkg_installed/
+*.vcpkg-root
+
+# IDE / editor
+.vs/
+.vscode/
+*.user
+CMakeUserPresets.json
+
+# Provisioned runtime / local state (mirrors %APPDATA%/StimLab; never commit)
+/runtime/
+/artifacts/
+*.db
+*.db-wal
+*.db-shm
+*.log
+*.dmp
+
+# Engine binaries fetched/built by third_party recipes
+/third_party/_downloads/
+/third_party/_build/
+
+# OS cruft
+Thumbs.db
+desktop.ini

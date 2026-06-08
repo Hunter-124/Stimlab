@@ -1,0 +1,41 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg/master/scripts/vcpkg.schema.json",
+  "name": "stimlab",
+  "version": "0.1.0",
+  "description": "StimLab - native CNS-stimulant computational drug-discovery suite (docking, ADMET, similarity, legal-analog, AI agent).",
+  "builtin-baseline": "10ceb139a610ebf3c6aa49cdc4a4b7f3db5d3f2b",
+  "dependencies": [
+    "nlohmann-json",
+    "spdlog",
+    "fmt",
+    "sqlite3",
+    "yaml-cpp",
+    "implot",
+    {
+      "name": "imgui",
+      "features": [
+        "docking-experimental",
+        "dx11-binding",
+        "win32-binding"
+      ]
+    },
+    {
+      "name": "catch2",
+      "platform": "windows"
+    }
+  ],
+  "features": {
+    "science": {
+      "description": "Heavy science stack (Phase C+): RDKit, ONNX Runtime, libcurl. Long build; enable when wiring real chemistry.",
+      "dependencies": [
+        "rdkit",
+        {
+          "name": "curl",
+          "features": [
+            "ssl"
+          ]
+        }
+      ]
+    }
+  }
+}
