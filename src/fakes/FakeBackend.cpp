@@ -6,6 +6,8 @@
 #include <string_view>
 #include <vector>
 
+#include "chem/AdmetModel.h"
+
 namespace stimlab {
 namespace {
 
@@ -142,6 +144,22 @@ Features sniff(const Molecule& m) {
     return f;
 }
 
+// Map perceived motifs onto the shared PK / stability model's liability flags.
+// maoLabileAmine: a phenethylamine whose amine sits on an unsubstituted -CH2-CH2-
+// chain (the "NCC" motif) is a monoamine-oxidase substrate; an alpha-methylated
+// amine (amphetamine-type, "C(N)" / "NC(C)") is MAO-resistant and is not flagged.
+chem::PkLiabilities liabilitiesOf(const Molecule& m, const Features& f) {
+    chem::PkLiabilities L;
+    L.catechol = f.catechol;
+    L.phenol = f.phenol;
+    L.ester = f.ester;
+    L.amide = f.amide;
+    L.arylKetone = f.arylKetone;
+    L.methylenedioxy = f.methylenedioxy;
+    L.maoLabileAmine = f.phenethylamine && contains(m.smiles, "NCC");
+    return L;
+}
+
 // ----------------------------------------------------------------- stability
 StabilityReport computeStability(const Molecule& m) {
     const Features f = sniff(m);
@@ -153,6 +171,12 @@ StabilityReport computeStability(const Molecule& m) {
     const double photolysis = (f.catechol || f.arylKetone) ? 54.0 : 82.0;
     const double thermal    = f.arylKetone ? 66.0 : (f.ester ? 72.0 : 88.0);
     const double pHsens     = (f.ester || f.arylKetone || f.catechol) ? 58.0 : 80.0;
+
+    // Predicted, numeric stability ranges from the shared degradation-chemistry
+    // model: an actual pH window and temperature ceiling instead of "narrow/broad".
+    const chem::PkLiabilities sl = liabilitiesOf(m, f);
+    const auto ph = chem::predictPhWindow(sl);
+    const auto th = chem::predictThermalWindow(sl);
 
     r.factors = {
         {"Hydrolysis resistance", hydrolysis,
@@ -166,12 +190,8 @@ StabilityReport computeStability(const Molecule& m) {
         {"Photostability", photolysis,
          (f.catechol || f.arylKetone) ? "Chromophore/carbonyl - photodegradation risk."
                                       : "No strong photolabile chromophore."},
-        {"Thermal stability", thermal,
-         f.arylKetone ? "Aryl ketone - thermal condensation pathways."
-                      : "Stable to moderate heat."},
-        {"pH stability (range)", pHsens,
-         (f.ester || f.arylKetone || f.catechol) ? "Narrow stable pH window."
-                                                 : "Broad stable pH window."},
+        {"Thermal stability (range)", thermal, chem::thermalWindowText(th)},
+        {"pH stability (range)", pHsens, chem::phWindowText(ph)},
     };
 
     double sum = 0;
@@ -189,16 +209,22 @@ StabilityReport computeStability(const Molecule& m) {
     if (r.degradants.empty()) r.degradants.push_back({"N-oxide (minor)", "N-oxidation",
                                                       "Trace; not shelf-life limiting."});
 
-    if (r.overallScore >= 85)      r.shelfLifeEstimate = "~36 months @ 25C/60%RH";
-    else if (r.overallScore >= 70) r.shelfLifeEstimate = "~24 months @ 25C/60%RH";
-    else if (r.overallScore >= 55) r.shelfLifeEstimate = "~12 months @ 25C/60%RH";
-    else                           r.shelfLifeEstimate = "~6 months (refrigerate/protect)";
+    const std::string store = th.refrigerate
+        ? ("<=" + chem::fmt0(th.storeBelowC) + "C, dark")
+        : (chem::fmt0(th.storeBelowC) + "C/60%RH");
+    const std::string months = r.overallScore >= 85 ? "~36 months"
+                             : r.overallScore >= 70 ? "~24 months"
+                             : r.overallScore >= 55 ? "~12 months"
+                                                    : "~6 months";
+    r.shelfLifeEstimate = months + " @ " + store;
 
     r.summary = "Overall stability " + std::to_string(static_cast<int>(r.overallScore)) +
                 "/100. Limiting factor: " +
                 (f.ester ? "ester hydrolysis."
                          : (f.catechol ? "catechol oxidation."
-                                       : (f.arylKetone ? "carbonyl reactivity." : "none major.")));
+                                       : (f.arylKetone ? "carbonyl reactivity." : "none major."))) +
+                " Predicted stable pH " + chem::fmt1(ph.low) + "-" + chem::fmt1(ph.high) +
+                ", to ~" + chem::fmt0(th.stableToC) + "C (store " + store + ").";
     return r;
 }
 
@@ -208,10 +234,16 @@ AbsorptionReport computeAbsorption(const Molecule& m) {
     r.moleculeId = m.id;
     const double tpsa = m.tpsa, logP = m.logP, mw = m.molWeight;
 
-    r.hiaPct           = clampd(100.0 - std::max(0.0, tpsa - 60.0) * 0.70, 10.0, 99.0);
-    r.bioavailabilityPct = clampd(95.0 - std::max(0.0, tpsa - 90.0) * 0.60 -
-                                  std::max(0, m.rotatableBonds - 10) * 3.0 -
-                                  std::max(0.0, mw - 400.0) * 0.05, 5.0, 95.0);
+    // Oral F is computed mechanistically (absorbed fraction x first-pass survival),
+    // not pinned to a 95% ceiling: structural metabolic liabilities set the
+    // presystemic extraction, so catecholamines read near-zero F and metabolically
+    // robust stimulants read high.
+    const Features f = sniff(m);
+    const chem::PkLiabilities L = liabilitiesOf(m, f);
+    const auto bio = chem::predictBioavailability(mw, logP, tpsa, m.hbd, L);
+
+    r.hiaPct           = bio.hiaPct;
+    r.bioavailabilityPct = bio.bioavailabilityPct;
     r.caco2LogPapp     = clampd(-4.80 + 0.30 * logP - 0.008 * tpsa, -7.0, -4.0);
     r.logBB            = clampd(0.15 + 0.17 * logP - 0.011 * tpsa, -2.0, 1.2);
     r.logS             = clampd(0.80 - 0.0100 * mw - 0.55 * logP, -6.5, 1.0);
@@ -224,9 +256,9 @@ AbsorptionReport computeAbsorption(const Molecule& m) {
 
     r.metrics = {
         {"Human intestinal absorption", r.hiaPct, "%", band(r.hiaPct, 80, 50),
-         "Driven mainly by polar surface area (TPSA)."},
+         "Fraction crossing the gut wall; TPSA / H-bond-donor limited (passive permeability)."},
         {"Oral bioavailability (F)", r.bioavailabilityPct, "%", band(r.bioavailabilityPct, 70, 40),
-         "Veber-style: TPSA<=140 and rotatable bonds<=10 favor F."},
+         chem::bioavailabilityRationale(bio)},
         {"Caco-2 permeability", r.caco2LogPapp, "log(cm/s)", band(r.caco2LogPapp, -5.0, -6.0),
          "Higher (less negative) = more permeable monolayer flux."},
         {"BBB partition", r.logBB, "logBB", r.cnsPenetrant ? Verdict::Good : Verdict::Info,
@@ -240,8 +272,9 @@ AbsorptionReport computeAbsorption(const Molecule& m) {
                         : "Not a likely P-gp substrate."},
     };
 
-    r.summary = "Predicted F ~" + std::to_string(static_cast<int>(r.bioavailabilityPct)) +
-                "%, HIA ~" + std::to_string(static_cast<int>(r.hiaPct)) + "%. " +
+    r.summary = "Predicted oral F ~" + chem::fmt0(r.bioavailabilityPct) + "% (HIA ~" +
+                chem::fmt0(r.hiaPct) + "%, first-pass survival ~" +
+                chem::fmt0(bio.firstPassSurvival * 100.0) + "%; " + bio.limitingRoute + "). " +
                 (r.cnsPenetrant ? "CNS-penetrant." : "Low CNS penetration.");
     return r;
 }

@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "chem/AdmetModel.h"
 #include "chem/Analysis.h"
 #include "chem/Descriptors.h"
 #include "chem/Embed3D.h"
@@ -141,6 +142,43 @@ bool hasAnilide(const Molecule& m) {
     return false;
 }
 
+// A flexible-chain primary/secondary amine whose alpha carbon is an unsubstituted
+// methylene (-CH2-) is readily deaminated by monoamine oxidase, so it carries a
+// heavy presystemic-metabolism burden. The strict tests below pick out exactly the
+// MAO-vulnerable beta-phenethylamine class while excluding the look-alikes:
+//   * alpha-METHYL amines (amphetamine-type): the alpha carbon is a CH (1 H), not
+//     a CH2, so it is MAO-resistant and not flagged.
+//   * N-METHYL substituents (e.g. methamphetamine's N-CH3): a terminal CH3 has 3 H,
+//     not 2, so the methyl neighbour does not count as the alpha methylene.
+//   * RING amines (piperidine/pyrrolidine/tropane in methylphenidate, MDPV, cocaine,
+//     nicotine): the nitrogen and its alpha carbons are in a ring and are excluded.
+// Combined with the phenethylamine flag at the call site so only Ar-C-C-N amines
+// reach here.
+bool hasMaoLabileAmine(const Molecule& m) {
+    auto pm = chem::parseSmiles(m.smiles);
+    if (!pm) return false;
+    for (const auto& a : pm->atoms) {
+        if (a.z != 7 || a.aromatic || a.inRing) continue;
+        bool amideN = false;  // skip nitrogens bonded to a carbonyl carbon
+        for (int nb : a.nbr) {
+            const auto& x = pm->atoms[nb];
+            if (x.z != 6) continue;
+            for (int b2 : x.bonds)
+                if (pm->bonds[b2].order == 2.0 && pm->atoms[pm->bonds[b2].other(nb)].z == 8) amideN = true;
+        }
+        if (amideN) continue;
+        const int h = a.totalH(), deg = a.degree();
+        const bool primaryOrSecondary = (deg == 1 && h >= 2) || (deg == 2 && h >= 1);
+        if (!primaryOrSecondary) continue;
+        for (int nb : a.nbr) {
+            const auto& c = pm->atoms[nb];
+            // alpha carbon must be an acyclic methylene (-CH2-), i.e. exactly 2 H
+            if (c.z == 6 && !c.aromatic && !c.inRing && c.totalH() == 2) return true;
+        }
+    }
+    return false;
+}
+
 // ----------------------------------------------------------------- stability
 StabilityReport realStability(const Molecule& m) {
     const auto f = groupsOf(m);
@@ -153,6 +191,19 @@ StabilityReport realStability(const Molecule& m) {
     const double thermal = f.arylKetone ? 66.0 : (f.ester ? 72.0 : 88.0);
     const double phStab = (f.ester || f.arylKetone || f.catechol) ? 58.0 : 80.0;
 
+    // Predicted, numeric stability ranges (not just a "narrow/broad" word): the
+    // degradation chemistry of the perceived groups sets an actual pH window and
+    // temperature ceiling, which we surface in the rationale text below.
+    chem::PkLiabilities sl;
+    sl.catechol = f.catechol;
+    sl.phenol = f.phenol;
+    sl.ester = f.ester;
+    sl.amide = f.amide;
+    sl.arylKetone = f.arylKetone;
+    sl.methylenedioxy = f.methylenedioxy;
+    const auto ph = chem::predictPhWindow(sl);
+    const auto th = chem::predictThermalWindow(sl);
+
     r.factors = {
         {"Hydrolysis resistance", hydrolysis,
          f.ester ? "Ester detected - susceptible to acid/base/enzymatic hydrolysis."
@@ -164,10 +215,8 @@ StabilityReport realStability(const Molecule& m) {
         {"Photostability", photolysis,
          (f.catechol || f.arylKetone) ? "Chromophore/carbonyl - photodegradation risk."
                                       : "No strong photolabile chromophore."},
-        {"Thermal stability", thermal,
-         f.arylKetone ? "Aryl ketone - thermal condensation pathways." : "Stable to moderate heat."},
-        {"pH stability (range)", phStab,
-         (f.ester || f.arylKetone || f.catechol) ? "Narrow stable pH window." : "Broad stable pH window."},
+        {"Thermal stability (range)", thermal, chem::thermalWindowText(th)},
+        {"pH stability (range)", phStab, chem::phWindowText(ph)},
     };
     double sum = 0;
     for (const auto& x : r.factors) sum += x.score;
@@ -183,15 +232,21 @@ StabilityReport realStability(const Molecule& m) {
                                               "Condensation under heat."});
     if (r.degradants.empty()) r.degradants.push_back({"N-oxide (minor)", "N-oxidation", "Trace."});
 
-    if (r.overallScore >= 85) r.shelfLifeEstimate = "~36 months @ 25C/60%RH";
-    else if (r.overallScore >= 70) r.shelfLifeEstimate = "~24 months @ 25C/60%RH";
-    else if (r.overallScore >= 55) r.shelfLifeEstimate = "~12 months @ 25C/60%RH";
-    else r.shelfLifeEstimate = "~6 months (refrigerate/protect)";
+    const std::string store = th.refrigerate
+        ? ("<=" + chem::fmt0(th.storeBelowC) + "C, dark")
+        : (chem::fmt0(th.storeBelowC) + "C/60%RH");
+    const std::string months = r.overallScore >= 85 ? "~36 months"
+                             : r.overallScore >= 70 ? "~24 months"
+                             : r.overallScore >= 55 ? "~12 months"
+                                                    : "~6 months";
+    r.shelfLifeEstimate = months + " @ " + store;
 
     r.summary = "Overall stability " + std::to_string(static_cast<int>(r.overallScore)) +
                 "/100. Limiting factor: " +
                 (f.ester ? "ester hydrolysis." : (f.catechol ? "catechol oxidation."
-                          : (f.arylKetone ? "carbonyl reactivity." : "none major.")));
+                          : (f.arylKetone ? "carbonyl reactivity." : "none major."))) +
+                " Predicted stable pH " + chem::fmt1(ph.low) + "-" + chem::fmt1(ph.high) +
+                ", to ~" + chem::fmt0(th.stableToC) + "C (store " + store + ").";
     return r;
 }
 
@@ -200,10 +255,25 @@ AbsorptionReport realAbsorption(const Molecule& m) {
     AbsorptionReport r;
     r.moleculeId = m.id;
     const double tpsa = m.tpsa, logP = m.logP, mw = m.molWeight;
-    r.hiaPct = clampd(100.0 - std::max(0.0, tpsa - 60.0) * 0.70, 10.0, 99.0);
-    r.bioavailabilityPct = clampd(95.0 - std::max(0.0, tpsa - 90.0) * 0.60 -
-                                  std::max(0, m.rotatableBonds - 10) * 3.0 -
-                                  std::max(0.0, mw - 400.0) * 0.05, 5.0, 95.0);
+
+    // Oral F is computed mechanistically as F = absorbed fraction x first-pass
+    // survival, NOT pinned to a fixed 95% ceiling. The presystemic metabolic
+    // liabilities perceived from the structure drive the first-pass extraction,
+    // so e.g. catecholamines (catechol -> COMT/MAO) correctly read near-zero F
+    // while metabolically robust stimulants read high.
+    const auto g = groupsOf(m);
+    chem::PkLiabilities L;
+    L.catechol = g.catechol;
+    L.phenol = g.phenol;
+    L.ester = g.ester;
+    L.amide = g.amide;
+    L.arylKetone = g.arylKetone;
+    L.methylenedioxy = g.methylenedioxy;
+    L.maoLabileAmine = g.phenethylamine && hasMaoLabileAmine(m);
+    const auto bio = chem::predictBioavailability(mw, logP, tpsa, m.hbd, L);
+
+    r.hiaPct = bio.hiaPct;
+    r.bioavailabilityPct = bio.bioavailabilityPct;
     r.caco2LogPapp = clampd(-4.80 + 0.30 * logP - 0.008 * tpsa, -7.0, -4.0);
     r.logBB = clampd(0.15 + 0.17 * logP - 0.011 * tpsa, -2.0, 1.2);
     r.logS = clampd(0.80 - 0.0100 * mw - 0.55 * logP, -6.5, 1.0);
@@ -215,9 +285,9 @@ AbsorptionReport realAbsorption(const Molecule& m) {
     };
     r.metrics = {
         {"Human intestinal absorption", r.hiaPct, "%", band(r.hiaPct, 80, 50),
-         "Driven mainly by polar surface area (TPSA)."},
+         "Fraction crossing the gut wall; TPSA / H-bond-donor limited (passive permeability)."},
         {"Oral bioavailability (F)", r.bioavailabilityPct, "%", band(r.bioavailabilityPct, 70, 40),
-         "Veber: TPSA<=140 and rotatable bonds<=10 favor F."},
+         chem::bioavailabilityRationale(bio)},
         {"Caco-2 permeability", r.caco2LogPapp, "log(cm/s)", band(r.caco2LogPapp, -5.0, -6.0),
          "Higher (less negative) = more permeable."},
         {"BBB partition", r.logBB, "logBB", r.cnsPenetrant ? Verdict::Good : Verdict::Info,
@@ -228,8 +298,9 @@ AbsorptionReport realAbsorption(const Molecule& m) {
          r.pgpSubstrate ? Verdict::Warn : Verdict::Good,
          r.pgpSubstrate ? "Efflux may reduce net absorption." : "Not a likely P-gp substrate."},
     };
-    r.summary = "Predicted F ~" + std::to_string(static_cast<int>(r.bioavailabilityPct)) +
-                "%, HIA ~" + std::to_string(static_cast<int>(r.hiaPct)) + "%. " +
+    r.summary = "Predicted oral F ~" + chem::fmt0(r.bioavailabilityPct) + "% (HIA ~" +
+                chem::fmt0(r.hiaPct) + "%, first-pass survival ~" +
+                chem::fmt0(bio.firstPassSurvival * 100.0) + "%; " + bio.limitingRoute + "). " +
                 (r.cnsPenetrant ? "CNS-penetrant." : "Low CNS penetration.");
     return r;
 }
