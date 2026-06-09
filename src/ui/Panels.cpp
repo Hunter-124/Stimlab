@@ -680,11 +680,18 @@ void docking(AppShell& shell) {
         // reads prepared receptors from disk), avoiding a wasteful first-entry restart.
         static bool wasProvisioning = false;
         static bool userProvision = false;
+        static std::string readyKey;   // target whose receptor-readiness is cached below
+        static bool selReady = false;
         if (wasProvisioning && !prov.running()) {
             if (userProvision) shell.invalidateDock();
             userProvision = false;
+            readyKey.clear();          // a provision just finished -> re-probe readiness
         }
         wasProvisioning = prov.running();
+        if (st.dockTarget != readyKey) {  // selection changed (or invalidated above)
+            readyKey = st.dockTarget;
+            selReady = shell.receptorReady(st.dockTarget);
+        }
         const bool vina = prov.vinaReady();
         const int recReady = prov.receptorsReady();
         const int recTotal = prov.receptorsTotal();
@@ -694,21 +701,33 @@ void docking(AppShell& shell) {
             ? "Real docking engine: READY (vina + prepared receptor)"
             : "Real docking engine: not provisioned - showing labeled descriptor estimate");
         ImGui::PopStyleColor();
-        ImGui::TextDisabled("vina.exe: %s   headline receptors: %d/%d   receptor prep: %s",
+        ImGui::TextDisabled("vina.exe: %s   receptors (last provision): %d/%d   receptor prep: %s",
                             vina ? "present" : "absent", recReady, recTotal,
                             prov.obabelReady() ? "obabel (+H)" : "built-in");
+        ImGui::TextDisabled("selected target %s: receptor %s", st.dockTarget.c_str(),
+                            selReady ? "prepared (real dock)"
+                                     : "not prepared (shows descriptor estimate)");
         if (prov.running()) {
             ImGui::TextDisabled("Working: %s", prov.status().c_str());
         } else {
-            if (ImGui::Button("Provision engine + receptors")) {
+            if (ImGui::Button("Provision engine + headline receptors")) {
                 shell.provisionDocking();
                 userProvision = true;
+            }
+            if (!selReady) {
+                // The selected target isn't prepared yet: offer an on-demand provision
+                // of just this receptor (any of the 29 CNS presets, not only headlines).
+                ImGui::SameLine();
+                const std::string lbl = "Provision " + st.dockTarget;
+                if (ImGui::Button(lbl.c_str()) && shell.provisionTarget(st.dockTarget))
+                    userProvision = true;
             }
             ImGui::SameLine();
             ImGui::TextDisabled("%s", prov.status().c_str());
         }
-        ImGui::TextDisabled("Downloads vina.exe (size-checked) + fetches/prepares DAT/NET/SERT/TAAR1 "
-                            "receptor PDBQTs under %%APPDATA%%/StimLab/runtime. Best-effort; needs network.");
+        ImGui::TextDisabled("Downloads vina.exe (size-checked) + prepares receptor PDBQTs from RCSB "
+                            "under %%APPDATA%%/StimLab/runtime. Headline = DAT/NET/SERT/TAAR1; any "
+                            "other target prepares on demand. Best-effort; needs network.");
     }
     ImGui::Spacing();
 
@@ -835,6 +854,31 @@ void workflows(AppShell& shell) {
             if (sel) ImGui::SetItemDefaultFocus();
         }
         ImGui::EndCombo();
+    }
+    ImGui::Spacing();
+
+    // Receptor readiness for the selected target: a prep->dock run still completes for
+    // an unprepared target but yields the labeled estimate, so offer an on-demand
+    // provision (the same single-target path as the Docking panel) before the run.
+    {
+        auto& prov = shell.provisioner();
+        static std::string wfReadyKey;
+        static bool wfSelReady = false;
+        static bool wfWasRunning = false;
+        const bool provRunning = prov.running();
+        if (st.dockTarget != wfReadyKey || (wfWasRunning && !provRunning)) {
+            wfReadyKey = st.dockTarget;
+            wfSelReady = shell.receptorReady(st.dockTarget);
+        }
+        wfWasRunning = provRunning;
+        ImGui::TextDisabled("receptor for %s: %s", st.dockTarget.c_str(),
+                            wfSelReady ? "prepared (real dock)" : "not prepared (estimate)");
+        if (provRunning) {
+            ImGui::TextDisabled("provisioning: %s", prov.status().c_str());
+        } else if (!wfSelReady) {
+            const std::string lbl = "Provision " + st.dockTarget;
+            if (ImGui::Button(lbl.c_str())) shell.provisionTarget(st.dockTarget);
+        }
     }
     ImGui::Spacing();
 

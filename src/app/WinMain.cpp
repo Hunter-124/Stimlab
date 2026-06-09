@@ -71,7 +71,13 @@ int runHeadlessDock(const std::string& smiles, const std::string& target) {
     emit("target : " + target);
 
     docking::Provisioner prov;
-    prov.start(/*allowDownload=*/true, docking::headlinePresets());
+    // Provision exactly the requested target (resolved by id or display name) so a
+    // non-headline preset is genuinely prepared before we dock it; fall back to the
+    // headline set only when the target string matches no preset.
+    std::vector<ReceptorTarget> toProvision;
+    if (const auto* p = docking::findPreset(target)) toProvision.push_back(*p);
+    else toProvision = docking::headlinePresets();
+    prov.start(/*allowDownload=*/true, std::move(toProvision));
     while (prov.running()) Sleep(250);
     emit("provision : " + prov.status());
     emit("vina      : " + std::string(prov.vinaReady() ? "ready" : "absent") +
@@ -234,6 +240,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         shell.state().activePanel = buf;
     if (char buf[128]; GetEnvironmentVariableA("STIMLAB_MOLECULE", buf, sizeof(buf)) > 0)
         shell.state().selectedMolecule = buf;
+    // STIMLAB_TARGET selects the initial docking target (preset id or display name) so a
+    // capture can show the on-demand "Provision <target>" affordance for an unprepared one.
+    if (char buf[128]; GetEnvironmentVariableA("STIMLAB_TARGET", buf, sizeof(buf)) > 0) {
+        if (const auto* p = stimlab::docking::findPreset(buf)) shell.state().dockTarget = p->name;
+        else shell.state().dockTarget = buf;
+    }
 
     // Automation hook: deep-linking to the Workflows panel kicks one pipeline run so a
     // capture shows the live DAG executing (harmless in normal use - this env path is

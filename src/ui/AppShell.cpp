@@ -19,6 +19,7 @@
 #include "modules/Pipelines.h"
 #include "modules/docking/Presets.h"
 #include "modules/docking/Provisioning.h"
+#include "modules/docking/ReceptorPrep.h"
 #include "render/MolViewport.h"
 #include "ui/Panels.h"
 #include "ui/Theme.h"
@@ -230,6 +231,25 @@ docking::Provisioner& AppShell::provisioner() {
 void AppShell::provisionDocking() {
     provisionProbed_ = true;  // an explicit provision supersedes the locate-only probe
     provisioner_->start(/*allowDownload=*/true, docking::headlinePresets());
+}
+
+bool AppShell::provisionTarget(const std::string& target) {
+    // Resolve the combo's value (a display name or an id) to a concrete preset and
+    // provision JUST that receptor on demand, reusing the same off-thread Provisioner
+    // (it ensures vina first, prepares the one receptor, then rewrites the manifest).
+    const ReceptorTarget* p = docking::findPreset(target);
+    if (!p) return false;
+    provisionProbed_ = true;  // an explicit provision supersedes the locate-only probe
+    provisioner_->start(/*allowDownload=*/true, std::vector<ReceptorTarget>{*p});
+    return true;
+}
+
+bool AppShell::receptorReady(const std::string& target) const {
+    // Cache-only (no network): is this target's prepared receptor PDBQT on disk? Used
+    // by the panels to decide whether to offer an on-demand "Provision <target>".
+    const ReceptorTarget* p = docking::findPreset(target);
+    if (!p) return false;
+    return docking::locatePreparedReceptor(p->id).ready;
 }
 
 void AppShell::setRenderDevice(ID3D11Device* device, ID3D11DeviceContext* context) {

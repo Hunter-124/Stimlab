@@ -72,7 +72,14 @@ public:
     // slow best-effort work off the UI thread; the panel polls its status. The first
     // access kicks a cheap locate-only probe (no network) to seed initial status.
     [[nodiscard]] docking::Provisioner& provisioner();
-    void provisionDocking();  // start a full provision (download engine + receptors)
+    void provisionDocking();  // start a full provision (download engine + headline receptors)
+
+    // On-demand provisioning of a single selected target (any of the 29 CNS presets,
+    // not just the 4 headlines). `target` may be a preset id or display name; returns
+    // false if it resolves to no preset. A no-op while a provision is already running.
+    bool provisionTarget(const std::string& target);
+    // Cache-only readiness probe (no network): is `target`'s receptor prepared on disk?
+    [[nodiscard]] bool receptorReady(const std::string& target) const;
 
     // Async docking: returns the latest completed result for (molecule, target),
     // computed ONCE on a background thread (a real engine dock must never run on the

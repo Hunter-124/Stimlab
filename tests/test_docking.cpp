@@ -82,6 +82,32 @@ TEST_CASE("CNS receptor presets are populated with boxes", "[docking][presets]")
     REQUIRE(docking::presetNames().size() == presets.size());
 }
 
+TEST_CASE("Every listed target resolves for on-demand provisioning", "[docking][presets]") {
+    // The Docking/Workflows combos list presetNames(); selecting one and provisioning
+    // it on demand resolves that display name back to a preset via findPreset - exactly
+    // the path AppShell::provisionTarget / receptorReady take. Guard that round-trip for
+    // ALL 29 presets so a rename cannot silently break the on-demand UI.
+    const auto names = docking::presetNames();
+    REQUIRE(names.size() >= 25);
+    for (const auto& n : names) {
+        INFO(n);
+        const auto* byName = docking::findPreset(n);          // combo value -> preset
+        REQUIRE(byName != nullptr);
+        REQUIRE_FALSE(byName->id.empty());
+        REQUIRE_FALSE(byName->pdb.empty());                   // a PDB to fetch from RCSB
+        REQUIRE(byName->box.sx > 1.0);                        // a real, non-degenerate box
+        REQUIRE(docking::findPreset(byName->id) != nullptr);  // id also resolves (CLI/selftest)
+    }
+    // The 4 headlines resolve, and a representative NON-headline target (D2) is a fully
+    // provisionable preset - the new on-demand path covers the other 25 presets too.
+    for (const char* id : {"DAT", "NET", "SERT", "TAAR1"})
+        REQUIRE(docking::findPreset(id) != nullptr);
+    const auto* d2 = docking::findPreset("D2");
+    REQUIRE(d2 != nullptr);
+    REQUIRE(d2->id == "D2");
+    REQUIRE_FALSE(d2->pdb.empty());
+}
+
 TEST_CASE("Rigid PDBQT writer emits a clean ROOT ligand", "[docking][pdbqt]") {
     const auto m = graph("CC(N)Cc1ccccc1");  // amphetamine
     const auto conf = chem::embed3D(m);

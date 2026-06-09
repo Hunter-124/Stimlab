@@ -83,7 +83,7 @@ void Provisioner::run(bool allowDownload, std::vector<ReceptorTarget> headline) 
 
     // 4) Final summary.
     std::string s = vina.fetched ? "Vina ready. " : ("Vina unavailable: " + vina.note + " ");
-    s += std::to_string(ready) + "/" + std::to_string(headline.size()) + " headline receptors prepared.";
+    s += std::to_string(ready) + "/" + std::to_string(headline.size()) + " receptors prepared.";
     if (!allowDownload && (ready == 0 || !vina.fetched))
         s += " Click Provision to download the engine + receptors.";
     if (obabel.fetched) s += " (obabel: full protonation.)";
