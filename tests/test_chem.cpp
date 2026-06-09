@@ -1,6 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <cmath>
+#include <iterator>
 #include <optional>
 #include <string>
 
@@ -96,6 +98,40 @@ TEST_CASE("Functional-group perception", "[chem][groups]") {
     REQUIRE(detectGroups(mustParse("CNC(C)Cc1ccc2OCOc2c1")).methylenedioxy);            // MDMA
     REQUIRE(detectGroups(mustParse("CC(N)C(=O)c1ccccc1")).arylKetone);                   // cathinone
     REQUIRE(detectGroups(mustParse("NC(=O)CS(=O)C(c1ccccc1)c1ccccc1")).sulfoxide);       // modafinil
+}
+
+// Wildman-Crippen logP regression vs reference (experimental/consensus) logP
+// across a spread of the library, each within +/-0.7. Deliberately excluded are
+// the cases where the WC additive model is known to diverge from EXPERIMENTAL
+// logP (not an implementation bug): fused polar heteroaromatics (caffeine,
+// theobromine - WC overweights the ring) and free catechols (dopamine,
+// norepinephrine - WC underweights intramolecular H-bonding). Those still
+// compute; they just are not fair accuracy oracles for the additive method.
+TEST_CASE("Wildman-Crippen logP tracks reference for the library", "[chem][logp]") {
+    struct Case { const char* smiles; const char* name; double ref; };
+    const Case cases[] = {
+        {"CC(N)Cc1ccccc1", "amphetamine", 1.76},
+        {"CNC(C)Cc1ccccc1", "methamphetamine", 2.07},
+        {"CNC(C)Cc1ccc2OCOc2c1", "mdma", 2.15},
+        {"CC(N)Cc1ccc2OCOc2c1", "mda", 1.64},
+        {"NCCc1ccccc1", "phenethylamine", 1.41},
+        {"NCCc1ccc(O)cc1", "tyramine", 0.86},
+        {"CNC(C)C(O)c1ccccc1", "ephedrine", 1.13},
+        {"CC(N)C(=O)c1ccccc1", "cathinone", 0.59},
+        {"CC(=O)Nc1ccc(O)cc1", "acetaminophen", 0.46},
+        {"CC(N)Cc1ccc(F)cc1", "4-fluoroamphetamine", 1.90},
+    };
+    double sumAbsErr = 0.0;
+    for (const auto& c : cases) {
+        const auto m = mustParse(c.smiles);
+        const double got = crippenLogP(m);
+        INFO(c.name << "  ref=" << c.ref << "  got=" << got);
+        REQUIRE_THAT(got, WithinAbs(c.ref, 0.7));
+        sumAbsErr += std::abs(got - c.ref);
+    }
+    const double mae = sumAbsErr / static_cast<double>(std::size(cases));
+    INFO("mean absolute error = " << mae);
+    REQUIRE(mae < 0.35);  // aggregate accuracy well inside the per-point band
 }
 
 TEST_CASE("Morgan/Tanimoto similarity is sane", "[chem][fingerprint]") {

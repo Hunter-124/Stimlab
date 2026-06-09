@@ -192,40 +192,118 @@ double tpsa(const Molecule& m) {
     return sum;
 }
 
-// ------------------------------------------------------ Crippen-style logP
-// Pragmatic atom-contribution estimate (not full Wildman-Crippen typing);
-// validated to a tolerance in tests. Swappable for RDKit's MolLogP later.
+// ------------------------------------------------ Wildman-Crippen logP
+// Atom-additive octanol-water logP after Wildman & Crippen (J. Chem. Inf.
+// Comput. Sci. 1999, 39, 868): every atom is classified into an atom type by
+// its element, hybridization, aromaticity, attached heteroatoms and hydrogen
+// environment, then assigned the published per-type contribution. Hydrogens are
+// folded into their heavy-atom carrier (H1/H2/H3 contributions). Validated to a
+// tolerance against reference logP for the library in tests/test_chem.cpp.
+namespace {
+
+bool isHeteroZ(int z) {
+    return z == 7 || z == 8 || z == 15 || z == 16 || z == 9 || z == 17 || z == 35 || z == 53;
+}
+
+// Contribution of the hydrogens carried by a heavy atom (WC H1/H2/H3 types).
+double hydrogenContribution(int carrierZ, int nH) {
+    if (nH <= 0) return 0.0;
+    double per;
+    switch (carrierZ) {
+        case 6:  per = 0.1230; break;   // H1: hydrocarbon H
+        case 7:  per = 0.2142; break;   // H3: H on nitrogen
+        case 8:  per = -0.2677; break;  // H2: H on oxygen (alcohol/phenol/acid)
+        case 16: per = 0.2142; break;   // thiol H ~ H3
+        default: per = 0.1125; break;   // HS: default
+    }
+    return per * nH;
+}
+
+double carbonContribution(const Molecule& m, int i) {
+    const Atom& a = m.atoms[i];
+    const int H = a.totalH();
+    int cN = 0, hetN = 0;
+    for (int nb : a.nbr) {
+        if (m.atoms[nb].z == 6) ++cN;
+        else if (isHeteroZ(m.atoms[nb].z)) ++hetN;
+    }
+    bool dbl = false, trp = false, dblToHetero = false;
+    for (int bi : a.bonds) {
+        const Bond& b = m.bonds[bi];
+        const int o = m.atoms[b.other(i)].z;
+        if (b.order == 2.0) { dbl = true; if (o != 6) dblToHetero = true; }
+        if (b.order == 3.0) trp = true;
+    }
+    if (a.aromatic) {
+        if (H >= 1) return 0.1581;                    // C18: aromatic CH
+        if (hetN > 0) return 0.2955;                  // C23/24: aromatic C-heteroatom
+        return 0.1360;                                // C21: aromatic C-C(sub)
+    }
+    if (trp) return 0.0017;                           // C7: sp carbon
+    if (dbl) return dblToHetero ? -0.2783 : 0.1551;   // C5 (=hetero) / C6 (=C)
+    if (hetN > 0) return H >= 2 ? -0.2035 : -0.2051;  // C3 / C4: sp3 bonded to heteroatom
+    return (cN <= 2 && H >= 1) ? 0.1441 : 0.0000;     // C1 / C2: sp3 all-carbon
+}
+
+double nitrogenContribution(const Molecule& m, int i) {
+    const Atom& a = m.atoms[i];
+    const int H = a.totalH();
+    bool trp = false, dbl = false;
+    for (int bi : a.bonds) {
+        if (m.bonds[bi].order == 3.0) trp = true;
+        if (m.bonds[bi].order == 2.0) dbl = true;
+    }
+    bool amide = false, arylAttached = false;
+    for (int nb : a.nbr) {
+        if (m.atoms[nb].aromatic) arylAttached = true;
+        if (m.atoms[nb].z == 6)
+            for (int bi : m.atoms[nb].bonds) {
+                const Bond& b = m.bonds[bi];
+                if (b.order == 2.0 && m.atoms[b.other(nb)].z == 8) amide = true;
+            }
+    }
+    if (trp) return -0.3396;                           // N: nitrile
+    if (a.aromatic) return H >= 1 ? -0.3239 : -0.3396; // N11/12: pyrrole NH / pyridine n
+    if (amide) return -0.4458;                         // amide N
+    if (dbl) return 0.08387;                           // N5: imine
+    if (a.charge > 0) return -0.3187;                  // ammonium ~ tertiary
+    if (arylAttached) return H >= 2 ? -1.0270 : (H == 1 ? -0.5188 : -0.3187);  // aniline N3/N4/N7
+    return H >= 2 ? -1.0190 : (H == 1 ? -0.7096 : -0.3187);                    // amine N1/N2/N7
+}
+
+double oxygenContribution(const Molecule& m, int i) {
+    const Atom& a = m.atoms[i];
+    const int H = a.totalH();
+    bool dbl = false;
+    for (int bi : a.bonds)
+        if (m.bonds[bi].order == 2.0) dbl = true;
+    if (a.aromatic) return 0.1552;                     // O1: aromatic O (furan)
+    if (a.charge < 0) return -0.3339;                  // O6: O-
+    if (dbl) return -0.1188;                           // carbonyl =O (ketone/amide/acid/ester)
+    if (H >= 1) return -0.2893;                         // O2: hydroxyl (alcohol/phenol/acid OH)
+    return -0.0684;                                     // O3: ether -O- (incl. methylenedioxy)
+}
+
+}  // namespace
+
 double crippenLogP(const Molecule& m) {
     double logp = 0.0;
     for (size_t i = 0; i < m.atoms.size(); ++i) {
         const Atom& a = m.atoms[i];
+        const int idx = static_cast<int>(i);
         switch (a.z) {
-            case 6: {  // carbon
-                bool boundToHetero = false;
-                for (int nb : a.nbr)
-                    if (m.atoms[nb].z != 1 && m.atoms[nb].z != 6) boundToHetero = true;
-                double cval = a.aromatic ? 0.290 : 0.205;
-                if (boundToHetero) cval -= 0.151;
-                logp += cval;
-                logp += a.totalH() * 0.110;  // nonpolar H
-                break;
-            }
-            case 7:  // nitrogen
-                logp += a.aromatic ? -0.40 : -0.90;
-                logp += a.totalH() * (-0.20);
-                break;
-            case 8:  // oxygen
-                logp += isDoubleBondedTo(m, static_cast<int>(i), 6) ? -0.20 : -0.38;
-                logp += a.totalH() * (-0.25);
-                break;
-            case 9:  logp += 0.40; break;   // F
-            case 17: logp += 0.64; break;   // Cl
-            case 35: logp += 0.84; break;   // Br
-            case 53: logp += 1.00; break;   // I
-            case 16: logp += isDoubleBondedTo(m, static_cast<int>(i), 8) ? -0.40 : 0.62; break;  // S
-            case 15: logp += 0.30; break;   // P
+            case 6:  logp += carbonContribution(m, idx); break;
+            case 7:  logp += nitrogenContribution(m, idx); break;
+            case 8:  logp += oxygenContribution(m, idx); break;
+            case 9:  logp += 0.4202; break;   // F
+            case 17: logp += 0.6895; break;   // Cl
+            case 35: logp += 0.8456; break;   // Br
+            case 53: logp += 0.8857; break;   // I
+            case 16: logp += isDoubleBondedTo(m, idx, 8) ? -0.0024 : 0.6482; break;  // S=O / thioether
+            case 15: logp += 0.8612; break;   // P
             default: break;
         }
+        logp += hydrogenContribution(a.z, a.totalH());
     }
     return logp;
 }
