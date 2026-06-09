@@ -110,6 +110,7 @@ AppShell::~AppShell() {
     wfCancel_.cancel();
     if (wfThread_.joinable()) wfThread_.join();
     if (dockThread_.joinable()) dockThread_.join();
+    if (vinaGpuThread_.joinable()) vinaGpuThread_.join();
 }
 
 void AppShell::runWorkflow(const std::string& smiles, const std::string& targetId,
@@ -261,6 +262,35 @@ bool AppShell::receptorReady(const std::string& target) const {
     const ReceptorTarget* p = docking::findPreset(target);
     if (!p) return false;
     return docking::locatePreparedReceptor(p->id).ready;
+}
+
+void AppShell::provisionVinaGpu() {
+    bool expected = false;
+    if (!vinaGpuProvisioning_.compare_exchange_strong(expected, true)) return;  // running
+    if (vinaGpuThread_.joinable()) vinaGpuThread_.join();  // reap a finished worker
+    {
+        std::lock_guard<std::mutex> lk(vinaGpuMu_);
+        vinaGpuStatus_ = "Provisioning Vina-GPU (downloading binaries + compiling the OpenCL "
+                         "kernel for this GPU)...";
+    }
+    vinaGpuThread_ = std::thread([this] {
+        const auto r = docking::ensureVinaGpu(/*allowDownload=*/true);
+        {
+            std::lock_guard<std::mutex> lk(vinaGpuMu_);
+            vinaGpuStatus_ = (r.fetched ? "Vina-GPU ready: " : "Vina-GPU unavailable: ") + r.note;
+        }
+        vinaGpuProvisioning_.store(false);
+    });
+}
+
+std::string AppShell::vinaGpuStatus() const {
+    std::lock_guard<std::mutex> lk(vinaGpuMu_);
+    return vinaGpuStatus_;
+}
+
+bool AppShell::vinaGpuReady() const {
+    // Cache-only readiness (no network): exe + a compiled kernel are present on disk.
+    return docking::ensureVinaGpu(/*allowDownload=*/false).fetched;
 }
 
 void AppShell::setRenderDevice(ID3D11Device* device, ID3D11DeviceContext* context) {

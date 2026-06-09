@@ -1165,17 +1165,39 @@ void settings(AppShell& shell) {
     int compute = shell.computeMode();
     bool computeChanged = false;
     computeChanged |= ImGui::RadioButton("Auto", &compute, 0); ImGui::SameLine();
-    computeChanged |= ImGui::RadioButton("GPU (CUDA)", &compute, 1); ImGui::SameLine();
+    computeChanged |= ImGui::RadioButton("GPU", &compute, 1); ImGui::SameLine();
     computeChanged |= ImGui::RadioButton("CPU", &compute, 2);
     if (computeChanged) shell.setComputeMode(compute);
 #ifdef STIMLAB_HAVE_CUDA
-    ImGui::TextDisabled("Auto: AutoDock Vina (flexible) first, CUDA GPU as fallback. GPU: first-party "
-                        "CUDA rigid-body dock (Vina scoring) on this NVIDIA GPU. CPU: Vina/smina only.");
+    ImGui::TextWrapped("Auto: AutoDock Vina (CPU) first, then the GPU engines. GPU: Vina-GPU "
+                       "(OpenCL - the real Vina search on the GPU) when provisioned, else the "
+                       "first-party CUDA rigid-grid dock on this NVIDIA GPU. CPU: Vina/smina only.");
 #else
-    ImGui::TextDisabled("Auto/CPU: AutoDock Vina (flexible). GPU (CUDA) is not in this build - the "
-                        "windows-cuda preset adds the first-party CUDA GPU dock; here GPU falls back "
-                        "to the labeled descriptor estimate.");
+    ImGui::TextWrapped("Auto: AutoDock Vina (CPU) first, then the GPU engine. GPU: Vina-GPU "
+                       "(OpenCL - the real Vina search on the GPU) when provisioned, else the labeled "
+                       "descriptor estimate (the first-party CUDA dock needs the windows-cuda build). "
+                       "CPU: Vina/smina only.");
 #endif
+    // Vina-GPU (OpenCL) is a self-contained subprocess engine available in EVERY build;
+    // provisioning downloads its binaries + compiles a kernel for this GPU (off-thread).
+    {
+        const bool busy = shell.vinaGpuProvisioning();
+        const bool vgReady = shell.vinaGpuReady();  // cache-only fs check
+        ImGui::BeginDisabled(busy);
+        if (ImGui::Button(vgReady ? "Re-provision Vina-GPU (OpenCL)"
+                                  : "Provision Vina-GPU (OpenCL GPU engine)"))
+            shell.provisionVinaGpu();
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (vgReady) {
+            ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(1));
+            ImGui::TextUnformatted("ready");
+            ImGui::PopStyleColor();
+        } else {
+            ImGui::TextDisabled(busy ? "working..." : "not provisioned");
+        }
+        ImGui::TextDisabled("%s", shell.vinaGpuStatus().c_str());
+    }
     ImGui::Spacing();
 
     ImGui::TextDisabled("STORAGE");

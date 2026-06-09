@@ -4,6 +4,7 @@
 // tool-calling loop whose highlight_panel / navigate_ui tools drive this shell.
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -80,6 +81,16 @@ public:
     bool provisionTarget(const std::string& target);
     // Cache-only readiness probe (no network): is `target`'s receptor prepared on disk?
     [[nodiscard]] bool receptorReady(const std::string& target) const;
+
+    // Provision the Vina-GPU (OpenCL) engine on demand: download its binaries + compile a
+    // GPU-matched kernel off the UI thread. This is heavier than the Vina/receptor
+    // provision (a kernel build), so it runs on its own worker. No-op while one is already
+    // running. Poll vinaGpuProvisioning()/vinaGpuStatus(); vinaGpuReady() is a cheap
+    // cache-only readiness check (no network).
+    void                      provisionVinaGpu();
+    [[nodiscard]] bool        vinaGpuProvisioning() const { return vinaGpuProvisioning_.load(); }
+    [[nodiscard]] std::string vinaGpuStatus() const;
+    [[nodiscard]] bool        vinaGpuReady() const;
 
     // Async docking: returns the latest completed result for (molecule, target),
     // computed ONCE on a background thread (a real engine dock must never run on the
@@ -182,6 +193,14 @@ private:
 
     std::unique_ptr<docking::Provisioner> provisioner_;
     bool provisionProbed_ = false;  // locate-only probe kicked once on first access
+
+    // Vina-GPU (OpenCL) provisioning runs on its OWN worker (download + kernel compile is
+    // heavier than the Vina/receptor provision); joined in the destructor. The Settings
+    // panel polls vinaGpuStatus_ each frame.
+    std::thread        vinaGpuThread_;
+    std::atomic<bool>  vinaGpuProvisioning_{false};
+    mutable std::mutex vinaGpuMu_;
+    std::string        vinaGpuStatus_{"Vina-GPU (OpenCL) engine not provisioned."};
 
     // Async docking cache (single-slot). The worker computes dockDetailed() off the
     // UI thread; the panel reads the cached copy. Joined in the destructor.
