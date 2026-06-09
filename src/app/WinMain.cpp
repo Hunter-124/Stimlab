@@ -51,7 +51,7 @@ static LRESULT WINAPI WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     stimlab::AppPaths::instance().ensureLayout();
     stimlab::log::init();
-    spdlog::info("StimLab starting (Phase B skeleton)");
+    spdlog::info("StimLab starting (Phase D: real chem engine + 3D viewer + docking)");
 
     ImGui_ImplWin32_EnableDpiAwareness();
 

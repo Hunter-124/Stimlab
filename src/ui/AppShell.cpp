@@ -160,7 +160,7 @@ void AppShell::drawMainMenuBar() {
             ImGui::EndMenu();
         }
         ImGui::Separator();
-        ImGui::TextDisabled("StimLab  -  CNS-stimulant analysis suite  -  Phase B skeleton");
+        ImGui::TextDisabled("StimLab  -  CNS-stimulant analysis suite  -  real chem engine + 3D + docking");
         ImGui::EndMainMenuBar();
     }
 }
@@ -335,7 +335,7 @@ void AppShell::drawAboutModal() {
     ImGui::SetNextWindowSize(ImVec2(520, 0), ImGuiCond_Appearing);
     if (ImGui::BeginPopupModal("About StimLab", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextUnformatted("StimLab - native CNS-stimulant analysis suite");
-        ImGui::TextDisabled("Phase B skeleton - thick fakes behind a clean DX11/ImGui GUI.");
+        ImGui::TextDisabled("In-house cheminformatics engine - 3D viewer, real docking backends, SQLite.");
         ImGui::Separator();
         ImGui::TextWrapped(
             "IN SCOPE: structure/properties, molecular stability, absorption/PK, ADMET/metabolism, "
