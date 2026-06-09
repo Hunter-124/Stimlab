@@ -12,6 +12,7 @@
 #include "chem/Smiles.h"
 #include "modules/docking/Backends.h"
 #include "modules/docking/Presets.h"
+#include "storage/RunStore.h"
 
 namespace stimlab {
 namespace {
@@ -429,18 +430,6 @@ private:
     docking::EstimateBackend estimate_;
 };
 
-class RealRuns final : public IRunStore {
-public:
-    std::vector<RunRecord> recent() const override {
-        return {
-            {"run-0007", "Absorption", "Methamphetamine", "complete", "2026-06-08", "computed F/HIA + CNS."},
-            {"run-0006", "Stability", "Cocaine", "complete", "2026-06-08", "ester hydrolysis limiting."},
-            {"run-0005", "ADMET", "Amphetamine", "complete", "2026-06-08", "WARN - MAO + CYP2D6."},
-            {"run-0004", "Similarity", "Mephedrone", "complete", "2026-06-08", "nearest analog by ECFP4."},
-        };
-    }
-};
-
 }  // namespace
 
 struct RealBackend::Impl {
@@ -455,7 +444,7 @@ struct RealBackend::Impl {
     RealSimilarity similarity{library.ref()};
     RealLegal legal{library.ref(), similarity};
     RealDocking docking;
-    RealRuns runs;
+    SqliteRunStore runs;
 };
 
 RealBackend::RealBackend() : impl_(std::make_unique<Impl>()) {}

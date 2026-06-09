@@ -82,6 +82,9 @@ class IRunStore {
 public:
     virtual ~IRunStore() = default;
     virtual std::vector<RunRecord> recent() const = 0;
+    // Phase D: persist a run. Default no-op so fakes/legacy stores keep compiling;
+    // the SQLite-backed store overrides it.
+    virtual void record(const RunRecord&) {}
 };
 
 }  // namespace stimlab

@@ -17,6 +17,7 @@ target_link_libraries(stimlab_modules PUBLIC
   stimlab_data
   stimlab_chem
   stimlab_core
+  stimlab_storage
 )
 
 target_compile_features(stimlab_modules PUBLIC cxx_std_20)

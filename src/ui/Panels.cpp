@@ -668,6 +668,18 @@ void docking(AppShell& shell) {
 
     const auto r = s.docking->dock(m, st.dockTarget);
     statCard("BEST AFFINITY", f2(r.bestAffinity), "kcal/mol (more negative = stronger)", 320.0f);
+    ImGui::SameLine();
+    static std::string runSaved;
+    if (ImGui::Button("Save to Runs")) {
+        RunRecord rec;
+        rec.kind = "Docking";
+        rec.subject = m.name + " -> " + st.dockTarget;
+        rec.status = "complete";
+        rec.summary = r.summary;
+        s.runs->record(rec);
+        runSaved = "Saved to run history.";
+    }
+    if (!runSaved.empty()) { ImGui::SameLine(); ImGui::TextDisabled("%s", runSaved.c_str()); }
     ImGui::Spacing();
 
     if (!r.poses.empty() &&
@@ -776,6 +788,10 @@ void library(AppShell& shell) {
 void runs(AppShell& shell) {
     Services& s = shell.services();
     if (!s.runs) return;
+    const auto rows = s.runs->recent();
+    ImGui::TextDisabled("%zu run(s) - persisted to SQLite under %%APPDATA%%/StimLab/stimlab.db",
+                        rows.size());
+    ImGui::Spacing();
     if (ImGui::BeginTable("runs", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
         ImGui::TableSetupColumn("ID", ImGuiTableColumnFlags_WidthFixed, 90.0f);
         ImGui::TableSetupColumn("Kind", ImGuiTableColumnFlags_WidthFixed, 110.0f);
@@ -783,7 +799,7 @@ void runs(AppShell& shell) {
         ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 90.0f);
         ImGui::TableSetupColumn("Summary");
         ImGui::TableHeadersRow();
-        for (const auto& r : s.runs->recent()) {
+        for (const auto& r : rows) {
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted(r.id.c_str());
             ImGui::TableSetColumnIndex(1); ImGui::TextUnformatted(r.kind.c_str());
