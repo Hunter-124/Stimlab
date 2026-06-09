@@ -57,8 +57,31 @@ std::vector<std::string> candidateNames(Engine e) {
             return {"smina.exe", "smina_win.exe", "smina.static.exe", "smina"};
         case Engine::Obabel:
             return {"obabel.exe", "obabel"};
+        case Engine::VinaGpu:
+            return {"Vina-GPU.exe", "vina-gpu.exe", "Vina-GPU"};
     }
     return {};
+}
+
+// Vina-GPU (OpenCL) provisioning source: the prebuilt Windows binaries + OpenCL kernel
+// source committed in the DeltaGroupNJUPT/Vina-GPU repo (no GitHub release; raw files).
+// We fetch ONLY the pieces needed to run + compile the kernel (~3.7 MB), never the 37 MB
+// GUI that dominates the repo. The kernel binary is compiled locally for this GPU.
+constexpr const char* kVinaGpuRawBase =
+    "https://raw.githubusercontent.com/DeltaGroupNJUPT/Vina-GPU/main/";
+constexpr long long kVinaGpuMinExeBytes = 200000;  // the real exe is ~1.14 MB
+// Files to fetch, in repo-relative form (forward slashes; rewritten to the local tree).
+const std::vector<std::string>& vinaGpuFiles() {
+    static const std::vector<std::string> files = {
+        "Vina-GPU.exe", "Vina-GPU-K.exe",
+        "OpenCL/inc/commonMacros.h", "OpenCL/inc/kernel2.h", "OpenCL/inc/kernel_string.h",
+        "OpenCL/inc/wrapcl.h", "OpenCL/src/kernels/code_head.cpp",
+        "OpenCL/src/kernels/kernel1.cl", "OpenCL/src/kernels/kernel2.cl",
+        "OpenCL/src/kernels/matrix.cpp", "OpenCL/src/kernels/mutate_conf.cpp",
+        "OpenCL/src/kernels/quasi_newton.cpp", "OpenCL/src/wrapcl.cpp",
+        "input_file_example/2bm2_config.txt", "input_file_example/2bm2_ligand.pdbqt",
+        "input_file_example/2bm2_protein.pdbqt"};
+    return files;
 }
 
 // Split a PATH-style environment string on ';' (Windows) into directories.
@@ -107,6 +130,10 @@ fs::path enginesDir() {
     return AppPaths::instance().runtime() / "engines";
 }
 
+fs::path vinaGpuDir() {
+    return enginesDir() / "vina-gpu";
+}
+
 std::string expectedVinaSha256() {
     // Runtime override precedence: env var, then a vina.sha256 file beside the binary,
     // then the compile-time pin. All normalised to bare uppercase hex.
@@ -134,14 +161,17 @@ std::optional<fs::path> locateEngine(Engine e) {
     std::error_code ec;
     const auto names = candidateNames(e);
 
-    // 1) runtime/engines (preferred, app-provisioned).
-    const fs::path dir = enginesDir();
+    // 1) runtime/engines (preferred, app-provisioned). Vina-GPU lives in its own
+    // subfolder (it carries companion files) so it is searched there.
+    const fs::path dir = (e == Engine::VinaGpu) ? vinaGpuDir() : enginesDir();
     for (const auto& n : names) {
         const fs::path cand = dir / n;
         if (fs::exists(cand, ec) && fs::is_regular_file(cand, ec)) return cand;
     }
     // Also accept any vina_*/smina_* file dropped into engines without an exact name.
-    if (fs::exists(dir, ec) && fs::is_directory(dir, ec)) {
+    // Skipped for Vina-GPU: its name is fixed and a loose-prefix scan would wrongly
+    // match the Vina-GPU-K.exe kernel compiler that sits beside the docking exe.
+    if (e != Engine::VinaGpu && fs::exists(dir, ec) && fs::is_directory(dir, ec)) {
         const std::string stem = (e == Engine::Vina) ? "vina" :
                                  (e == Engine::Smina) ? "smina" : "obabel";
         for (fs::directory_iterator it(dir, ec), end; it != end && !ec; it.increment(ec)) {
@@ -261,6 +291,101 @@ ProvisionResult ensureVina(bool allowDownload) {
 #else
     (void)target;
     r.note = "provisioning only implemented on Windows.";
+    return r;
+#endif
+}
+
+ProvisionResult ensureVinaGpu(bool allowDownload) {
+    ProvisionResult r;
+    std::error_code ec;
+    const fs::path dir = vinaGpuDir();
+    const fs::path exe = dir / "Vina-GPU.exe";
+    const fs::path kernel = dir / "Kernel2_Opt.bin";
+
+    const bool haveExe = fs::exists(exe, ec) && fs::file_size(exe, ec) >= kVinaGpuMinExeBytes;
+    const bool haveKernel = fs::exists(kernel, ec);
+
+    // Already fully provisioned (exe + a kernel compiled for this GPU)? Done.
+    if (haveExe && haveKernel) {
+        r.fetched = true;
+        r.path = exe.string();
+        r.note = "Vina-GPU already present (exe + compiled kernel) at " + dir.string();
+        return r;
+    }
+    if (!allowDownload) {
+        r.fetched = false;
+        r.note = haveExe ? "Vina-GPU exe present but its Kernel2_Opt.bin is not compiled yet; "
+                           "provision (with download) to build the kernel for this GPU."
+                         : "Vina-GPU (OpenCL) not provisioned; download not requested (locate-only).";
+        return r;
+    }
+
+#if defined(_WIN32)
+    fs::create_directories(dir, ec);
+    if (ec) {
+        r.note = "could not create vina-gpu dir: " + ec.message();
+        return r;
+    }
+
+    // Fetch only the needed files (NOT the 37 MB GUI), then compile the kernel for THIS
+    // GPU by running Vina-GPU-K.exe once on the bundled example complex. OpenCL binaries
+    // are device-specific, so we never trust a prebuilt kernel - we build our own.
+    // Exit codes: 0 = exe + kernel present, 5 = exe present but no kernel produced
+    // (no usable OpenCL device), 4 = exe missing after download, 2 = download error.
+    std::string fileList;
+    for (const auto& f : vinaGpuFiles()) {
+        if (!fileList.empty()) fileList += ",";
+        fileList += "'" + f + "'";
+    }
+    std::string ps;
+    ps += "$ErrorActionPreference='Stop';";
+    ps += "try{";
+    ps += "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;";
+    ps += "$base='"; ps += kVinaGpuRawBase; ps += "';";
+    ps += "$dir='"; ps += dir.string(); ps += "';";
+    ps += "$files=@("; ps += fileList; ps += ");";
+    ps += "foreach($f in $files){";
+    ps += "$dest=Join-Path $dir ($f -replace '/','\\');";
+    ps += "$pdir=Split-Path -Parent $dest;";
+    ps += "if(-not (Test-Path $pdir)){New-Item -ItemType Directory -Force -Path $pdir|Out-Null};";
+    ps += "Invoke-WebRequest -UseBasicParsing -Uri ($base+$f) -OutFile $dest;";
+    ps += "}";
+    ps += "$exe=Join-Path $dir 'Vina-GPU.exe';";
+    ps += "if(-not (Test-Path $exe) -or (Get-Item $exe).Length -lt ";
+    ps += std::to_string(kVinaGpuMinExeBytes);
+    ps += "){exit 4};";
+    ps += "$k=Join-Path $dir 'Vina-GPU-K.exe';";
+    ps += "$a='--receptor input_file_example/2bm2_protein.pdbqt --ligand input_file_example/2bm2_ligand.pdbqt"
+          " --out _kernelgen_out.pdbqt --center_x 40.415 --center_y 110.986 --center_z 82.673"
+          " --size_x 25 --size_y 25 --size_z 25 --thread 1000';";
+    ps += "$p=Start-Process -FilePath $k -ArgumentList $a -WorkingDirectory $dir -PassThru -NoNewWindow"
+          " -RedirectStandardOutput (Join-Path $dir '_kgen.log') -RedirectStandardError (Join-Path $dir '_kgen.err');";
+    ps += "$null=$p.WaitForExit(300000);";
+    ps += "if(-not $p.HasExited){try{$p.Kill()}catch{}};";
+    ps += "if(Test-Path (Join-Path $dir 'Kernel2_Opt.bin')){exit 0}else{exit 5};";
+    ps += "}catch{exit 2}";
+
+    std::string cmd = "powershell -NoProfile -NonInteractive -Command \"" + ps + "\"";
+    const int code = std::system(cmd.c_str());
+
+    const bool nowExe = fs::exists(exe, ec) && fs::file_size(exe, ec) >= kVinaGpuMinExeBytes;
+    const bool nowKernel = fs::exists(kernel, ec);
+    if (code == 0 && nowExe && nowKernel) {
+        r.fetched = true;
+        r.path = exe.string();
+        r.note = "downloaded Vina-GPU + compiled Kernel2_Opt.bin for this GPU";
+        return r;
+    }
+    r.fetched = false;
+    r.path = nowExe ? exe.string() : "";
+    r.note = code == 5 ? "Vina-GPU downloaded but the kernel compile produced no Kernel2_Opt.bin "
+                         "(no usable OpenCL device?); GPU-OpenCL docking stays unavailable."
+           : code == 4 ? "Vina-GPU download incomplete (exe missing or too small); discarded."
+                       : "Vina-GPU provisioning failed (exit " + std::to_string(code) +
+                             "); GPU-OpenCL docking stays unavailable.";
+    return r;
+#else
+    r.note = "Vina-GPU provisioning only implemented on Windows.";
     return r;
 #endif
 }

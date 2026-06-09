@@ -442,30 +442,37 @@ private:
     // Engines to TRY, in order, for the current compute mode. The backends are static
     // singletons (stateless); only the small ordered pointer list is built per call
     // (mode is a runtime user setting, so this can't be one fixed static list).
-    //   Auto - Vina (accurate, flexible) first; the GPU engine as a fallback when no
-    //          CPU engine binary is present.
-    //   Cpu  - Vina/smina only (skip the GPU engine).
-    //   Gpu  - the CUDA GPU engine only.
+    //   Auto - Vina/smina (the accurate CPU path) first; then the GPU engines as a
+    //          fallback when no CPU engine binary is present. Among GPU engines, Vina-GPU
+    //          (the real Vina Monte-Carlo + BFGS search, OpenCL) before the first-party
+    //          CUDA engine (a fixed rotation x translation grid).
+    //   Cpu  - Vina/smina only (skip the GPU engines).
+    //   Gpu  - GPU engines only: Vina-GPU first, then CUDA.
+    // Vina-GPU is a subprocess engine so it is compiled in EVERY build (no CUDA toolkit
+    // needed); the first-party CUDA engine only exists under STIMLAB_HAVE_CUDA.
     // dockDetailed() falls back to the labeled descriptor estimate when none of these
     // produce a real dock, so every mode degrades honestly.
     BackendList realEngines() const {
         static const docking::VinaBackend vina{docking::Engine::Vina};
         static const docking::VinaBackend smina{docking::Engine::Smina};
+        static const docking::VinaGpuBackend vinaGpu;
 #ifdef STIMLAB_HAVE_CUDA
         static const docking::CudaBackend cuda;
 #endif
         const docking::ComputeMode mode = docking::computeMode();
         BackendList list;
         if (mode == docking::ComputeMode::Gpu) {
+            list.push_back(&vinaGpu);  // GPU forced: Vina-GPU (real Vina search) first...
 #ifdef STIMLAB_HAVE_CUDA
-            list.push_back(&cuda);  // GPU forced: CUDA only, else the labeled estimate
+            list.push_back(&cuda);     // ...then the first-party CUDA grid engine
 #endif
         } else if (mode == docking::ComputeMode::Cpu) {
             list.push_back(&vina);
-            list.push_back(&smina);  // CPU only: skip the GPU engine
-        } else {                     // Auto: accurate CPU first, GPU as a fallback
+            list.push_back(&smina);  // CPU only: skip the GPU engines
+        } else {                     // Auto: accurate CPU first, GPU engines as a fallback
             list.push_back(&vina);
             list.push_back(&smina);
+            list.push_back(&vinaGpu);
 #ifdef STIMLAB_HAVE_CUDA
             list.push_back(&cuda);
 #endif

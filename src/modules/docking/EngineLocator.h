@@ -18,7 +18,13 @@
 namespace stimlab::docking {
 
 // Which engine to look for / provision.
-enum class Engine { Vina, Smina, Obabel };
+//   Vina/Smina - CPU AutoDock Vina / smina (flexible-ligand, the accurate path).
+//   Obabel     - Open Babel (receptor protonation helper).
+//   VinaGpu    - Vina-GPU: an OpenCL GPU re-implementation of Vina (flexible-ligand,
+//                NVIDIA/AMD via the driver ICD). Lives in its OWN subfolder because it
+//                needs companion files beside the exe (a GPU-matched Kernel2_Opt.bin +
+//                the OpenCL kernel source the -K compiler reads).
+enum class Engine { Vina, Smina, Obabel, VinaGpu };
 
 // User compute-mode preference for docking-engine selection:
 //   Auto - best available: the accurate CPU engine (Vina) first, the GPU engine as a
@@ -33,6 +39,11 @@ void                      setComputeMode(ComputeMode m);
 
 // The directory engine binaries live in: %APPDATA%/StimLab/runtime/engines.
 std::filesystem::path enginesDir();
+
+// The Vina-GPU OpenCL engine's own subfolder: %APPDATA%/StimLab/runtime/engines/vina-gpu.
+// It needs companion files beside the exe (Kernel2_Opt.bin + the OpenCL kernel source),
+// so it gets a folder of its own rather than sitting loose in engines/.
+std::filesystem::path vinaGpuDir();
 
 // Locate an engine binary. Search order: runtime/engines (incl. vina_1.2.5_win.exe
 // style names), then PATH. Returns the absolute path, or nullopt if not found.
@@ -57,6 +68,17 @@ struct ProvisionResult {
 // pin) so a user can pin integrity WITHOUT a rebuild; the published file size is
 // always checked so an HTML error page can never masquerade as the binary.
 ProvisionResult ensureVina(bool allowDownload = false);
+
+// Best-effort: ensure the Vina-GPU (OpenCL) engine is provisioned under
+// runtime/engines/vina-gpu. Downloads only the pieces needed (the prebuilt Vina-GPU.exe
+// + Vina-GPU-K.exe + the small OpenCL kernel source + one example complex -- NOT the
+// 37 MB GUI in the upstream repo), then runs Vina-GPU-K.exe ONCE on the example to
+// compile a `Kernel2_Opt.bin` matched to THIS machine's GPU (OpenCL binaries are device
+// specific). `allowDownload` must be true to touch the network (default false =
+// locate-only). Reports fetched=true only when BOTH Vina-GPU.exe and a compiled
+// Kernel2_Opt.bin are present. Degrades to fetched=false (never throws) on any
+// download / no-OpenCL-device failure, so the GPU engine simply stays unavailable.
+ProvisionResult ensureVinaGpu(bool allowDownload = false);
 
 // Best-effort: locate obabel.exe (runtime/engines or PATH). Receptor prep prefers
 // it when present (adds polar H), else uses the built-in heavy-atom writer. This is

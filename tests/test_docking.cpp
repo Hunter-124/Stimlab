@@ -289,6 +289,39 @@ TEST_CASE("Vina integrity pin is well-formed", "[docking][provision]") {
     REQUIRE((h.empty() || h.size() == 64));
 }
 
+TEST_CASE("Vina-GPU backend locates, labels, and degrades honestly", "[docking][vinagpu]") {
+    // Identity is stable - realEngines() ordering and the UI labels depend on it.
+    docking::VinaGpuBackend gpu;
+    REQUIRE(gpu.id() == "vina-gpu");
+    REQUIRE(gpu.displayName() == "GPU (OpenCL, Vina-GPU)");
+
+    // The engine gets its own subfolder of runtime/engines (it carries companion files).
+    REQUIRE(docking::vinaGpuDir() == docking::enginesDir() / "vina-gpu");
+
+    // Locate-only provisioning never touches the network and never throws; whatever it
+    // reports as fetched must agree with the backend's own availability (exe + kernel).
+    const auto probe = docking::ensureVinaGpu(/*allowDownload=*/false);
+    REQUIRE_FALSE(probe.note.empty());
+    REQUIRE(probe.fetched == gpu.available());
+
+    // available() is exactly "exe located AND a compiled kernel beside it" - true or
+    // false depending on whether this host has provisioned Vina-GPU, but always consistent.
+    const auto bin = docking::locateEngine(docking::Engine::VinaGpu);
+    const bool kernel = bin && std::filesystem::exists(bin->parent_path() / "Kernel2_Opt.bin");
+    REQUIRE(gpu.available() == (bin.has_value() && kernel));
+
+    // With no prepared receptor the dock degrades to real=false (never throws), so the
+    // caller can fall back to the next engine / the labeled estimate.
+    const auto m = graph("CC(N)Cc1ccccc1");
+    const auto conf = chem::embed3D(m);
+    ReceptorTarget tgt;
+    tgt.id = "DAT";
+    tgt.name = "DAT";  // receptorPath intentionally empty -> early, hermetic real=false
+    const auto d = gpu.dock(m, conf, tgt);
+    REQUIRE_FALSE(d.real);
+    REQUIRE_FALSE(d.log.empty());
+}
+
 TEST_CASE("Provisioner runs a locate-only probe without blocking or networking",
           "[docking][provision]") {
     docking::Provisioner prov;

@@ -158,4 +158,89 @@ DockJobResult VinaBackend::dock(const chem::Molecule& graph, const chem::Conform
     return r;
 }
 
+// ------------------------------------------------------------ VinaGpuBackend
+bool VinaGpuBackend::available() const {
+    const auto bin = locateEngine(Engine::VinaGpu);
+    if (!bin) return false;
+    // Vina-GPU.exe loads a precompiled OpenCL kernel; without it the engine can't run.
+    std::error_code ec;
+    return fs::exists(bin->parent_path() / "Kernel2_Opt.bin", ec);
+}
+
+DockJobResult VinaGpuBackend::dock(const chem::Molecule& graph, const chem::Conformer& ligand3d,
+                                   const ReceptorTarget& target) const {
+    DockJobResult r;
+    r.engine = displayName();
+    r.real = false;
+    r.targetId = target.id;
+
+    const auto bin = locateEngine(Engine::VinaGpu);
+    if (!bin) {
+        r.log = "Vina-GPU.exe not found under runtime/engines/vina-gpu or PATH.";
+        return r;
+    }
+    const fs::path engineDir = bin->parent_path();
+    std::error_code ec;
+    if (!fs::exists(engineDir / "Kernel2_Opt.bin", ec)) {
+        r.log = "Vina-GPU present but its Kernel2_Opt.bin is not compiled; provision it to "
+                "build the OpenCL kernel for this GPU.";
+        return r;
+    }
+    if (target.receptorPath.empty() || !fs::exists(target.receptorPath)) {
+        r.log = "No prepared receptor for " + target.name + "; cannot GPU-dock.";
+        return r;
+    }
+
+    // Same rigid-PDBQT ligand prep the CPU Vina path uses (clean ROOT, no Meeko tree).
+    const PdbqtLigand lig = writeRigidPdbqt(graph, ligand3d);
+    if (lig.atomCount == 0) {
+        r.log = "Ligand PDBQT preparation produced no atoms.";
+        return r;
+    }
+
+    const fs::path dir = AppPaths::instance().cache();
+    fs::create_directories(dir, ec);
+    const fs::path ligPath = dir / ("lig_gpu_" + target.id + ".pdbqt");
+    const fs::path outPath = dir / ("dock_gpu_" + target.id + ".pdbqt");
+    {
+        std::ofstream o(ligPath, std::ios::binary);
+        o << lig.text;
+    }
+    // Remove a stale output so a failed run can't leave a previous pose set to misparse.
+    fs::remove(outPath, ec);
+
+    auto num = [](double v) { return std::to_wstring(v); };
+    // Vina-GPU caps the search box at < 30 A per axis (README "Limitation"); clamp so an
+    // over-large preset box never makes the engine reject the job.
+    auto clampSize = [](double s) { return s > 28.0 ? 28.0 : (s < 1.0 ? 1.0 : s); };
+    // Mirror VinaBackend's invocation but with Vina-GPU's --thread lanes (8000 = the
+    // upstream example's value; the README advises < 10000) and a fixed --seed for
+    // run-to-run reproducibility, exactly like the CPU path.
+    const std::wstring cmd =
+        L"\"" + bin->wstring() + L"\"" + L" --receptor \"" + fs::path(target.receptorPath).wstring() +
+        L"\"" + L" --ligand \"" + ligPath.wstring() + L"\"" + L" --out \"" + outPath.wstring() + L"\"" +
+        L" --seed 1 --thread 8000" +
+        L" --center_x " + num(target.box.cx) + L" --center_y " + num(target.box.cy) +
+        L" --center_z " + num(target.box.cz) + L" --size_x " + num(clampSize(target.box.sx)) +
+        L" --size_y " + num(clampSize(target.box.sy)) + L" --size_z " + num(clampSize(target.box.sz));
+
+    // Run IN the engine's own folder so it finds Kernel2_Opt.bin (+ the OpenCL source).
+    const int code = runProcess(cmd, engineDir);
+    if (code != 0) {
+        r.log = displayName() + " subprocess exited with code " + std::to_string(code) + ".";
+        return r;
+    }
+
+    auto poses = parseVinaPdbqt(readFile(outPath), ligand3d);
+    if (poses.empty()) {
+        r.log = "Ran " + displayName() + " but parsed no poses from its output.";
+        return r;
+    }
+    r.poses = std::move(poses);
+    r.real = true;
+    r.log = "Docked with " + displayName() + " (" + std::to_string(r.poses.size()) +
+            " poses, GPU OpenCL Vina search).";
+    return r;
+}
+
 }  // namespace stimlab::docking

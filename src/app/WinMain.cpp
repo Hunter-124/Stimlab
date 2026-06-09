@@ -93,6 +93,16 @@ int runHeadlessDock(const std::string& smiles, const std::string& target, const 
          "   receptors: " + std::to_string(prov.receptorsReady()) + "/" +
          std::to_string(prov.receptorsTotal()));
 
+    // In GPU mode, also provision the Vina-GPU (OpenCL) engine so its real-engine path is
+    // exercised headlessly. It is tried before the first-party CUDA engine, so when it
+    // provisions successfully a `--compute gpu` dock runs on Vina-GPU; otherwise the dock
+    // falls through to CUDA (if built) or the labeled estimate.
+    if (compute == "gpu") {
+        emit("vina-gpu  : provisioning Vina-GPU (OpenCL)...");
+        const auto vg = docking::ensureVinaGpu(/*allowDownload=*/true);
+        emit("vina-gpu  : " + std::string(vg.fetched ? "ready - " : "unavailable - ") + vg.note);
+    }
+
     RealBackend backend;
     Services s = backend.services();
     Molecule lig;
