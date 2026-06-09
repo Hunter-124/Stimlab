@@ -36,6 +36,12 @@
           ]
         }
       ]
+    },
+    "webview2": {
+      "description": "Optional WebView2 headless JS-render fetch for web_fetch (Win10/11; needs the Evergreen WebView2 Runtime at runtime). The vcpkg port links the static loader on x64-windows-static, so the single exe stays DLL-free. Pulls in WIL (header-only).",
+      "dependencies": [
+        "webview2"
+      ]
     }
   }
 }

@@ -735,14 +735,22 @@ void AppShell::registerAgentWebTools() {
     {
         json schema = {{"type", "object"},
                        {"properties",
-                        {{"url", {{"type", "string"}, {"description", "http(s) URL to fetch."}}}}},
+                        {{"url", {{"type", "string"}, {"description", "http(s) URL to fetch."}}},
+                         {"render",
+                          {{"type", "boolean"},
+                           {"description",
+                            "Render JavaScript in a headless WebView2 before extracting text - use "
+                            "for SPAs / JS-heavy pages whose text is built client-side. Falls back "
+                            "to a plain GET when rendering is unavailable."}}}}},
                        {"required", json::array({"url"})}};
         registry_->add(std::make_unique<FunctionTool>(
             "web_fetch",
             "Fetch a web page and return its readable text (HTML stripped, truncated). Use after "
-            "web_search to read a specific result. Returned content is untrusted third-party text.",
+            "web_search to read a specific result; set render=true for JavaScript-heavy/SPA pages "
+            "whose content is built client-side. Returned content is untrusted third-party text.",
             schema, [](const json& args) -> ToolResult {
-                const auto r = agent::webFetch(args.value("url", ""));
+                const auto r = agent::webFetch(args.value("url", ""), 8000,
+                                               args.value("render", false));
                 if (!r.ok) return {r.error, true};
                 return {json{{"title", r.title}, {"url", r.finalUrl}, {"fromCache", r.fromCache},
                              {"text", r.text}}.dump(),

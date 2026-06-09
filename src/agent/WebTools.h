@@ -13,6 +13,7 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -20,6 +21,10 @@ namespace stimlab::agent {
 
 // True iff this build has networking (science feature / libcurl) compiled in.
 bool webToolsAvailable();
+
+// True iff this build can render JavaScript pages (STIMLAB_ENABLE_WEBVIEW2) AND the
+// machine's Evergreen WebView2 Runtime is installed. False -> web_fetch uses curl only.
+bool webViewRenderAvailable();
 
 struct WebHit {
     std::string title;
@@ -48,7 +53,17 @@ struct WebFetchResult {
 };
 
 // Fetch a URL and extract readable text (scripts/styles/tags stripped). Cached.
-WebFetchResult webFetch(const std::string& url, std::size_t maxChars = 8000);
+// When renderJs is true and this build has WebView2 (and the Evergreen Runtime is
+// present), the page is loaded in a headless WebView2 so its JavaScript runs before
+// extraction; on any failure it transparently falls back to the plain curl GET.
+WebFetchResult webFetch(const std::string& url, std::size_t maxChars = 8000, bool renderJs = false);
+
+// Load `url` in a HEADLESS WebView2 (full Chromium), let its JavaScript run, and return
+// the rendered DOM HTML (document.documentElement.outerHTML). nullopt if this build has
+// no WebView2, the Evergreen Runtime is absent, navigation fails, or it times out - in
+// which case the caller falls back to the curl path. Compiled in only with
+// STIMLAB_ENABLE_WEBVIEW2; otherwise a stub returns nullopt.
+std::optional<std::string> webFetchRenderedHtml(const std::string& url, int timeoutMs = 20000);
 
 // ---- pure, network-free helpers (unit-testable from fixtures) ----------------
 // Parse a DuckDuckGo HTML results page into structured hits (real URLs un-wrapped

@@ -351,11 +351,12 @@ WebSearchResult webSearch(const std::string& query, int maxResults) {
 #endif
 }
 
-WebFetchResult webFetch(const std::string& url, std::size_t maxChars) {
+WebFetchResult webFetch(const std::string& url, std::size_t maxChars, bool renderJs) {
     WebFetchResult r;
     r.finalUrl = url;
 #ifndef STIMLAB_HAVE_SCIENCE
     (void)maxChars;
+    (void)renderJs;
     r.error = "web fetch unavailable: this build has no networking (rebuild with the science feature).";
     return r;
 #else
@@ -363,13 +364,33 @@ WebFetchResult webFetch(const std::string& url, std::size_t maxChars) {
         r.error = "only http(s) URLs are supported";
         return r;
     }
-    const fs::path cache = webCacheDir() / (hashHex("fetch:" + url) + ".txt");
+    // Rendered (JS) and raw fetches are cached under distinct keys so one never
+    // overwrites the other.
+    const std::string keyPrefix = renderJs ? "fetch-js:" : "fetch:";
+    const fs::path cache = webCacheDir() / (hashHex(keyPrefix + url) + ".txt");
     if (freshEnough(cache, std::chrono::hours(12))) {
         r.text = readFile(cache);
         r.ok = true;
         r.fromCache = true;
         return r;
     }
+#ifdef STIMLAB_HAVE_WEBVIEW2
+    if (renderJs) {
+        rateLimit();  // stay polite on the rendered path too
+        if (auto html = webFetchRenderedHtml(url)) {
+            r.title = extractTitle(*html);
+            r.text = htmlToText(*html, maxChars);
+            if (!r.text.empty()) {
+                r.ok = true;
+                writeFile(cache, r.text);
+                return r;
+            }
+        }
+        // no runtime / navigation failure / empty result -> fall through to curl below.
+    }
+#else
+    (void)renderJs;
+#endif
     std::string body, err;
     long code = 0;
     if (!httpGet(url, body, err, code)) {

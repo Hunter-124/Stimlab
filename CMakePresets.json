@@ -28,8 +28,9 @@
       "description": "Enables the heavy science vcpkg feature (RDKit, libcurl). Long first build.",
       "binaryDir": "${sourceDir}/build/windows-science",
       "cacheVariables": {
-        "VCPKG_MANIFEST_FEATURES": "science",
-        "STIMLAB_ENABLE_SCIENCE": "ON"
+        "VCPKG_MANIFEST_FEATURES": "science;webview2",
+        "STIMLAB_ENABLE_SCIENCE": "ON",
+        "STIMLAB_ENABLE_WEBVIEW2": "ON"
       }
     },
     {
@@ -61,8 +62,9 @@
       "description": "Phase E science release: everything in windows-static (x64-windows-static + static CRT /MT) PLUS the science feature, so ONE self-contained StimLab.exe also carries the live Anthropic provider + web_search/web_fetch. curl[ssl] resolves to Windows-native Schannel and is linked statically (no OpenSSL, no DLLs). Heavier first build (static libcurl).",
       "binaryDir": "${sourceDir}/build/windows-science-static",
       "cacheVariables": {
-        "VCPKG_MANIFEST_FEATURES": "science",
-        "STIMLAB_ENABLE_SCIENCE": "ON"
+        "VCPKG_MANIFEST_FEATURES": "science;webview2",
+        "STIMLAB_ENABLE_SCIENCE": "ON",
+        "STIMLAB_ENABLE_WEBVIEW2": "ON"
       }
     }
   ],

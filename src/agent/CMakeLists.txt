@@ -9,6 +9,7 @@ add_library(stimlab_agent STATIC
   MockProvider.cpp
   AnthropicProvider.cpp
   WebTools.cpp
+  WebToolsRendered.cpp
   Agent.cpp
 )
 
@@ -27,6 +28,15 @@ target_link_libraries(stimlab_agent PUBLIC
 if(STIMLAB_ENABLE_SCIENCE)
   find_package(CURL REQUIRED)
   target_link_libraries(stimlab_agent PUBLIC CURL::libcurl)
+endif()
+
+# Optional WebView2 headless JS-render fetch (web_fetch render=true). On the
+# x64-windows-static triplet the vcpkg port links the STATIC loader
+# (WebView2LoaderStatic.lib), so the single static exe stays DLL-free. All WebView2
+# code is #ifdef STIMLAB_HAVE_WEBVIEW2; otherwise WebToolsRendered.cpp is a stub.
+if(STIMLAB_ENABLE_WEBVIEW2)
+  find_package(unofficial-webview2 CONFIG REQUIRED)
+  target_link_libraries(stimlab_agent PUBLIC unofficial::webview2::webview2 ole32 version user32)
 endif()
 
 target_compile_features(stimlab_agent PUBLIC cxx_std_20)

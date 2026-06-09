@@ -9,6 +9,7 @@ project(StimLab
 option(STIMLAB_ENABLE_CUDA    "Enable CUDA-accelerated engines (needs nvcc)" OFF)
 option(STIMLAB_ENABLE_SCIENCE "Link the heavy science stack (RDKit/curl)"    OFF)
 option(STIMLAB_BUILD_TESTS    "Build the Catch2 test suite"                  ON)
+option(STIMLAB_ENABLE_WEBVIEW2 "Optional WebView2 headless JS-render web_fetch (Windows; needs the Evergreen WebView2 Runtime at runtime)" OFF)
 
 # ---- Language / compiler standard ----------------------------------------
 set(CMAKE_CXX_STANDARD 20)
@@ -27,6 +28,13 @@ endif()
 # ---- Feature defines passed to code --------------------------------------
 if(STIMLAB_ENABLE_SCIENCE)
   add_compile_definitions(STIMLAB_HAVE_SCIENCE=1)
+endif()
+if(STIMLAB_ENABLE_WEBVIEW2)
+  # The rendered fetch augments the curl web tools, so it requires the science feature.
+  if(NOT STIMLAB_ENABLE_SCIENCE)
+    message(FATAL_ERROR "STIMLAB_ENABLE_WEBVIEW2 requires STIMLAB_ENABLE_SCIENCE.")
+  endif()
+  add_compile_definitions(STIMLAB_HAVE_WEBVIEW2=1)
 endif()
 if(STIMLAB_ENABLE_CUDA)
   enable_language(CUDA)

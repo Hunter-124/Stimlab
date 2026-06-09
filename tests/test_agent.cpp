@@ -215,6 +215,26 @@ TEST_CASE("LIVE web_search returns real hits", "[.][live][web]") {
     REQUIRE_FALSE(r.hits.front().title.empty());
 }
 
+// Hidden ([.]) so normal ctest never spins up WebView2; run explicitly in a build with
+// STIMLAB_ENABLE_WEBVIEW2 on a machine with the Evergreen Runtime:
+//   stimlab_tests.exe "[webview2]"
+// The div's visible text is COMPUTED by JavaScript ('..._'+(6*7) -> "..._42"), so the
+// literal marker is absent from the page/script source and only appears in the returned
+// DOM if WebView2 actually executed the page JS - a plain GET never would.
+TEST_CASE("LIVE WebView2 renders JS-built DOM text", "[.][live][webview2]") {
+    if (!agent::webViewRenderAvailable()) {
+        SUCCEED("WebView2 not compiled in, or Evergreen Runtime absent - web_fetch uses curl");
+        return;
+    }
+    const std::string dataUrl =
+        "data:text/html,<html><body><div id=x></div>"
+        "<script>document.getElementById('x').innerText='RENDERED_BY_JS_'+(6*7)</script>"
+        "</body></html>";
+    const auto html = agent::webFetchRenderedHtml(dataUrl, 20000);
+    REQUIRE(html.has_value());
+    REQUIRE(html->find("RENDERED_BY_JS_42") != std::string::npos);  // only present if JS ran
+}
+
 TEST_CASE("compare_compounds ranks multiple compounds", "[agent][tools][service]") {
     RealBackend backend;
     AppShell shell(backend.services());
