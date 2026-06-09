@@ -5,7 +5,36 @@
 > precise point to resume from. Read this first, then [plan.md](plan.md) (the master spec) and the
 > approved build plan at `C:\Users\nigga\.claude\plans\i-want-you-to-deep-plum.md`.
 
-Last updated: 2026-06-09 · Branch: `master` · **v1 FEATURE-COMPLETE** — all four user priorities landed.
+Last updated: 2026-06-09 · Branch: `master` · **v1 COMPLETE + all 5 post-v1 tracks landed.**
+
+> **STATUS: POST-v1 ENHANCEMENTS COMPLETE (2026-06-09).** All five optional post-v1 tracks landed on a
+> continuously-green trunk (one commit per track; ctest 69/69 on windows + windows-static; science,
+> science-static and windows-cuda all green). Each is independent and degrades gracefully:
+> 1. **Receptors on demand** (`efd2c49`) — Docking/Workflows UI provisions ANY of the 29 CNS targets on
+>    demand (not just the 4 headlines), off-thread + manifest-updated (`AppShell::provisionTarget` /
+>    `receptorReady`); `--selftest-dock --target X` provisions X. Verified: D2 −7.08, MAOB −7.50 real docks.
+> 2. **Science-static single exe** (`2a6ef65`) — new `windows-science-static` preset bundles `curl[ssl]`
+>    (Schannel) static, so ONE DLL-free exe carries the live agent + web tools. `build.ps1 -Release -Science`.
+>    Verified DLL-free (3.85 MB) + live web_search standalone.
+> 3. **CI + signing** (`a687b59`) — `scripts/ci.ps1` (local) + `.github/workflows/ci.yml` (GitHub Actions)
+>    build/test windows + windows-static + package; `scripts/sign.ps1` optional Authenticode (clean no-op
+>    without a cert). No remote yet, so the GH workflow is written-but-unrun; ci.ps1 is verified green.
+> 4. **WebView2 web_fetch** (`25fe293`) — optional headless WebView2 JS-render path
+>    (`src/agent/WebToolsRendered.cpp`: STA thread + COM + message pump), behind `STIMLAB_ENABLE_WEBVIEW2`.
+>    The static loader keeps the exe DLL-free; runtime-detected fallback to curl. `web_fetch` gained a
+>    `render` flag. Verified live (JS-computed marker recovered). Hidden test: `stimlab_tests.exe "[webview2]"`.
+> 5. **GPU docking** (`3f3af7a`) — first-party **CUDA** rigid-body docking engine (`CudaBackend` +
+>    `CudaScore.cu`, Vina inter-molecular scoring on the GPU) behind the lean `windows-cuda` preset
+>    (nvcc 13.3, sm_86, `-allow-unsupported-compiler`). The previously-DEAD Compute selector is now wired
+>    (`docking::ComputeMode` Auto/GPU/CPU, persisted via Config; `RealDocking::realEngines()` orders by mode).
+>    AutoDock-GPU/gnina native-Windows CUDA source builds were assessed INFEASIBLE (Unix Makefile + CUDA-13
+>    drops pre-sm_75; gnina/Uni-Dock Linux-only) — the honest first-party CUDA engine replaces them. Verified
+>    live on the RTX 3080 Ti: amphetamine→DAT, 64,000 GPU poses, 9 real ranked poses, −3.66 kcal/mol, exit 0.
+>    `--selftest-dock --compute gpu`. NOTE: rigid-body (no torsions) — flexible CPU Vina stays the accurate path.
+>
+> **ENV CHANGE:** the CUDA Toolkit is now FULL — nvcc 13.3.33 at `…/NVIDIA GPU Computing Toolkit/CUDA/v13.3/bin`
+> (v13.2 stays runtime-only). Open future options (not done): Vina-GPU (OpenCL) + WSL2/Uni-Dock GPU engines,
+> static cudart for a self-contained GPU exe, code-signing cert.
 
 > **STATUS: v1 COMPLETE. ctest 68/68 (windows + windows-static), science green too; all four priorities done.**
 > The user's priority list is fully delivered:

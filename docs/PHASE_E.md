@@ -53,9 +53,40 @@ docking shows the clearly-labeled descriptor estimate. Real docking works even i
 build because provisioning uses PowerShell `Invoke-WebRequest`, not libcurl — only the live LLM provider and
 the web tools need the science build.
 
-## Post-v1 follow-ups (deferred, not blocking)
-- AutoDock-GPU (WP-G2) + gnina (WP-G3) CUDA engines; needs the full CUDA toolkit (nvcc).
-- WebView2 headless for JS-heavy `web_fetch` pages (current fetch is a plain GET + HTML strip).
-- Prepare the remaining 25 (non-headline) receptors — same code path, on demand.
-- A science-static release (curl[ssl] static) bundling the live LLM + web tools into the single exe.
-- CI on a Windows+CUDA runner; code-signing the exe (unsigned trips SmartScreen — expected for personal use).
+## Post-v1 enhancements — ALL FIVE LANDED (2026-06-09)
+Each shipped on a continuously-green trunk (ctest 69/69 windows + windows-static), one commit per track.
+See the handoff STATUS banner for the headline summary.
+
+- **Receptors on demand** (`efd2c49`) — `AppShell::provisionTarget()` / `receptorReady()` provision ANY of the
+  29 CNS presets (resolved by id OR display name) off the UI thread, manifest auto-updated; the Docking +
+  Workflows panels show per-target readiness + a "Provision &lt;target&gt;" button for the 25 non-headline targets.
+  `--selftest-dock --target X` now provisions the requested X. Verified: D2 −7.08, MAOB −7.50 kcal/mol real docks.
+- **Science-static single exe** (`2a6ef65`) — `windows-science-static` preset (x64-windows-static + /MT + the
+  science feature → static `curl[ssl]` = Schannel). ONE DLL-free ~3.85 MB exe carrying the live agent + web
+  tools. `build.ps1 -Release -Science`; `package.ps1` advertises the bundled agent. Live web_search verified
+  standalone from a clean dir.
+- **CI + code-signing** (`a687b59`) — `scripts/ci.ps1` (local CI: build + ctest windows + windows-static +
+  package) and `.github/workflows/ci.yml` (windows-latest, get-cmake + msvc-dev-cmd + vcpkg GH Actions cache).
+  `scripts/sign.ps1` is an optional Authenticode hook (signs with STIMLAB_SIGN_PFX/_SHA1 via signtool; a clean
+  exit-0 no-op otherwise). No git remote yet → the GH workflow is written-but-unrun; ci.ps1 is verified green.
+- **WebView2 `web_fetch`** (`25fe293`) — optional headless WebView2 JS-render path
+  (`src/agent/WebToolsRendered.cpp`: dedicated STA thread + COM + message pump → outerHTML → htmlToText),
+  behind a new `STIMLAB_ENABLE_WEBVIEW2` (requires science). The `webview2` vcpkg port links the STATIC loader
+  (`WebView2LoaderStatic.lib`) on x64-windows-static so the single exe stays DLL-free; runtime-detected
+  (Evergreen Runtime) fallback to curl. `web_fetch` gained a `render` flag. Verified live: a data: URL whose
+  visible text is JS-COMPUTED (`(6*7)`) → the marker is recovered (`stimlab_tests.exe "[webview2]"`).
+- **GPU docking** (`3f3af7a`) — first-party **CUDA** rigid-body docking engine (`CudaBackend` + `CudaScore.cu`:
+  AutoDock Vina inter-molecular scoring on the GPU) behind the lean `windows-cuda` preset (nvcc 13.3, sm_86,
+  `-allow-unsupported-compiler`; MSVC C++ flags scoped to CXX so nvcc isn't handed `/permissive-`). The dead
+  Compute selector is now wired (`docking::ComputeMode` Auto/GPU/CPU, persisted via Config; `realEngines()`
+  orders by mode; honest GPU→Vina→estimate fallback). AutoDock-GPU/gnina native-Windows CUDA source builds
+  were assessed INFEASIBLE (Unix Makefile + CUDA-13 drops pre-sm_75; gnina/Uni-Dock Linux-only) — the
+  first-party CUDA engine is the honest replacement, clearly labeled rigid-body (flexible CPU Vina stays the
+  accurate path). Verified live on the RTX 3080 Ti: amphetamine→DAT, 64,000 GPU poses, 9 real ranked poses,
+  −3.66 kcal/mol, exit 0 (`--selftest-dock --compute gpu`).
+
+### Still open (future, not blocking)
+- Additional GPU engines behind the same `IDockingBackend` seam: Vina-GPU (OpenCL, prebuilt Windows exe,
+  reuses the PDBQT+box contract) and a WSL2 subprocess to Linux Uni-Dock/AutoDock-GPU (the actual CUDA builds).
+- Static cudart (`CUDA::cudart_static`) for a self-contained single-exe GPU build (a `windows-cuda-static`).
+- A real git remote + a live Windows CI run; an actual code-signing certificate (unsigned trips SmartScreen).
