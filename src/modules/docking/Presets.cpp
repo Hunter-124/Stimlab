@@ -113,4 +113,13 @@ std::vector<std::string> presetNames() {
     return names;
 }
 
+std::vector<ReceptorTarget> headlinePresets() {
+    static const char* kHeadline[] = {"DAT", "NET", "SERT", "TAAR1"};
+    std::vector<ReceptorTarget> v;
+    for (const char* id : kHeadline) {
+        if (const ReceptorTarget* p = findPreset(id)) v.push_back(*p);
+    }
+    return v;
+}
+
 }  // namespace stimlab::docking

@@ -48,6 +48,36 @@ Wire `Settings` → engine選択 + GPU mode. Fall back to the descriptor estimat
 engine is provisioned. Acceptance: dock a known ligand into DAT/SERT box → finite scores + ranked poses
 rendered in the WP-2 viewport; engine selectable; absent-engine path degrades gracefully.
 
+### WP-3 STATUS — REAL DOCKING LANDED + VERIFIED LIVE (ctest 48/48)
+Docking now produces **real `real=true` engine poses** end-to-end. What was added this session:
+- **WP-F receptor prep** (`src/modules/docking/ReceptorPrep.{h,cpp}`): an in-house **PDB → rigid receptor
+  PDBQT** writer (no RDKit, no hard OpenBabel link). Strips waters + crystallization additives + the
+  co-crystal ligand, infers elements, assigns AutoDock4 atom types (aromatic A / NA / OA / SA), writes a
+  heavy-atom rigid receptor (Vina scoring is partial-charge-independent, so heavy-atom typing docks).
+  `obabel.exe` is used instead when present (adds polar H). `ensureReceptor()` fetches the preset's PDB
+  from **RCSB** (`files.rcsb.org`), prepares it, and caches `runtime/receptors/<id>.pdbqt`.
+- **Box from the structure's OWN frame.** `receptorBoxFromPdb()` derives the box center from the
+  **co-crystal ligand centroid** (largest non-water HETATM ≥ 8 atoms) in the fetched PDB's real
+  coordinates, written as a `REMARK STIMLAB_BOX` and used to override the preset's literature-style center
+  (which is in a *different* frame — e.g. DAT preset `(-2.1,12.4,-6.8)` vs 4M48 ligand `(-57.5,-12.6,49.0)`).
+  Without this the box misses the receptor and Vina returns nothing. This is the load-bearing fix.
+- **Engine provisioning** (`EngineLocator`): `ensureVina(true)` downloads the official `vina_1.2.5_win.exe`
+  with a **size check** against the published 1,203,712 B (GitHub publishes no digest) and an **optional
+  runtime SHA-256 pin** (env `STIMLAB_VINA_SHA256` or `runtime/engines/vina.sha256`, no rebuild needed).
+  `ensureObabel()` is locate-only (OpenBabel ships as an installer; the built-in writer is the default).
+- **Off-thread provisioning + docking.** `docking::Provisioner` runs the slow work on a worker thread;
+  `AppShell::dockFor()` runs each dock on a worker and caches by molecule+target so the **UI never blocks**
+  and a real dock never runs on the UI thread. Vina is given a fixed `--seed 1` so results are reproducible.
+- **Headless acceptance hook:** `StimLab.exe --selftest-dock [--smiles S] [--target T]` provisions then
+  docks through the real path; exit 0 = real dock. **Verified live on this host:** amphetamine→DAT =
+  **−4.83 kcal/mol, 9 ranked poses, real=true** (reproducible); MDMA→SERT = **−4.26, 9 poses, real=true**.
+  GUI Docking panel shows the same real poses + 3D viewer (screenshot-verified).
+
+**Remaining to verify / future:** only the 4 headline receptors (DAT/NET/SERT/TAAR1) are provisioned up
+front; the other 25 presets prepare on demand (same code path, not yet each individually exercised).
+AutoDock-GPU (WP-G2) and gnina (WP-G3) are still future; obabel-based protonation is an optional quality
+upgrade if `obabel.exe` is dropped into `runtime/engines`.
+
 ## WP-4 — improvements (pick up as capacity allows)
 - **Full Wildman–Crippen logP** atom typing (replace the estimate in `chem/Descriptors.cpp::crippenLogP`);
   add a regression test vs reference logP for the library (±0.7).

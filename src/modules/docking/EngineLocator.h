@@ -38,9 +38,24 @@ struct ProvisionResult {
 };
 
 // Best-effort: ensure vina.exe exists under runtime/engines. If already present,
-// returns fetched=true immediately. Otherwise tries ONE PowerShell download +
-// SHA-256 verify; on any failure returns fetched=false with a note. `allowDownload`
-// must be true to touch the network at all (default false = locate-only).
+// returns fetched=true immediately. Otherwise tries ONE PowerShell download with a
+// size sanity-check + optional SHA-256 verify; on any failure returns fetched=false
+// with a note. `allowDownload` must be true to touch the network (default false =
+// locate-only). The expected SHA-256 is resolved at runtime (first non-empty of:
+// env STIMLAB_VINA_SHA256, a `vina.sha256` file in the engines dir, the compile-time
+// pin) so a user can pin integrity WITHOUT a rebuild; the published file size is
+// always checked so an HTML error page can never masquerade as the binary.
 ProvisionResult ensureVina(bool allowDownload = false);
+
+// Best-effort: locate obabel.exe (runtime/engines or PATH). Receptor prep prefers
+// it when present (adds polar H), else uses the built-in heavy-atom writer. This is
+// LOCATE-ONLY by design: OpenBabel ships as an installer, not a drop-in exe, so we
+// never auto-download it - drop obabel.exe into runtime/engines to enable it.
+ProvisionResult ensureObabel();
+
+// The expected SHA-256 for vina.exe actually in force right now (env / file / pin),
+// or empty if none is configured. Exposed so the UI can show whether the provisioned
+// binary will be cryptographically verified or only size-checked.
+std::string expectedVinaSha256();
 
 }  // namespace stimlab::docking

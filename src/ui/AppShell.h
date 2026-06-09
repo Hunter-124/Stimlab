@@ -7,6 +7,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "contracts/Services.h"
@@ -19,6 +20,7 @@ namespace stimlab {
 
 class Config;
 namespace render { class MolViewport; }
+namespace docking { class Provisioner; }
 namespace agent {
 class Agent;
 class ToolRegistry;
@@ -62,6 +64,22 @@ public:
     // render the off-screen molecular viewport via viewer().
     void setRenderDevice(ID3D11Device* device, ID3D11DeviceContext* context);
     [[nodiscard]] render::MolViewport* viewer();
+
+    // Docking engine + receptor provisioning (WP-F/WP-G). The Provisioner runs the
+    // slow best-effort work off the UI thread; the panel polls its status. The first
+    // access kicks a cheap locate-only probe (no network) to seed initial status.
+    [[nodiscard]] docking::Provisioner& provisioner();
+    void provisionDocking();  // start a full provision (download engine + receptors)
+
+    // Async docking: returns the latest completed result for (molecule, target),
+    // computed ONCE on a background thread (a real engine dock must never run on the
+    // UI thread). `computing` is set while a fresh result is being produced. Safe and
+    // cheap to call every frame; results are cached by molecule+target.
+    DockJobResult dockFor(const Molecule& m, const std::string& target, bool& computing);
+
+    // Drop the cached dock so the next dockFor recomputes - call after provisioning
+    // completes so a result computed while the engine was absent is re-docked for real.
+    void invalidateDock();
 
     // Assistant -> UI bridge.
     void requestHighlight(const std::string& panelId, const std::string& explanation);
@@ -117,6 +135,18 @@ private:
     ID3D11Device*        renderDev_ = nullptr;
     ID3D11DeviceContext* renderCtx_ = nullptr;
     std::unique_ptr<render::MolViewport> viewer_;
+
+    std::unique_ptr<docking::Provisioner> provisioner_;
+    bool provisionProbed_ = false;  // locate-only probe kicked once on first access
+
+    // Async docking cache (single-slot). The worker computes dockDetailed() off the
+    // UI thread; the panel reads the cached copy. Joined in the destructor.
+    std::thread           dockThread_;
+    mutable std::mutex    dockMu_;
+    std::string           dockKey_;        // molecule|target currently cached/computing
+    DockJobResult         dockResult_;     // last completed result
+    bool                  dockComputing_ = false;
+    bool                  dockReady_ = false;
 
     // ---- agent ----
     // DECLARATION ORDER IS LOAD-BEARING: every member the worker thread touches

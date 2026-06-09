@@ -31,4 +31,9 @@ const ReceptorTarget* findPreset(const std::string& nameOrId);
 // historical five names (DAT/NET/SERT/TAAR1/hERG) appear first as a subset.
 std::vector<std::string> presetNames();
 
+// The headline CNS transporters/receptor to prepare first during provisioning
+// (DAT/NET/SERT/TAAR1): the highest-value stimulant targets. Receptor prep for the
+// remaining presets happens on demand; this keeps first-launch provisioning bounded.
+std::vector<ReceptorTarget> headlinePresets();
+
 }  // namespace stimlab::docking

@@ -7,6 +7,29 @@
 
 Last updated: 2026-06-08 · Branch: `master` · **Phase D COMPLETE** (WP-1/2/3 + all 4 WP-4 items, incl. the LLM agent loop).
 
+> **STATUS: REAL DOCKING IS LIVE (WP-F + WP-G1), verified end-to-end. ctest 48/48.** Docking no longer
+> falls back to the descriptor estimate when an engine is provisioned - it runs **AutoDock Vina for real**
+> and renders ranked `real=true` poses. Landed this session:
+> - **Receptor prep (WP-F)** `src/modules/docking/ReceptorPrep.*`: in-house **PDB → rigid receptor PDBQT**
+>   (no RDKit / no hard OpenBabel link) - strips waters + additives + co-crystal ligand, AutoDock4 atom
+>   types, heavy-atom (Vina scoring is charge-independent). Fetches the preset's PDB from **RCSB**, caches
+>   `runtime/receptors/<id>.pdbqt`. Prefers `obabel.exe` (adds polar H) when it is dropped in.
+> - **Box from the structure's own frame** (`receptorBoxFromPdb`): the docking box center comes from the
+>   **co-crystal ligand centroid** in the fetched PDB's real coordinates (written as `REMARK STIMLAB_BOX`,
+>   overrides the preset's literature center which is in a different frame). This is the load-bearing fix -
+>   without it the box misses the receptor and Vina returns nothing.
+> - **Provisioning** (`EngineLocator`): `ensureVina(true)` downloads `vina_1.2.5_win.exe` with a **size
+>   check** (published 1,203,712 B; GitHub has no digest) + an **optional runtime SHA-256 pin** (env
+>   `STIMLAB_VINA_SHA256` or `runtime/engines/vina.sha256`, no rebuild). `ensureObabel()` is locate-only.
+> - **Off-thread** `docking::Provisioner` + `AppShell::dockFor()` (worker-thread, cached by molecule+target)
+>   so the **UI never blocks**; Vina gets `--seed 1` for reproducibility. Docking panel has a "Provision
+>   engine + receptors" button + live status; absent-engine path still degrades to the labeled estimate.
+> - **Acceptance hook** `StimLab.exe --selftest-dock [--smiles S] [--target T]` (exit 0 = real dock).
+>   **Verified live:** amphetamine→DAT = **−4.83 kcal/mol, 9 poses, real=true** (reproducible across runs);
+>   MDMA→SERT = **−4.26, 9 poses, real**. GUI screenshot confirms the same in the Docking panel + 3D viewer.
+> - Next per the user's priority order: **#2 Workflows / DAG engine** (plan §8 WP-D; Taskflow), then
+>   **#3 expansive agent tools / web tools** (WP-K). Packaging stays deferred (do NOT start it).
+
 > **STATUS: Phase B COMPLETE + ENRICHED, verified.** `./scripts/dev-build.ps1 -Test` (or
 > `cmake --preset windows && cmake --build --preset windows`) produces `build/windows/bin/StimLab.exe`,
 > which opens a clean three-pane DX11/ImGui GUI (Navigator | Workspace | Assistant) in **Segoe UI**.

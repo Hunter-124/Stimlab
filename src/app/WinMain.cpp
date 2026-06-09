@@ -5,8 +5,12 @@
 #  define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <shellapi.h>
 
+#include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
 
 #include <imgui.h>
@@ -14,10 +18,14 @@
 #include <imgui_impl_dx11.h>
 #include <imgui_impl_win32.h>
 
+#include "contracts/Services.h"
 #include "core/AppPaths.h"
 #include "core/Config.h"
 #include "core/Log.h"
+#include "data/Domain.h"
 #include "modules/RealBackend.h"
+#include "modules/docking/Presets.h"
+#include "modules/docking/Provisioning.h"
 #include "render/Dx11Device.h"
 #include "ui/AppShell.h"
 #include "ui/Theme.h"
@@ -27,7 +35,79 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM,
 
 namespace {
 stimlab::Dx11Device* g_device = nullptr;
+
+std::string wToUtf8(const std::wstring& w) {
+    if (w.empty()) return {};
+    int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    std::string s(n > 0 ? n - 1 : 0, '\0');
+    if (n > 1) WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, s.data(), n, nullptr, nullptr);
+    return s;
 }
+
+// Headless docking selftest / provisioning hook (no GUI). Provisions vina + the
+// headline receptors, docks one ligand into one target through the REAL backend
+// path, and writes a report to stdout (parent console) AND runtime/selftest-dock.txt.
+// Exit code 0 = a real engine dock succeeded; 2 = fell back to the descriptor
+// estimate; other = setup error. This is the WP-3 acceptance gate made runnable.
+int runHeadlessDock(const std::string& smiles, const std::string& target) {
+    using namespace stimlab;
+    AppPaths::instance().ensureLayout();
+    log::init();
+
+    const bool con = AttachConsole(ATTACH_PARENT_PROCESS) != 0 || AllocConsole() != 0;
+    FILE* fp = nullptr;
+    if (con) freopen_s(&fp, "CONOUT$", "w", stdout);
+
+    std::ostringstream rep;
+    auto emit = [&](const std::string& s) {
+        rep << s << "\n";
+        std::printf("%s\n", s.c_str());
+        std::fflush(stdout);
+        spdlog::info("[selftest-dock] {}", s);
+    };
+
+    emit("== StimLab docking selftest (real-engine acceptance) ==");
+    emit("ligand : " + smiles);
+    emit("target : " + target);
+
+    docking::Provisioner prov;
+    prov.start(/*allowDownload=*/true, docking::headlinePresets());
+    while (prov.running()) Sleep(250);
+    emit("provision : " + prov.status());
+    emit("vina      : " + std::string(prov.vinaReady() ? "ready" : "absent") +
+         "   receptors: " + std::to_string(prov.receptorsReady()) + "/" +
+         std::to_string(prov.receptorsTotal()));
+
+    RealBackend backend;
+    Services s = backend.services();
+    Molecule lig;
+    lig.id = "__cli__";
+    lig.name = "cli-ligand";
+    lig.smiles = smiles;
+
+    const DockJobResult d = s.docking->dockDetailed(lig, target);
+    emit("engine    : " + d.engine);
+    emit(std::string("REAL dock : ") + (d.real ? "YES (engine dock)" : "no (descriptor estimate)"));
+    emit("poses     : " + std::to_string(d.poses.size()));
+    if (!d.poses.empty()) {
+        char b[64];
+        std::snprintf(b, sizeof(b), "%.2f", d.poses.front().affinityKcalPerMol);
+        emit(std::string("best aff  : ") + b + " kcal/mol");
+    }
+    emit("log       : " + d.log);
+    emit(d.real ? "RESULT    : PASS - real ranked poses produced."
+                : "RESULT    : fell back to labeled estimate (see log).");
+
+    {
+        std::ofstream o(AppPaths::instance().runtime() / "selftest-dock.txt", std::ios::binary);
+        o << rep.str();
+    }
+    if (fp) std::fclose(fp);
+    if (con) FreeConsole();
+    log::shutdown();
+    return d.real ? 0 : 2;
+}
+}  // namespace
 
 static LRESULT WINAPI WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam)) return true;
@@ -50,6 +130,24 @@ static LRESULT WINAPI WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 }
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
+    // Headless modes (no GUI): "--selftest-dock [--smiles S] [--target T]" provisions
+    // the engine + receptors and docks one ligand through the real backend path.
+    {
+        int argc = 0;
+        LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+        bool selftest = false;
+        std::string smiles = "CC(N)Cc1ccccc1";  // amphetamine
+        std::string target = "DAT";
+        for (int i = 1; i < argc; ++i) {
+            const std::wstring a = argv[i];
+            if (a == L"--selftest-dock") selftest = true;
+            else if (a == L"--smiles" && i + 1 < argc) smiles = wToUtf8(argv[++i]);
+            else if (a == L"--target" && i + 1 < argc) target = wToUtf8(argv[++i]);
+        }
+        if (argv) LocalFree(argv);
+        if (selftest) return runHeadlessDock(smiles, target);
+    }
+
     stimlab::AppPaths::instance().ensureLayout();
     stimlab::log::init();
     spdlog::info("StimLab starting (Phase D: real chem engine + 3D viewer + docking)");

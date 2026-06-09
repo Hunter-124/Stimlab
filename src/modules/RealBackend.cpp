@@ -12,6 +12,7 @@
 #include "chem/Smiles.h"
 #include "modules/docking/Backends.h"
 #include "modules/docking/Presets.h"
+#include "modules/docking/ReceptorPrep.h"
 #include "storage/RunStore.h"
 
 namespace stimlab {
@@ -384,6 +385,20 @@ public:
         ReceptorTarget tgt;
         if (const ReceptorTarget* p = docking::findPreset(target)) tgt = *p;
         else { tgt.id = target; tgt.name = target; }
+
+        // Bind a prepared receptor (cache-only; no network on the hot path). When one
+        // exists, an available engine can produce a REAL dock; otherwise the backends
+        // report "no prepared receptor" and we fall back to the labeled estimate. The
+        // prepared receptor also carries a box center in ITS OWN coordinate frame
+        // (from the co-crystal ligand); use it so the search box actually overlaps the
+        // receptor - the preset's literature-style center may be in a different frame.
+        if (tgt.receptorPath.empty()) {
+            const auto rec = docking::locatePreparedReceptor(tgt.id);
+            if (rec.ready) {
+                tgt.receptorPath = rec.path;
+                if (rec.hasBox) { tgt.box.cx = rec.cx; tgt.box.cy = rec.cy; tgt.box.cz = rec.cz; }
+            }
+        }
 
         auto graph = chem::parseSmiles(m.smiles);
         if (!graph) {

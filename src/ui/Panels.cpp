@@ -15,6 +15,7 @@
 #include "chem/Embed3D.h"
 #include "chem/Smiles.h"
 #include "core/AppPaths.h"
+#include "modules/docking/Provisioning.h"
 #include "render/MolViewport.h"
 #include "ui/AppShell.h"
 #include "ui/Theme.h"
@@ -666,26 +667,91 @@ void docking(AppShell& shell) {
     }
     ImGui::Spacing();
 
-    const auto r = s.docking->dock(m, st.dockTarget);
-    statCard("BEST AFFINITY", f2(r.bestAffinity), "kcal/mol (more negative = stronger)", 320.0f);
+    // ---- Real-engine provisioning (WP-F/WP-G): vina.exe + prepared receptors -----
+    {
+        auto& prov = shell.provisioner();
+        // When a user-triggered (download) provision finishes, drop any dock computed
+        // while the engine was still absent so the next frame re-docks for real. The
+        // cheap startup locate-only probe doesn't invalidate (the dock path already
+        // reads prepared receptors from disk), avoiding a wasteful first-entry restart.
+        static bool wasProvisioning = false;
+        static bool userProvision = false;
+        if (wasProvisioning && !prov.running()) {
+            if (userProvision) shell.invalidateDock();
+            userProvision = false;
+        }
+        wasProvisioning = prov.running();
+        const bool vina = prov.vinaReady();
+        const int recReady = prov.receptorsReady();
+        const int recTotal = prov.receptorsTotal();
+        const bool realCapable = vina && recReady > 0;
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(realCapable ? 1 : 2));
+        ImGui::TextUnformatted(realCapable
+            ? "Real docking engine: READY (vina + prepared receptor)"
+            : "Real docking engine: not provisioned - showing labeled descriptor estimate");
+        ImGui::PopStyleColor();
+        ImGui::TextDisabled("vina.exe: %s   headline receptors: %d/%d   receptor prep: %s",
+                            vina ? "present" : "absent", recReady, recTotal,
+                            prov.obabelReady() ? "obabel (+H)" : "built-in");
+        if (prov.running()) {
+            ImGui::TextDisabled("Working: %s", prov.status().c_str());
+        } else {
+            if (ImGui::Button("Provision engine + receptors")) {
+                shell.provisionDocking();
+                userProvision = true;
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", prov.status().c_str());
+        }
+        ImGui::TextDisabled("Downloads vina.exe (size-checked) + fetches/prepares DAT/NET/SERT/TAAR1 "
+                            "receptor PDBQTs under %%APPDATA%%/StimLab/runtime. Best-effort; needs network.");
+    }
+    ImGui::Spacing();
+
+    // One async dock per (molecule, target): a real engine run happens on a worker
+    // thread (never the UI thread), and both the table/plot and the 3D pose overlay
+    // read this single cached result so the two views always agree.
+    bool computing = false;
+    const DockJobResult d = shell.dockFor(m, st.dockTarget, computing);
+    const bool hasResult = !d.poses.empty();
+
+    if (computing && !hasResult) {
+        ImGui::TextDisabled("Docking %s into the %s box on a worker thread...", m.name.c_str(),
+                            st.dockTarget.c_str());
+        ImGui::Spacing();
+    }
+
+    const std::string summary =
+        d.real ? ("Best affinity " + f2(d.bestAffinity()) + " kcal/mol at " + st.dockTarget +
+                  " (docked with " + d.engine + ").")
+               : ("Estimated affinity " + f2(d.bestAffinity()) + " kcal/mol at " + st.dockTarget +
+                  " (" + d.engine + " - structure-descriptor model, not a docked score).");
+
+    statCard("BEST AFFINITY", hasResult ? f2(d.bestAffinity()) : "--",
+             "kcal/mol (more negative = stronger)", 320.0f);
     ImGui::SameLine();
     static std::string runSaved;
-    if (ImGui::Button("Save to Runs")) {
+    if (ImGui::Button("Save to Runs") && hasResult) {
         RunRecord rec;
         rec.kind = "Docking";
         rec.subject = m.name + " -> " + st.dockTarget;
         rec.status = "complete";
-        rec.summary = r.summary;
+        rec.summary = summary;
         s.runs->record(rec);
         runSaved = "Saved to run history.";
     }
     if (!runSaved.empty()) { ImGui::SameLine(); ImGui::TextDisabled("%s", runSaved.c_str()); }
+    if (hasResult) {
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(d.real ? 1 : 2));
+        ImGui::TextUnformatted(d.real ? "engine dock (real)" : "descriptor estimate (not a docked score)");
+        ImGui::PopStyleColor();
+    }
     ImGui::Spacing();
 
-    if (!r.poses.empty() &&
+    if (hasResult &&
         ImPlot::BeginPlot("##dock", ImVec2(-1, 190), ImPlotFlags_NoMouseText | ImPlotFlags_NoLegend)) {
         std::vector<double> xs, ys;
-        for (const auto& p : r.poses) { xs.push_back(p.rank); ys.push_back(p.affinityKcalPerMol); }
+        for (const auto& p : d.poses) { xs.push_back(p.rank); ys.push_back(p.affinityKcalPerMol); }
         ImPlot::SetupAxes("pose rank", "affinity (kcal/mol)", 0, 0);
         ImPlot::PlotBars("affinity", ys.data(), static_cast<int>(ys.size()), 0.5, 1.0);
         ImPlot::EndPlot();
@@ -694,43 +760,43 @@ void docking(AppShell& shell) {
     if (ImGui::BeginTable("poses", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
         ImGui::TableSetupColumn("Rank");
         ImGui::TableSetupColumn("Affinity (kcal/mol)");
-        ImGui::TableSetupColumn("RMSD");
+        ImGui::TableSetupColumn("RMSD l.b.");
         ImGui::TableHeadersRow();
-        for (const auto& p : r.poses) {
+        for (const auto& p : d.poses) {
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0); ImGui::Text("%d", p.rank);
             ImGui::TableSetColumnIndex(1); ImGui::TextUnformatted(f2(p.affinityKcalPerMol).c_str());
-            ImGui::TableSetColumnIndex(2); ImGui::TextUnformatted(f2(p.rmsd).c_str());
+            ImGui::TableSetColumnIndex(2); ImGui::TextUnformatted(f2(p.rmsdLb).c_str());
         }
         ImGui::EndTable();
     }
 
-    // 3D pose overlay: show the docked ligand conformer for the selected pose
-    // (real engine, via dockDetailed), or - when no engine provided 3D - the
-    // embedded ligand structure as a stand-in. Engine/fallback is labeled.
+    // 3D pose overlay: the docked ligand conformer for the selected pose (real engine
+    // poses carry their own coordinates; the labeled estimate carries the embedded
+    // ligand as a stand-in so the viewport always has geometry). Engine is labeled.
     ImGui::Spacing();
     ImGui::TextDisabled("3D POSE / LIGAND");
-    const auto detail = s.docking->dockDetailed(m, st.dockTarget);
     static int poseSel = 0;
-    if (!detail.poses.empty()) {
-        if (poseSel >= static_cast<int>(detail.poses.size())) poseSel = 0;
+    if (hasResult) {
+        if (poseSel >= static_cast<int>(d.poses.size())) poseSel = 0;
         ImGui::SetNextItemWidth(160);
-        ImGui::SliderInt("Pose##dock", &poseSel, 0, static_cast<int>(detail.poses.size()) - 1);
+        ImGui::SliderInt("Pose##dock", &poseSel, 0, static_cast<int>(d.poses.size()) - 1);
         ImGui::SameLine();
-        ImGui::TextDisabled("engine: %s%s", detail.engine.c_str(),
-                            detail.real ? "" : "  (descriptor estimate, not a docked score)");
+        ImGui::TextDisabled("engine: %s%s", d.engine.c_str(),
+                            d.real ? "" : "  (descriptor estimate, not a docked score)");
     } else {
         poseSel = 0;
     }
     static std::string dockKey;
     static chem::Conformer dockConf;
     static ViewerUiState dockViewUi;
-    const std::string key = m.id + "|" + st.dockTarget + "|" + std::to_string(poseSel);
+    const std::string key = m.id + "|" + st.dockTarget + "|" + std::to_string(poseSel) +
+                            (hasResult ? "|r" : "|p");
     if (key != dockKey) {
         dockKey = key;
         dockConf = chem::Conformer{};
-        if (poseSel < static_cast<int>(detail.poses.size()) && !detail.poses[poseSel].ligand.empty())
-            dockConf = detail.poses[poseSel].ligand;
+        if (poseSel < static_cast<int>(d.poses.size()) && !d.poses[poseSel].ligand.empty())
+            dockConf = d.poses[poseSel].ligand;
         else if (auto parsed = chem::parseSmiles(m.smiles))
             dockConf = chem::embed3D(*parsed);
     }
@@ -818,7 +884,8 @@ void presets(AppShell& shell) {
     Services& s = shell.services();
     ImGui::TextWrapped(
         "CNS target presets used for docking/pharmacology. The full set of 29 curated presets "
-        "(with PDB references and binding-site boxes) loads from YAML in Phase C.");
+        "(each with a real PDB reference + a binding-site box) is a built-in C++ table; receptor "
+        "PDBQTs are prepared on demand into %APPDATA%/StimLab/runtime/receptors.");
     ImGui::Separator();
     if (s.docking) {
         for (const auto& t : s.docking->targets()) ImGui::BulletText("%s", t.c_str());

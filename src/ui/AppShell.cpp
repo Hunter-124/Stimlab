@@ -13,6 +13,8 @@
 #include "agent/Tools.h"
 #include "core/Config.h"
 #include "core/Secrets.h"
+#include "modules/docking/Presets.h"
+#include "modules/docking/Provisioning.h"
 #include "render/MolViewport.h"
 #include "ui/Panels.h"
 #include "ui/Theme.h"
@@ -79,10 +81,72 @@ AppShell::AppShell(Services services) : svc_(services) {
         {"Settings", "Settings",
          "AI provider/keys, GPU mode, storage paths."},
     };
+    provisioner_ = std::make_unique<docking::Provisioner>();
     buildAgent();
 }
 
-AppShell::~AppShell() = default;  // here MolViewport + agent types are complete
+AppShell::~AppShell() {
+    // Join the docking worker BEFORE members tear down (it reads svc_/services).
+    if (dockThread_.joinable()) dockThread_.join();
+}
+
+DockJobResult AppShell::dockFor(const Molecule& m, const std::string& target, bool& computing) {
+    const std::string key = m.id + "|" + m.smiles + "|" + target;
+    std::lock_guard<std::mutex> lk(dockMu_);
+
+    if (key == dockKey_) {
+        computing = dockComputing_;
+        return dockReady_ ? dockResult_ : DockJobResult{};
+    }
+
+    // New (molecule,target): start a fresh background compute. Reap the prior worker
+    // first (it has finished for any superseded key once dockComputing_ is cleared).
+    if (!dockComputing_ && dockThread_.joinable()) dockThread_.join();
+    if (dockComputing_) {
+        // A previous compute is still running for an older key; let it finish (it will
+        // store under its own key and we will relaunch next frame). Avoid piling up.
+        computing = true;
+        return DockJobResult{};
+    }
+
+    dockKey_ = key;
+    dockReady_ = false;
+    dockComputing_ = true;
+    IDockingModule* dock = svc_.docking;
+    dockThread_ = std::thread([this, dock, m, target, key]() {
+        DockJobResult r = dock ? dock->dockDetailed(m, target) : DockJobResult{};
+        std::lock_guard<std::mutex> lk(dockMu_);
+        if (dockKey_ == key) {  // still the active selection
+            dockResult_ = std::move(r);
+            dockReady_ = true;
+        }
+        dockComputing_ = false;
+    });
+    computing = true;
+    return DockJobResult{};
+}
+
+void AppShell::invalidateDock() {
+    std::lock_guard<std::mutex> lk(dockMu_);
+    // Clearing the key invalidates any in-flight worker (its key check will fail and
+    // discard the stale result) and forces a fresh compute next frame.
+    dockKey_.clear();
+    dockReady_ = false;
+}
+
+docking::Provisioner& AppShell::provisioner() {
+    if (!provisionProbed_) {
+        provisionProbed_ = true;
+        // Cheap locate-only probe (no network) to seed the initial status/flags.
+        provisioner_->start(/*allowDownload=*/false, docking::headlinePresets());
+    }
+    return *provisioner_;
+}
+
+void AppShell::provisionDocking() {
+    provisionProbed_ = true;  // an explicit provision supersedes the locate-only probe
+    provisioner_->start(/*allowDownload=*/true, docking::headlinePresets());
+}
 
 void AppShell::setRenderDevice(ID3D11Device* device, ID3D11DeviceContext* context) {
     renderDev_ = device;

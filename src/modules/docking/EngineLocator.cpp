@@ -1,7 +1,10 @@
 #include "modules/docking/EngineLocator.h"
 
 #include <array>
+#include <cctype>
 #include <cstdlib>
+#include <fstream>
+#include <string>
 #include <system_error>
 #include <vector>
 
@@ -19,13 +22,17 @@ namespace {
 
 namespace fs = std::filesystem;
 
-// Official AutoDock Vina 1.2.5 Windows release asset. The SHA-256 is left empty
-// here: if a build pins the exact published hash, set kVinaSha256 and verification
-// becomes mandatory; with an empty hash the download is accepted but flagged
-// "unverified" in the note. Either way provisioning stays best-effort/non-blocking.
+// Official AutoDock Vina 1.2.5 Windows release asset. GitHub publishes no per-asset
+// digest for this release, so kVinaSha256 is left empty by default; integrity can be
+// pinned at runtime (env STIMLAB_VINA_SHA256 or a `vina.sha256` file in the engines
+// dir) WITHOUT a rebuild. The published byte size IS known and is always enforced as
+// a sanity check, so an HTML error page / truncated transfer is rejected even when no
+// hash is configured. Provisioning stays best-effort and non-blocking either way.
 constexpr const char* kVinaUrl =
     "https://github.com/ccsb-scripps/AutoDock-Vina/releases/download/v1.2.5/vina_1.2.5_win.exe";
-constexpr const char* kVinaSha256 = "";  // optional pin; empty = accept unverified
+constexpr const char* kVinaSha256 = "";          // optional compile-time pin
+constexpr long long   kVinaSizeBytes = 1203712;  // published size of vina_1.2.5_win.exe
+constexpr long long   kVinaMinSizeBytes = 200000;  // reject anything implausibly small
 
 // Candidate file names per engine (most specific first).
 std::vector<std::string> candidateNames(Engine e) {
@@ -65,10 +72,49 @@ std::vector<fs::path> pathDirs() {
     return dirs;
 }
 
+std::string trimHash(std::string s) {
+    // Keep only hex digits (Get-FileHash emits uppercase; a file may have a newline).
+    std::string out;
+    for (char c : s) if (std::isxdigit(static_cast<unsigned char>(c))) out.push_back(c);
+    return out;
+}
+
+std::string readFirstLine(const fs::path& p) {
+    std::error_code ec;
+    if (!fs::exists(p, ec)) return {};
+    std::ifstream in(p);
+    std::string line;
+    std::getline(in, line);
+    return line;
+}
+
 }  // namespace
 
 fs::path enginesDir() {
     return AppPaths::instance().runtime() / "engines";
+}
+
+std::string expectedVinaSha256() {
+    // Runtime override precedence: env var, then a vina.sha256 file beside the binary,
+    // then the compile-time pin. All normalised to bare uppercase hex.
+    if (const char* env = std::getenv("STIMLAB_VINA_SHA256"); env && *env) {
+        std::string h = trimHash(env);
+        if (h.size() == 64) {
+            for (auto& c : h) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            return h;
+        }
+    }
+    std::string fileHash = trimHash(readFirstLine(enginesDir() / "vina.sha256"));
+    if (fileHash.size() == 64) {
+        for (auto& c : fileHash) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        return fileHash;
+    }
+    std::string pin = trimHash(kVinaSha256);
+    if (pin.size() == 64) {
+        for (auto& c : pin) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        return pin;
+    }
+    return {};
 }
 
 std::optional<fs::path> locateEngine(Engine e) {
@@ -134,11 +180,13 @@ ProvisionResult ensureVina(bool allowDownload) {
     const fs::path target = dir / "vina.exe";
 
 #if defined(_WIN32)
-    // Best-effort PowerShell download + optional SHA-256 verify. Quoted so spaces
-    // in the profile path are safe; -ErrorAction Stop turns transfer failures into
-    // a non-zero exit we can detect. We NEVER block app startup on this (callers
-    // run it off the UI thread / opportunistically), and any failure leaves us in
-    // the locate-only state with a note.
+    // Best-effort PowerShell download with a size sanity-check + optional SHA-256
+    // verify. Quoted so spaces in the profile path are safe; -ErrorAction Stop turns
+    // transfer failures into a non-zero exit we can detect. We NEVER block app
+    // startup on this (callers run it off the UI thread / opportunistically), and any
+    // failure leaves us in the locate-only state with a note. Exit codes: 0 = ok,
+    // 2 = transfer error, 3 = hash mismatch, 4 = implausibly small (error page).
+    const std::string expected = expectedVinaSha256();
     std::string ps;
     ps += "$ErrorActionPreference='Stop';";
     ps += "try{";
@@ -148,12 +196,20 @@ ProvisionResult ensureVina(bool allowDownload) {
     ps += "' -OutFile '";
     ps += target.string();
     ps += "';";
-    if (kVinaSha256 && kVinaSha256[0] != '\0') {
+    // Reject an HTML error page / truncated transfer masquerading as the binary.
+    ps += "if((Get-Item '";
+    ps += target.string();
+    ps += "').Length -lt ";
+    ps += std::to_string(kVinaMinSizeBytes);
+    ps += "){Remove-Item -Force '";
+    ps += target.string();
+    ps += "';exit 4};";
+    if (expected.size() == 64) {
         ps += "$h=(Get-FileHash -Algorithm SHA256 '";
         ps += target.string();
         ps += "').Hash;";
         ps += "if($h -ne '";
-        ps += kVinaSha256;
+        ps += expected;
         ps += "'){Remove-Item -Force '";
         ps += target.string();
         ps += "';exit 3};";
@@ -164,25 +220,50 @@ ProvisionResult ensureVina(bool allowDownload) {
     std::string cmd = "powershell -NoProfile -NonInteractive -Command \"" + ps + "\"";
     const int code = std::system(cmd.c_str());
 
-    if (code == 0 && fs::exists(target, ec) && fs::file_size(target, ec) > 0) {
+    if (code == 0 && fs::exists(target, ec) && fs::file_size(target, ec) >= kVinaMinSizeBytes) {
         r.fetched = true;
         r.path = target.string();
-        r.note = (kVinaSha256 && kVinaSha256[0] != '\0')
-                     ? "downloaded + SHA-256 verified vina.exe"
-                     : "downloaded vina.exe (hash unverified - no pinned SHA-256)";
+        const long long sz = static_cast<long long>(fs::file_size(target, ec));
+        const bool sizeMatch = (sz == kVinaSizeBytes);
+        if (expected.size() == 64)
+            r.note = "downloaded + SHA-256 verified vina.exe";
+        else if (sizeMatch)
+            r.note = "downloaded vina.exe (size matches published " +
+                     std::to_string(kVinaSizeBytes) + " B; no pinned SHA-256 - "
+                     "set STIMLAB_VINA_SHA256 or runtime/engines/vina.sha256 to verify)";
+        else
+            r.note = "downloaded vina.exe (" + std::to_string(sz) +
+                     " B; UNVERIFIED - no pinned SHA-256 and size differs from published)";
         return r;
     }
     r.fetched = false;
-    r.note = "vina download failed (exit " + std::to_string(code) +
-             "); staying in descriptor-estimate fallback.";
+    r.note = code == 3   ? "vina download SHA-256 mismatch; discarded (check your pinned hash)."
+             : code == 4 ? "vina download too small (likely an error page); discarded."
+                         : "vina download failed (exit " + std::to_string(code) +
+                               "); staying in descriptor-estimate fallback.";
     // Remove a partial/zero-byte file so a later locate() does not trust it.
-    if (fs::exists(target, ec) && fs::file_size(target, ec) == 0) fs::remove(target, ec);
+    if (fs::exists(target, ec) && fs::file_size(target, ec) < kVinaMinSizeBytes)
+        fs::remove(target, ec);
     return r;
 #else
     (void)target;
     r.note = "provisioning only implemented on Windows.";
     return r;
 #endif
+}
+
+ProvisionResult ensureObabel() {
+    ProvisionResult r;
+    if (auto p = locateEngine(Engine::Obabel)) {
+        r.fetched = true;
+        r.path = p->string();
+        r.note = "obabel located at " + r.path + " (used for receptor protonation).";
+    } else {
+        r.fetched = false;
+        r.note = "obabel.exe not found; receptor prep uses the built-in heavy-atom writer. "
+                 "Drop obabel.exe into runtime/engines for full protonation.";
+    }
+    return r;
 }
 
 }  // namespace stimlab::docking

@@ -5,6 +5,8 @@ add_library(stimlab_modules STATIC
   docking/PdbqtWriter.cpp
   docking/VinaParser.cpp
   docking/EngineLocator.cpp
+  docking/ReceptorPrep.cpp
+  docking/Provisioning.cpp
   docking/Backends.cpp
 )
 

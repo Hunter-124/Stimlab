@@ -131,9 +131,12 @@ DockJobResult VinaBackend::dock(const chem::Molecule& graph, const chem::Conform
     }
 
     auto num = [](double v) { return std::to_wstring(v); };
+    // A fixed --seed makes a dock reproducible run-to-run (Vina is otherwise seeded
+    // randomly): the two UI views agree, and results become cacheable by input hash.
     const std::wstring cmd =
         L"\"" + bin->wstring() + L"\"" + L" --receptor \"" + fs::path(target.receptorPath).wstring() +
         L"\"" + L" --ligand \"" + ligPath.wstring() + L"\"" + L" --out \"" + outPath.wstring() + L"\"" +
+        L" --seed 1" +
         L" --center_x " + num(target.box.cx) + L" --center_y " + num(target.box.cy) +
         L" --center_z " + num(target.box.cz) + L" --size_x " + num(target.box.sx) +
         L" --size_y " + num(target.box.sy) + L" --size_z " + num(target.box.sz);
