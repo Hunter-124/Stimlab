@@ -47,6 +47,18 @@
       }
     },
     {
+      "name": "windows-cuda-static",
+      "inherits": "windows-cuda",
+      "displayName": "Windows x64 + CUDA - fully static (self-contained GPU exe)",
+      "description": "windows-cuda (first-party CUDA GPU docking) built fully static: x64-windows-static triplet + static CRT (/MT) + a STATICALLY-linked CUDA runtime (CUDA::cudart_static, selected by the triplet in src/modules/CMakeLists.txt). The result is ONE self-contained StimLab.exe that GPU-docks with NO cudart64_*.dll required on PATH. Same nvcc 13.3 / sm_86 settings as windows-cuda; the /MT host CRT matches cudart_static's static CRT.",
+      "binaryDir": "${sourceDir}/build/windows-cuda-static",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static",
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+      }
+    },
+    {
       "name": "windows-static",
       "inherits": "windows",
       "displayName": "Windows x64 RELEASE - fully static (single self-contained exe)",
@@ -75,6 +87,7 @@
     { "name": "windows", "configurePreset": "windows" },
     { "name": "windows-science", "configurePreset": "windows-science" },
     { "name": "windows-cuda", "configurePreset": "windows-cuda" },
+    { "name": "windows-cuda-static", "configurePreset": "windows-cuda-static" },
     { "name": "windows-static", "configurePreset": "windows-static" },
     { "name": "windows-science-static", "configurePreset": "windows-science-static" }
   ],
@@ -94,6 +107,11 @@
       "name": "windows-cuda",
       "inherits": "windows",
       "configurePreset": "windows-cuda"
+    },
+    {
+      "name": "windows-cuda-static",
+      "inherits": "windows",
+      "configurePreset": "windows-cuda-static"
     },
     {
       "name": "windows-static",
