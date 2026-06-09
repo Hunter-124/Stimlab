@@ -5,7 +5,24 @@
 > precise point to resume from. Read this first, then [plan.md](plan.md) (the master spec) and the
 > approved build plan at `C:\Users\nigga\.claude\plans\i-want-you-to-deep-plum.md`.
 
-Last updated: 2026-06-09 · Branch: `master` · **Phase D COMPLETE** + **real docking live** + **WP-D workflow engine landed**.
+Last updated: 2026-06-09 · Branch: `master` · **v1 FEATURE-COMPLETE** — all four user priorities landed.
+
+> **STATUS: v1 COMPLETE. ctest 68/68 (windows + windows-static), science green too; all four priorities done.**
+> The user's priority list is fully delivered:
+> 1. **Real docking** — AutoDock Vina runs for real (WP-F receptor prep + box-from-co-crystal-ligand +
+>    size-checked provisioning). Verified live: amphetamine→DAT −4.83, MDMA→SERT −4.26 kcal/mol.
+> 2. **Workflows / DAG engine** (`src/workflow/`) — content-cached, resumable, cancellable prep→dock DAG
+>    + live Workflows panel; off-thread. A review subagent caught + we fixed a critical notify-then-destroy UAF.
+> 3. **Expansive agent tools (WP-K)** — service-action tools (analyze/screen_admet/dock/run_workflow/
+>    list_runs/search_library/compare_compounds) + keyless web tools (web_search via DuckDuckGo HTML,
+>    web_fetch) cached/rate-limited under `cache/web`, behind the science feature. Live web_search verified.
+> 4. **Packaging (Phase E)** — `manifest.json` + self-heal (verify/heal corrupt components on launch) and a
+>    **fully-static single-exe release** (`windows-static` preset, /MT, x64-windows-static): a 3.3 MB
+>    StimLab.exe needing NO DLLs / NO VC++ redist. `scripts/package.ps1` zips it. Verified portable: the
+>    exe run from a clean `%TEMP%` provisions + real-docks. Real docking works even in this curl-free build
+>    (provisioning uses PowerShell); only the live LLM + web tools need the science build.
+> See [docs/PHASE_E.md](docs/PHASE_E.md). Open follow-ups (post-v1): AutoDock-GPU/gnina (WP-G2/G3),
+> WebView2 for JS-heavy `web_fetch`, prepare the other 25 receptors on demand, a science-static release.
 
 > **STATUS: WORKFLOW / DAG ENGINE LANDED (WP-D, priority #2). ctest 61/61.** The re-runnable prep→dock
 > pipelines are rebuilt as a content-cached, cancellable DAG with a live view:
