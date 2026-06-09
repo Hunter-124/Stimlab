@@ -77,6 +77,11 @@
       "name": "windows-cuda",
       "inherits": "windows",
       "configurePreset": "windows-cuda"
+    },
+    {
+      "name": "windows-static",
+      "inherits": "windows",
+      "configurePreset": "windows-static"
     }
   ]
 }
