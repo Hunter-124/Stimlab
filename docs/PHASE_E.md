@@ -101,11 +101,14 @@ Continued the SESSION_CARD §5 work; ctest **70/70** on windows + windows-static
   (vs CPU Vina -4.83 / CUDA grid -3.66), reproducible. A Settings "Provision Vina-GPU (OpenCL)" button wires it.
 - **C. Native flexible GPU docking** - SUPERSEDED BY B; the WSL2/Uni-Dock path is **not pursued** (user declined
   WSL). Vina-GPU is the native-Windows real GPU search; a native AutoDock-GPU CUDA source build stays infeasible.
+- **D. Git remote + live CI - GREEN.** Private repo `Hunter-124/Stimulant-Laboratory` created + `master` pushed
+  (cached GCM credential). Fixed a vcpkg `builtin-baseline` that pinned a LOCAL-only commit the runner couldn't
+  resolve (removed it). Actions run #2 SUCCESS (22 min): windows + windows-static build+ctest, release zip
+  uploaded as artifact `StimLab-win-x64`.
 - **E. Code-signing** - releases are **intentionally unsigned** (educational/personal use). `scripts/sign.ps1`
   stays a no-op; a first-run SmartScreen warning is expected. No cert acquired.
 
 ### Still open (future, not blocking)
-- **D. A real git remote + a live Windows CI run** - pending a GitHub credential on this host.
 - Torsionally-flexible (multi-DOF) ligand docking (a flexible PDBQT torsion-tree writer) - the documented
   STRETCH (Track F); today both the CPU Vina and Vina-GPU paths dock a rigid ligand.
 - A WSL2 subprocess to Linux Uni-Dock/AutoDock-GPU remains a theoretical option but is intentionally skipped.

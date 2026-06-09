@@ -83,9 +83,10 @@ install a Linux GPU driver — the Windows driver is stubbed as `libcuda.so`). C
 infeasible: Unix Makefile + CUDA 13 drops pre-sm_75.)
 
 ### D. Git remote + live CI run  [PRECONDITION: a GitHub repo — `gh` or user-provided remote]
-> 🔄 **IN PROGRESS**: private repo `Hunter-124/Stimulant-Laboratory` created + `master` pushed (cached GCM
-> credential). CI fix: removed `vcpkg.json` `builtin-baseline` (it was a LOCAL-only vcpkg commit the runner
-> couldn't resolve → `vcpkg install` failed). Re-running Actions to confirm green.
+> ✅ **DONE — CI GREEN**: private repo `Hunter-124/Stimulant-Laboratory` created + `master` pushed (cached GCM
+> credential). CI fix: removed `vcpkg.json` `builtin-baseline` (a LOCAL-only vcpkg commit the runner couldn't
+> resolve → `vcpkg install` failed). Run #2 SUCCESS (22 min): windows + windows-static build+ctest, release zip
+> packaged + uploaded as artifact `StimLab-win-x64`, code-sign skipped (no cert).
 
 The repo has NO remote, so `.github/workflows/ci.yml` is written-but-unrun. Create/connect a GitHub repo
 (`gh repo create` or a user remote), push `master`, confirm the Actions run goes green on windows-latest (it
