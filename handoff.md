@@ -5,7 +5,7 @@
 > precise point to resume from. Read this first, then [plan.md](plan.md) (the master spec) and the
 > approved build plan at `C:\Users\nigga\.claude\plans\i-want-you-to-deep-plum.md`.
 
-Last updated: 2026-06-08 · Branch: `master` · Commits so far: **0** (green skeleton ready to commit).
+Last updated: 2026-06-08 · Branch: `master` · **Phase D COMPLETE** (WP-1/2/3 + 3 of 4 WP-4 items).
 
 > **STATUS: Phase B COMPLETE + ENRICHED, verified.** `./scripts/dev-build.ps1 -Test` (or
 > `cmake --preset windows && cmake --build --preset windows`) produces `build/windows/bin/StimLab.exe`,
@@ -32,9 +32,26 @@ Last updated: 2026-06-08 · Branch: `master` · Commits so far: **0** (green ske
 > retired from the app, kept only for legacy tests). **ctest = 25/25 green**, including formula-match over
 > 14 structures, TPSA vs reference, and structure-derived ADMET goldens.
 >
-> Remaining (optional, clearly labeled in-app): logP is a Crippen-style estimate (swap RDKit MolLogP for
-> exactness); docking is a descriptor model (wire AutoDock Vina + 3D embedding for true docking); no 3D
-> viewer yet. None block the functional suite.
+> **PHASE D DONE (this session).** ctest **38/38 green**. Landed:
+> - **WP-1 · 3D embedding** (`src/chem/Embed3D.*`): distance-geometry conformers (covalent-radius / VSEPR
+>   distance matrix -> classical metric-matrix MDS via **eigen3** -> bonded+angle+vdW steepest-descent,
+>   explicit H), no RDKit. Deterministic, NaN-free, all 29 compounds.
+> - **WP-2 · 3D molecular viewer** (`src/render/MolViewport.*`): instanced DX11 ball-and-stick / spacefill
+>   (CPK colors, split-color cylinder bonds), off-screen RT -> ImGui image, orbit/zoom/pan, legend.
+>   Embedded in the Structure Workbench (replaced the 2D schematic) and the Docking pose overlay.
+> - **WP-3 · real docking** behind the frozen `contracts/IDockingBackend.h`: Vina/smina subprocess +
+>   rigid-PDBQT writer (clean ROOT, avoids the tree.h gotcha) + REMARK-VINA-RESULT parser + 29 CNS
+>   receptor presets + best-effort engine provisioner. **gnina disabled** (no Win/CUDA build). With no
+>   engine on this host it degrades to the clearly-labeled descriptor estimate (poses still carry the
+>   embedded ligand so the viewer has geometry).
+> - **WP-4 (3 of 4):** full **Wildman-Crippen logP** atom typing (+regression test); a **Molecule Input**
+>   panel (free-text SMILES -> full analysis + 3D); **SQLite** run-history persistence (live Runs panel,
+>   `run_history` table under `%APPDATA%/StimLab/stimlab.db`).
+>
+> **Remaining (optional):** the real LLM agent loop (`ILlmProvider` + libcurl `curl[ssl]` behind the
+> `science` feature) - deferred (heavy build + needs an API key to verify). The assistant still
+> explains/highlights panels. **Gotcha learned:** a legacy Python-backend `stimlab.db` can pre-exist in
+> `%APPDATA%/StimLab` with a clashing `runs` table - the native store uses `run_history` to avoid it.
 
 ---
 
