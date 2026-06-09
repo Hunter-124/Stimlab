@@ -1,14 +1,32 @@
 #include "ui/AppShell.h"
 
 #include <cmath>
+#include <utility>
 
 #include <imgui.h>
+#include <nlohmann/json.hpp>
 
+#include "agent/Agent.h"
+#include "agent/AnthropicProvider.h"
+#include "agent/MockProvider.h"
+#include "agent/SystemPrompt.h"
+#include "agent/Tools.h"
+#include "core/Config.h"
+#include "core/Secrets.h"
 #include "render/MolViewport.h"
 #include "ui/Panels.h"
 #include "ui/Theme.h"
 
 namespace stimlab {
+
+namespace {
+// Config keys for the persisted agent settings.
+constexpr const char* kCfgProvider = "agent.provider";  // 0 = Anthropic, 1 = Offline mock
+constexpr const char* kCfgApiKey   = "agent.apiKey";    // DPAPI-encrypted base64 blob
+constexpr const char* kCfgModel    = "agent.model";
+constexpr const char* kCfgMode     = "agent.mode";      // "autopilot" | "askfirst"
+constexpr const char* kDefaultModel = "claude-opus-4-8";
+}  // namespace
 
 namespace {
 
@@ -61,9 +79,10 @@ AppShell::AppShell(Services services) : svc_(services) {
         {"Settings", "Settings",
          "AI provider/keys, GPU mode, storage paths."},
     };
+    buildAgent();
 }
 
-AppShell::~AppShell() = default;  // here MolViewport is a complete type
+AppShell::~AppShell() = default;  // here MolViewport + agent types are complete
 
 void AppShell::setRenderDevice(ID3D11Device* device, ID3D11DeviceContext* context) {
     renderDev_ = device;
@@ -118,7 +137,278 @@ void AppShell::frameHighlightCurrentWindow(const std::string& panelId) {
                 ImGui::GetTime() - state_.highlightStart);
 }
 
+// ---------------------------------------------------------------- agent wiring
+std::string AppShell::buildSystemPrompt() const {
+    std::string s = agent::safetySystemPrompt();
+    s += "\n\nAvailable panels (use these exact ids with navigate_ui / highlight_panel):\n";
+    for (const auto& p : panels_) {
+        s += "- " + p.id + " (" + p.label + "): " + p.help + "\n";
+    }
+    s += "\nThe currently selected compound's real, structure-derived properties are available via "
+         "the get_active_compound tool - use it instead of guessing values.";
+    return s;
+}
+
+bool AppShell::isValidPanel(const std::string& panelId) const {
+    for (const auto& p : panels_)
+        if (p.id == panelId) return true;
+    return false;
+}
+
+void AppShell::postHighlightAction(const std::string& panelId, const std::string& explanation) {
+    std::lock_guard<std::mutex> lk(agentMu_);
+    agentInbox_.push_back({false, panelId, explanation});
+}
+
+void AppShell::postNavigateAction(const std::string& panelId) {
+    std::lock_guard<std::mutex> lk(agentMu_);
+    agentInbox_.push_back({true, panelId, ""});
+}
+
+Molecule AppShell::agentCompoundSnapshot() const {
+    std::lock_guard<std::mutex> lk(agentMu_);
+    return agentCompound_;
+}
+
+void AppShell::drainAgentActions() {
+    std::vector<AgentUiAction> actions;
+    {
+        std::lock_guard<std::mutex> lk(agentMu_);
+        actions.swap(agentInbox_);
+        agentCompound_ = currentMolecule();  // publish for the worker-thread tools
+    }
+    for (const auto& a : actions) {
+        if (!isValidPanel(a.panel)) continue;
+        if (a.navigate) {
+            state_.activePanel = a.panel;
+        } else {
+            // Pulse + focus; the assistant's own text carries the explanation, so
+            // we pass an empty string to avoid double-logging into assistantLog.
+            requestHighlight(a.panel, "");
+        }
+    }
+}
+
+void AppShell::buildAgent() {
+    registry_ = std::make_unique<agent::ToolRegistry>();
+    mock_ = std::make_unique<agent::MockProvider>();
+    anthropic_ = std::make_unique<agent::AnthropicProvider>();
+    agent_ = std::make_unique<agent::Agent>();
+
+    // Enum of valid panel ids for the navigation tool schemas.
+    nlohmann::json panelEnum = nlohmann::json::array();
+    for (const auto& p : panels_) panelEnum.push_back(p.id);
+
+    auto labelOf = [this](const std::string& id) -> std::string {
+        for (const auto& p : panels_)
+            if (p.id == id) return p.label;
+        return id;
+    };
+
+    using agent::FunctionTool;
+    using nlohmann::json;
+
+    // highlight_panel: pulse + focus a panel and explain why.
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"panel", {{"type", "string"}, {"enum", panelEnum},
+                         {"description", "Panel id to focus and pulse."}}},
+              {"explanation",
+               {{"type", "string"}, {"description", "One line on what the user will find there."}}}}},
+            {"required", json::array({"panel"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "highlight_panel",
+            "Focus a panel and pulse a highlight around it so the user sees where to look. Use this "
+            "when answering 'where / how do I ...' questions about the UI.",
+            schema, [this, labelOf](const json& args) -> ToolResult {
+                const std::string panel = args.value("panel", "");
+                if (!isValidPanel(panel)) return {"Unknown panel id: '" + panel + "'.", true};
+                postHighlightAction(panel, args.value("explanation", ""));
+                return {"Focused and highlighted the " + labelOf(panel) + " panel.", false};
+            }));
+    }
+
+    // navigate_ui: switch panel without the pulse.
+    {
+        json schema = {{"type", "object"},
+                       {"properties",
+                        {{"panel", {{"type", "string"}, {"enum", panelEnum},
+                                    {"description", "Panel id to switch to."}}}}},
+                       {"required", json::array({"panel"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "navigate_ui",
+            "Switch the workspace to a panel (no pulse). Use when the user wants to go somewhere.",
+            schema, [this, labelOf](const json& args) -> ToolResult {
+                const std::string panel = args.value("panel", "");
+                if (!isValidPanel(panel)) return {"Unknown panel id: '" + panel + "'.", true};
+                postNavigateAction(panel);
+                return {"Switched to the " + labelOf(panel) + " panel.", false};
+            }));
+    }
+
+    // list_panels: ground the model in the available panels.
+    {
+        json schema = {{"type", "object"}, {"properties", json::object()}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "list_panels", "List every StimLab panel with its id and what it shows.", schema,
+            [this](const json&) -> ToolResult {
+                json arr = json::array();
+                for (const auto& p : panels_)
+                    arr.push_back({{"id", p.id}, {"label", p.label}, {"shows", p.help}});
+                return {arr.dump(), false};
+            }));
+    }
+
+    // get_active_compound: read the selected compound's real properties (in scope:
+    // identity + physicochemical descriptors; NO synthesis data exists to return).
+    {
+        json schema = {{"type", "object"}, {"properties", json::object()}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "get_active_compound",
+            "Get the currently selected compound's real, structure-derived properties (name, SMILES, "
+            "formula, MW, logP, TPSA, H-bond donors/acceptors, drug class, legal status).",
+            schema, [this](const json&) -> ToolResult {
+                const Molecule m = agentCompoundSnapshot();
+                json j = {{"name", m.name},          {"smiles", m.smiles},
+                          {"formula", m.formula},    {"molWeight", m.molWeight},
+                          {"logP", m.logP},          {"tpsa", m.tpsa},
+                          {"hbd", m.hbd},            {"hba", m.hba},
+                          {"drugClass", m.drugClass},{"legalStatus", m.legalStatus}};
+                return {j.dump(), false};
+            }));
+    }
+
+    // what_can_stimlab_do: the capability / scope summary.
+    {
+        json schema = {{"type", "object"}, {"properties", json::object()}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "what_can_stimlab_do",
+            "Summarize what StimLab can and cannot do (its capabilities and its safety scope).",
+            schema, [](const json&) -> ToolResult {
+                return {"StimLab predicts what a CNS-stimulant compound IS and DOES: structure and "
+                        "physicochemical properties, molecular stability, absorption/PK, "
+                        "ADMET/metabolism, target binding affinity (docking), similarity to known "
+                        "substances, and legal-analog scoring. It does NOT and will not provide "
+                        "synthesis routes, reaction conditions, precursors, or manufacturability "
+                        "guidance - that is out of scope by design.",
+                        false};
+            }));
+    }
+
+    agent_->configure(mock_.get(), registry_.get(), buildSystemPrompt());
+    agent_->setModel(kDefaultModel);
+    agentUsingAnthropic_ = false;
+}
+
+void AppShell::reconfigureAgent() {
+    if (!agent_) return;
+    std::string model = kDefaultModel;
+    int providerIdx = 0;
+    std::string modeStr = "autopilot";
+    std::string keyBlob;
+    if (config_) {
+        model = config_->get<std::string>(kCfgModel, kDefaultModel);
+        providerIdx = config_->get<int>(kCfgProvider, 0);
+        modeStr = config_->get<std::string>(kCfgMode, "autopilot");
+        keyBlob = config_->get<std::string>(kCfgApiKey, "");
+    }
+    if (model.empty()) model = kDefaultModel;
+
+    // Decrypt the stored key (DPAPI) into the Anthropic provider.
+    if (anthropic_) {
+        if (!keyBlob.empty()) {
+            if (auto plain = Secrets::unprotect(keyBlob); plain.ok())
+                anthropic_->setApiKey(plain.value());
+            else
+                anthropic_->setApiKey("");
+        } else {
+            anthropic_->setApiKey("");
+        }
+    }
+
+    const ILlmProvider* active = mock_.get();
+    if (providerIdx == 0 && anthropic_ && anthropic_->ready()) {
+        active = anthropic_.get();
+        agentUsingAnthropic_ = true;
+    } else {
+        agentUsingAnthropic_ = false;
+    }
+
+    agent_->setProvider(active);
+    agent_->setModel(model);
+    agent_->setMode(modeStr == "askfirst" ? agent::AgentMode::AskFirst
+                                          : agent::AgentMode::Autopilot);
+}
+
+void AppShell::setConfig(Config* config) {
+    config_ = config;
+    reconfigureAgent();
+}
+
+// ---- Settings helpers ----
+bool AppShell::hasApiKey() const {
+    return config_ && config_->has(kCfgApiKey) &&
+           !config_->get<std::string>(kCfgApiKey, "").empty();
+}
+
+void AppShell::saveApiKey(const std::string& plaintext) {
+    if (!config_) return;
+    if (plaintext.empty()) { clearApiKey(); return; }
+    if (auto enc = Secrets::protect(plaintext); enc.ok()) {
+        config_->set(kCfgApiKey, enc.value());
+        config_->set(kCfgProvider, 0);  // entering a key means "use Anthropic"
+        config_->save();
+        reconfigureAgent();
+    }
+}
+
+void AppShell::clearApiKey() {
+    if (!config_) return;
+    config_->set(kCfgApiKey, std::string(""));
+    config_->save();
+    reconfigureAgent();
+}
+
+void AppShell::setAgentModel(const std::string& model) {
+    if (config_) { config_->set(kCfgModel, model); config_->save(); }
+    if (agent_) agent_->setModel(model.empty() ? kDefaultModel : model);
+}
+
+std::string AppShell::agentModel() const {
+    return config_ ? config_->get<std::string>(kCfgModel, kDefaultModel) : std::string(kDefaultModel);
+}
+
+void AppShell::setAgentProviderIndex(int idx) {
+    if (config_) { config_->set(kCfgProvider, idx); config_->save(); }
+    reconfigureAgent();
+}
+
+int AppShell::agentProviderIndex() const {
+    return config_ ? config_->get<int>(kCfgProvider, 0) : 0;
+}
+
+void AppShell::setAutopilot(bool on) {
+    if (config_) { config_->set(kCfgMode, std::string(on ? "autopilot" : "askfirst")); config_->save(); }
+    if (agent_) agent_->setMode(on ? agent::AgentMode::Autopilot : agent::AgentMode::AskFirst);
+}
+
+bool AppShell::autopilot() const {
+    return !config_ || config_->get<std::string>(kCfgMode, "autopilot") != "askfirst";
+}
+
+bool AppShell::anthropicReady() const { return anthropic_ && anthropic_->ready(); }
+bool AppShell::anthropicTransport() const { return agent::AnthropicProvider::transportAvailable(); }
+
+std::string AppShell::activeProviderLabel() const {
+    return agentUsingAnthropic_ ? std::string("Anthropic (Claude)")
+                                : (mock_ ? mock_->displayName() : std::string("Offline"));
+}
+
 void AppShell::draw() {
+    drainAgentActions();
+    if (agent_) agent_->poll();
     drawMainMenuBar();
 
     const ImGuiViewport* vp = ImGui::GetMainViewport();
@@ -259,69 +549,112 @@ void AppShell::drawAssistant() {
         ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(0));
         ImGui::TextUnformatted("StimLab Assistant");
         ImGui::PopStyleColor();
-        ImGui::TextWrapped(
-            "I can explain any panel and highlight where to click. Wire a provider in "
-            "Settings (Phase D) for full conversational control.");
-        ImGui::Spacing();
-        ImGui::TextDisabled("TRY ASKING");
 
-        if (ImGui::Button("How do I change the docking target?", ImVec2(-1, 0))) {
-            requestHighlight("Docking",
-                "Open the Docking panel - the target dropdown at the top selects DAT/NET/SERT/TAAR1. "
-                "I've highlighted it for you.");
+        const agent::AgentSnapshot snap = agent_ ? agent_->snapshot() : agent::AgentSnapshot{};
+        const bool busy = snap.status == agent::AgentStatus::Running ||
+                          snap.status == agent::AgentStatus::AwaitingApproval;
+
+        // Provider status line.
+        if (agentUsingAnthropic_) {
+            ImGui::TextDisabled("Live: %s  -  model %s", activeProviderLabel().c_str(),
+                                agentModel().c_str());
+        } else if (anthropicTransport()) {
+            ImGui::TextDisabled("Offline assistant - add an API key in Settings for live chat.");
+        } else {
+            ImGui::TextDisabled("Offline assistant (this build has no networking).");
         }
-        if (ImGui::Button("Where do I see absorption / bioavailability?", ImVec2(-1, 0))) {
-            requestHighlight("Absorption",
-                "The Absorption / PK panel shows HIA, oral F%, Caco-2 permeability, BBB partition and "
-                "P-gp efflux. Highlighted now.");
+
+        // Mode + reset row.
+        bool autop = autopilot();
+        if (ImGui::Checkbox("Autopilot", &autop)) setAutopilot(autop);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("On: tools (navigate/highlight) run automatically.\n"
+                              "Off (ask-first): you approve each tool batch.");
+        ImGui::SameLine();
+        ImGui::BeginDisabled(busy);
+        if (ImGui::SmallButton("New chat") && agent_) agent_->reset();
+        ImGui::EndDisabled();
+
+        // Quick prompts (canned fallbacks - now routed through the real loop).
+        ImGui::TextDisabled("TRY ASKING");
+        ImGui::BeginDisabled(busy);
+        struct QP { const char* label; const char* prompt; };
+        static const QP kQuick[] = {
+            {"How do I change the docking target?", "How do I change the docking target?"},
+            {"Where is absorption / bioavailability?", "Where do I see absorption and bioavailability?"},
+            {"What can StimLab do?", "What can StimLab do?"},
+            {"Tell me about the selected compound", "Tell me about the currently selected compound."},
+        };
+        for (const auto& q : kQuick) {
+            if (ImGui::Button(q.label, ImVec2(-1, 0)) && agent_) agent_->submit(q.prompt);
         }
-        if (ImGui::Button("How is stability scored (not manufacturability)?", ImVec2(-1, 0))) {
-            requestHighlight("Stability",
-                "Stability scores resistance to hydrolysis/oxidation/photolysis/thermal/pH stress and "
-                "estimates shelf-life. It deliberately REPLACES any manufacturability score - out of scope.");
-        }
-        if (ImGui::Button("How do I pick a compound?", ImVec2(-1, 0))) {
-            requestHighlight("Navigator",
-                "Use the ACTIVE COMPOUND dropdown at the top of the Navigator (highlighted) to switch "
-                "the molecule every panel analyzes.");
-        }
-        if (ImGui::Button("How do I check a derivative vs known samples?", ImVec2(-1, 0))) {
-            requestHighlight("Analog",
-                "Open Analog Explorer (highlighted): tune a candidate's properties + functional groups "
-                "and instantly see its nearest existing sample, legal-analog score, and predicted "
-                "byproducts/interactions - all analysis, no synthesis guidance.");
-        }
-        if (ImGui::Button("Can I compare compounds side by side?", ImVec2(-1, 0))) {
-            requestHighlight("Compare",
-                "Yes - the Compare panel (highlighted) charts stability, oral F%, HIA and oxidation "
-                "across up to three compounds, with a full metric matrix below.");
-        }
-        if (ImGui::Button("What can StimLab do?", ImVec2(-1, 0))) {
-            state_.assistantLog.push_back(
-                "StimLab predicts what a compound IS and DOES: structure/properties, stability, "
-                "absorption/PK, ADMET/metabolism, target binding (docking), similarity to known "
-                "substances, and legal-analog scoring. It does NOT provide synthesis routes.");
-        }
+        ImGui::EndDisabled();
 
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::TextDisabled("CONVERSATION");
-        ImGui::BeginChild("##log", ImVec2(0, -38), ImGuiChildFlags_Borders);
-        if (state_.assistantLog.empty()) {
-            ImGui::TextDisabled("(Tap a question above. Responses appear here.)");
+
+        const float reserve = (snap.status == agent::AgentStatus::AwaitingApproval) ? 132.0f : 40.0f;
+        ImGui::BeginChild("##log", ImVec2(0, -reserve), ImGuiChildFlags_Borders);
+        if (snap.transcript.empty() && snap.streaming.empty()) {
+            ImGui::TextDisabled("Ask a question or tap one above. The assistant can navigate and "
+                                "highlight the UI, and read the selected compound's real properties.");
         }
-        for (const auto& line : state_.assistantLog) {
-            ImGui::TextWrapped("- %s", line.c_str());
+        for (const auto& e : snap.transcript) {
+            switch (e.kind) {
+                case agent::TranscriptEntry::Kind::User:
+                    ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(1));
+                    ImGui::TextWrapped("You: %s", e.text.c_str());
+                    ImGui::PopStyleColor();
+                    break;
+                case agent::TranscriptEntry::Kind::Assistant:
+                    ImGui::TextWrapped("%s", e.text.c_str());
+                    break;
+                case agent::TranscriptEntry::Kind::Tool:
+                    ImGui::TextDisabled("  %s", e.text.c_str());
+                    break;
+                case agent::TranscriptEntry::Kind::Error:
+                    ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(3));
+                    ImGui::TextWrapped("%s", e.text.c_str());
+                    ImGui::PopStyleColor();
+                    break;
+                case agent::TranscriptEntry::Kind::System:
+                    ImGui::TextDisabled("%s", e.text.c_str());
+                    break;
+            }
             ImGui::Spacing();
+        }
+        if (!snap.streaming.empty()) ImGui::TextWrapped("%s", snap.streaming.c_str());
+        if (busy) {
+            ImGui::TextDisabled("...");
+            ImGui::SetScrollHereY(1.0f);
         }
         ImGui::EndChild();
 
-        ImGui::BeginDisabled(true);
-        char buf[8] = {0};
+        // Ask-first approval gate.
+        if (snap.status == agent::AgentStatus::AwaitingApproval) {
+            ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(2));
+            ImGui::TextWrapped("The assistant wants to run:");
+            ImGui::PopStyleColor();
+            for (const auto& p : snap.pending)
+                ImGui::BulletText("%s %s", p.name.c_str(), p.arguments.dump().c_str());
+            if (ImGui::Button("Approve", ImVec2(120, 0)) && agent_) agent_->approvePending();
+            ImGui::SameLine();
+            if (ImGui::Button("Deny", ImVec2(120, 0)) && agent_) agent_->denyPending();
+        }
+
+        // Input row.
+        ImGui::BeginDisabled(busy);
         ImGui::SetNextItemWidth(-1);
-        ImGui::InputTextWithHint("##chat", "Connect a provider in Settings to chat...", buf,
-                                 sizeof(buf));
+        const bool submitted = ImGui::InputTextWithHint(
+            "##chat", "Ask about a panel, the compound, or how to do something...", chatBuf_,
+            sizeof(chatBuf_), ImGuiInputTextFlags_EnterReturnsTrue);
         ImGui::EndDisabled();
+        if (submitted && !busy && agent_ && chatBuf_[0] != '\0') {
+            agent_->submit(chatBuf_);
+            chatBuf_[0] = '\0';
+            ImGui::SetKeyboardFocusHere(-1);
+        }
     }
     frameHighlightCurrentWindow("Assistant");
     ImGui::End();

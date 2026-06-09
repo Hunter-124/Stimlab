@@ -15,6 +15,7 @@ target_link_libraries(stimlab_ui PUBLIC
   stimlab_core
   stimlab_render
   stimlab_chem
+  stimlab_agent
   imgui::imgui
   implot::implot
 )

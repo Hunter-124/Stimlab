@@ -10,6 +10,7 @@ add_executable(stimlab_tests
   test_molviewport.cpp
   test_docking.cpp
   test_storage.cpp
+  test_agent.cpp
 )
 
 target_link_libraries(stimlab_tests PRIVATE
@@ -21,6 +22,7 @@ target_link_libraries(stimlab_tests PRIVATE
   stimlab_modules
   stimlab_render
   stimlab_storage
+  stimlab_agent
 )
 
 target_compile_features(stimlab_tests PRIVATE cxx_std_20)

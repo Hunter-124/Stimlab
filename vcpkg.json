@@ -27,13 +27,12 @@
   ],
   "features": {
     "science": {
-      "description": "Heavy science stack (Phase C+): RDKit, ONNX Runtime, libcurl. Long build; enable when wiring real chemistry.",
+      "description": "Networked extras (Phase D agent): libcurl for the Anthropic LLM provider. Uses Windows-native Schannel TLS (no OpenSSL build). NOTE: there is intentionally no rdkit here - StimLab has its own in-house cheminformatics engine in src/chem (rdkit is not a port in this vcpkg registry).",
       "dependencies": [
-        "rdkit",
         {
           "name": "curl",
           "features": [
-            "ssl"
+            "schannel"
           ]
         }
       ]

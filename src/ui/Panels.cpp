@@ -827,17 +827,72 @@ void presets(AppShell& shell) {
 
 // -------------------------------------------------------------------- Settings
 void settings(AppShell& shell) {
-    (void)shell;
-    ImGui::TextDisabled("AI PROVIDER");
-    static int provider = 0;
-    const char* providers[] = {"Anthropic", "OpenAI-compatible", "DeepSeek", "Ollama (local)"};
+    ImGui::TextDisabled("AI ASSISTANT");
+    ImGui::TextWrapped(
+        "The assistant explains panels, reads the selected compound's real structure-derived "
+        "properties, and navigates/highlights the UI. It never provides synthesis, route, or "
+        "manufacturability guidance - that is out of scope by design.");
+    ImGui::Spacing();
+
+    int provider = shell.agentProviderIndex();
+    const char* providers[] = {"Anthropic (Claude)", "Offline (no API key)"};
     ImGui::SetNextItemWidth(280);
-    ImGui::Combo("##prov", &provider, providers, IM_ARRAYSIZE(providers));
-    static char key[96] = {0};
+    if (ImGui::Combo("Provider", &provider, providers, IM_ARRAYSIZE(providers)))
+        shell.setAgentProviderIndex(provider);
+
+    if (!shell.anthropicTransport()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(2));
+        ImGui::TextWrapped(
+            "This build has no networking (default 'windows' preset). Rebuild with the "
+            "'windows-science' preset to enable the live Anthropic provider; the offline assistant "
+            "still navigates and explains.");
+        ImGui::PopStyleColor();
+    }
+
+    // Model (free text so any model the key supports can be used).
+    static char modelBuf[96];
+    static bool modelInit = false;
+    if (!modelInit) {
+        std::snprintf(modelBuf, sizeof(modelBuf), "%s", shell.agentModel().c_str());
+        modelInit = true;
+    }
+    ImGui::SetNextItemWidth(280);
+    ImGui::InputText("Model", modelBuf, sizeof(modelBuf));
+    ImGui::SameLine();
+    if (ImGui::Button("Set##model")) shell.setAgentModel(modelBuf);
+    ImGui::TextDisabled("Default claude-opus-4-8; claude-haiku-4-5 is faster/cheaper for UI help.");
+    ImGui::Spacing();
+
+    // API key - encrypted at rest via DPAPI; plaintext never persisted or shown.
+    ImGui::TextDisabled("API KEY (encrypted at rest via Windows DPAPI)");
+    static char keyBuf[256] = {0};
     ImGui::SetNextItemWidth(360);
-    ImGui::InputTextWithHint("##key", "API key (stored via Windows DPAPI)...", key, sizeof(key),
-                             ImGuiInputTextFlags_Password);
-    ImGui::TextDisabled("Keys are encrypted at rest; the live agent loop arrives in Phase D.");
+    ImGui::InputTextWithHint(
+        "##key", shell.hasApiKey() ? "A key is stored - type to replace..." : "Paste Anthropic API key...",
+        keyBuf, sizeof(keyBuf), ImGuiInputTextFlags_Password);
+    ImGui::SameLine();
+    if (ImGui::Button("Save key") && keyBuf[0] != '\0') {
+        shell.saveApiKey(keyBuf);
+        for (char& c : keyBuf) c = '\0';  // wipe plaintext from the input buffer
+    }
+    if (shell.hasApiKey()) {
+        ImGui::SameLine();
+        if (ImGui::Button("Clear key")) shell.clearApiKey();
+    }
+
+    if (shell.anthropicReady()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(1));
+        ImGui::Text("Live provider active: %s", shell.activeProviderLabel().c_str());
+        ImGui::PopStyleColor();
+    } else {
+        ImGui::TextDisabled("Active provider: %s", shell.activeProviderLabel().c_str());
+    }
+    ImGui::Spacing();
+
+    ImGui::TextDisabled("BEHAVIOR");
+    bool autop = shell.autopilot();
+    if (ImGui::Checkbox("Autopilot - run navigate/highlight tools automatically", &autop))
+        shell.setAutopilot(autop);
     ImGui::Spacing();
 
     ImGui::TextDisabled("COMPUTE");

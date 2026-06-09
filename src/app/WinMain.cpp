@@ -15,6 +15,7 @@
 #include <imgui_impl_win32.h>
 
 #include "core/AppPaths.h"
+#include "core/Config.h"
 #include "core/Log.h"
 #include "modules/RealBackend.h"
 #include "render/Dx11Device.h"
@@ -108,11 +109,19 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX11_Init(device.device(), device.context());
 
+    // Persisted settings (incl. the DPAPI-encrypted agent API key). Declared
+    // before the shell so it outlives the shell's agent during teardown.
+    stimlab::Config config(stimlab::AppPaths::instance().config());
+    config.load();
+
     stimlab::RealBackend backend;
     stimlab::AppShell shell(backend.services());
     // WP-2: give the shell the live DX11 device so the 3D molecular viewport can
     // render into an off-screen target shown by ImGui in the Structure/Docking panels.
     shell.setRenderDevice(device.device(), device.context());
+    // WP-4 (agent): hand the shell the config so the assistant loop can read the
+    // provider/key/model and the Settings panel can persist them.
+    shell.setConfig(&config);
 
     // Optional: STIMLAB_PANEL / STIMLAB_MOLECULE select the initial panel + compound
     // (handy for screenshots/automation; defaults are Dashboard/amphetamine).
