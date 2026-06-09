@@ -6,6 +6,7 @@
 #include <fstream>
 #include <functional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <imgui.h>
@@ -15,10 +16,12 @@
 #include "chem/Embed3D.h"
 #include "chem/Smiles.h"
 #include "core/AppPaths.h"
+#include "modules/docking/Presets.h"
 #include "modules/docking/Provisioning.h"
 #include "render/MolViewport.h"
 #include "ui/AppShell.h"
 #include "ui/Theme.h"
+#include "workflow/Dag.h"
 
 namespace stimlab::panels {
 namespace {
@@ -804,6 +807,157 @@ void docking(AppShell& shell) {
 
     ImGui::Spacing();
     ImGui::TextDisabled("Note: binding affinity is a target-engagement signal, never a make-it signal.");
+}
+
+// ------------------------------------------------------------------- Workflows
+void workflows(AppShell& shell) {
+    const Molecule m = shell.currentMolecule();
+    Services& s = shell.services();
+    UiState& st = shell.state();
+    if (!s.docking) return;
+
+    auto targets = s.docking->targets();
+    if (st.dockTarget.empty() && !targets.empty()) st.dockTarget = targets.front();
+
+    ImGui::TextWrapped(
+        "Run the prep->dock pipeline as a content-cached, cancellable DAG. Nodes run on a worker "
+        "thread (the UI never blocks); re-running unchanged inputs is an instant cache hit, and "
+        "provisioning a receptor/engine re-runs only the affected nodes.");
+    ImGui::Spacing();
+
+    ImGui::TextDisabled("TARGET (binding/pharmacology only)");
+    ImGui::SetNextItemWidth(360);
+    if (ImGui::BeginCombo("##wftarget", st.dockTarget.c_str())) {
+        for (const auto& t : targets) {
+            const bool sel = (t == st.dockTarget);
+            if (ImGui::Selectable(t.c_str(), sel)) st.dockTarget = t;
+            if (sel) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::Spacing();
+
+    const auto snap = shell.workflowSnapshot();
+    if (snap.running) {
+        if (ImGui::Button("Cancel run")) shell.cancelWorkflow();
+        ImGui::SameLine();
+        ImGui::TextDisabled("running %s ...", snap.label.c_str());
+    } else {
+        if (ImGui::Button("Run workflow")) {
+            std::string tid = st.dockTarget;
+            if (const auto* p = docking::findPreset(st.dockTarget)) tid = p->id;
+            shell.runWorkflow(m.smiles, tid, m.name + " -> " + st.dockTarget);
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("ligand: %s", m.name.c_str());
+    }
+    ImGui::Spacing();
+
+    // ---- live DAG diagram ----------------------------------------------------
+    auto colorOf = [](workflow::NodeStatus s) -> ImU32 {
+        using NS = workflow::NodeStatus;
+        switch (s) {
+            case NS::Done:      return IM_COL32(76, 199, 107, 255);   // green
+            case NS::Cached:    return IM_COL32(76, 179, 189, 255);   // teal
+            case NS::Running:   return IM_COL32(92, 158, 245, 255);   // blue
+            case NS::Failed:    return IM_COL32(230, 92, 86, 255);    // red
+            case NS::Cancelled:
+            case NS::Skipped:   return IM_COL32(230, 158, 71, 255);   // orange
+            default:            return IM_COL32(115, 122, 140, 255);  // gray
+        }
+    };
+
+    const auto& nodes = snap.nodes;
+    if (!nodes.empty()) {
+        // Column = topological depth (longest path from a root); rows stack per column.
+        std::unordered_map<std::string, int> idx;
+        for (int i = 0; i < static_cast<int>(nodes.size()); ++i) idx[nodes[i].id] = i;
+        std::vector<int> depth(nodes.size(), 0);
+        for (size_t pass = 0; pass < nodes.size(); ++pass)
+            for (size_t i = 0; i < nodes.size(); ++i)
+                for (const auto& d : nodes[i].deps) {
+                    auto it = idx.find(d);
+                    if (it != idx.end())
+                        depth[i] = std::max(depth[i], depth[it->second] + 1);
+                }
+        int maxDepth = 0;
+        for (int d : depth) maxDepth = std::max(maxDepth, d);
+        std::vector<int> rowInCol(maxDepth + 1, 0);
+        std::vector<ImVec2> centerL(nodes.size()), centerR(nodes.size()), p0(nodes.size()),
+            p1(nodes.size());
+
+        const float boxW = 168.0f, boxH = 52.0f, hgap = 64.0f, vgap = 20.0f;
+        const ImVec2 origin = ImGui::GetCursorScreenPos();
+        int maxRows = 0;
+        for (size_t i = 0; i < nodes.size(); ++i) {
+            const int col = depth[i];
+            const int row = rowInCol[col]++;
+            maxRows = std::max(maxRows, row + 1);
+            const float x = origin.x + col * (boxW + hgap);
+            const float y = origin.y + row * (boxH + vgap);
+            p0[i] = ImVec2(x, y);
+            p1[i] = ImVec2(x + boxW, y + boxH);
+            centerL[i] = ImVec2(x, y + boxH * 0.5f);
+            centerR[i] = ImVec2(x + boxW, y + boxH * 0.5f);
+        }
+
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        // Edges first (under the boxes).
+        for (size_t i = 0; i < nodes.size(); ++i)
+            for (const auto& d : nodes[i].deps) {
+                auto it = idx.find(d);
+                if (it == idx.end()) continue;
+                const ImVec2 a = centerR[it->second], b = centerL[i];
+                dl->AddBezierCubic(a, ImVec2(a.x + hgap * 0.6f, a.y),
+                                   ImVec2(b.x - hgap * 0.6f, b.y), b,
+                                   IM_COL32(120, 128, 146, 220), 2.0f);
+            }
+        // Boxes.
+        const double t = ImGui::GetTime();
+        for (size_t i = 0; i < nodes.size(); ++i) {
+            const ImU32 col = colorOf(nodes[i].status);
+            float thick = 2.0f;
+            if (nodes[i].status == workflow::NodeStatus::Running)
+                thick = 2.0f + 1.6f * static_cast<float>(0.5 + 0.5 * std::sin(t * 6.0));
+            dl->AddRectFilled(p0[i], p1[i], IM_COL32(26, 30, 38, 255), 6.0f);
+            dl->AddRect(p0[i], p1[i], col, 6.0f, 0, thick);
+            const ImVec2 idsz = ImGui::CalcTextSize(nodes[i].id.c_str());
+            dl->AddText(ImVec2(p0[i].x + (boxW - idsz.x) * 0.5f, p0[i].y + 9.0f),
+                        IM_COL32(232, 235, 240, 255), nodes[i].id.c_str());
+            const char* slab = workflow::toString(nodes[i].status);
+            const ImVec2 ssz = ImGui::CalcTextSize(slab);
+            dl->AddText(ImVec2(p0[i].x + (boxW - ssz.x) * 0.5f, p0[i].y + 29.0f), col, slab);
+        }
+        ImGui::Dummy(ImVec2((maxDepth + 1) * (boxW + hgap), maxRows * (boxH + vgap) + 4.0f));
+    }
+
+    // ---- legend + summary + node details ------------------------------------
+    ImGui::Spacing();
+    if (snap.hasResult && !snap.running) {
+        ImGui::Text("Last run: ran %d  -  cached %d  -  failed %d  -  cancelled %d", snap.ran,
+                    snap.cached, snap.failed, snap.cancelled);
+        if (snap.cached > 0 && snap.ran == 0)
+            ImGui::TextDisabled("(fully resumed from cache - no node re-executed)");
+    }
+    ImGui::Spacing();
+    if (ImGui::BeginTable("wfnodes", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("Node", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+        ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+        ImGui::TableSetupColumn("Detail / output");
+        ImGui::TableHeadersRow();
+        for (const auto& n : snap.nodes) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted(n.id.c_str());
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(colorOf(n.status)), "%s",
+                               workflow::toString(n.status));
+            ImGui::TableSetColumnIndex(2); ImGui::TextWrapped("%s", n.detail.c_str());
+        }
+        ImGui::EndTable();
+    }
+    ImGui::Spacing();
+    ImGui::TextDisabled("Nodes are cached by hash(module, version, inputs) under "
+                        "%%APPDATA%%/StimLab/cache. Analysis only - no synthesis content.");
 }
 
 // --------------------------------------------------------------------- Library

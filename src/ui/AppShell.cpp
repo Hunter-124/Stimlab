@@ -13,11 +13,14 @@
 #include "agent/Tools.h"
 #include "core/Config.h"
 #include "core/Secrets.h"
+#include "modules/Pipelines.h"
 #include "modules/docking/Presets.h"
 #include "modules/docking/Provisioning.h"
 #include "render/MolViewport.h"
 #include "ui/Panels.h"
 #include "ui/Theme.h"
+#include "workflow/Dag.h"
+#include "workflow/JobSystem.h"
 
 namespace stimlab {
 
@@ -72,6 +75,8 @@ AppShell::AppShell(Services services) : svc_(services) {
          "Substantial-similarity scorecard vs controlled references (illustrative, not legal advice)."},
         {"Docking", "Docking",
          "Predicted ligand->target BINDING AFFINITY (pharmacology) at DAT/NET/SERT/TAAR1."},
+        {"Workflows", "Workflows",
+         "Re-runnable prep->dock pipeline as a live, content-cached, cancellable DAG."},
         {"Library", "Library",
          "Browse, search and select compounds from the default + imported library."},
         {"Runs", "Runs",
@@ -86,8 +91,84 @@ AppShell::AppShell(Services services) : svc_(services) {
 }
 
 AppShell::~AppShell() {
-    // Join the docking worker BEFORE members tear down (it reads svc_/services).
+    // Join workers BEFORE members tear down (they read svc_ / wfJobs_ / wfCache_).
+    wfCancel_.cancel();
+    if (wfThread_.joinable()) wfThread_.join();
     if (dockThread_.joinable()) dockThread_.join();
+}
+
+void AppShell::runWorkflow(const std::string& smiles, const std::string& targetId,
+                           const std::string& label) {
+    {
+        std::lock_guard<std::mutex> lk(wfMu_);
+        if (wfRunning_) return;  // one run at a time
+    }
+    if (wfThread_.joinable()) wfThread_.join();  // reap a previously-finished worker
+
+    // Build the DAG on the UI thread (cheap: SMILES + filesystem probes, no network /
+    // no engine subprocess - those run inside the node functions on the worker).
+    workflow::Dag dag = workflow::buildDockingPipeline(smiles, targetId, svc_);
+    {
+        std::lock_guard<std::mutex> lk(wfMu_);
+        wfNodes_.clear();
+        for (const auto& n : dag.nodes())
+            wfNodes_.push_back({n.id, n.module, workflow::NodeStatus::Pending, "", n.deps});
+        wfLabel_ = label;
+        wfRunning_ = true;
+        wfHasResult_ = false;
+        wfRan_ = wfCached_ = wfFailed_ = wfCancelled_ = 0;
+    }
+    wfCancel_ = workflow::CancelToken{};  // fresh token for this run
+    if (!wfJobs_) wfJobs_ = std::make_unique<workflow::JobSystem>();
+    if (!wfCache_) wfCache_ = std::make_unique<workflow::DiskNodeCache>("workflow");
+    const workflow::CancelToken tok = wfCancel_;
+
+    wfThread_ = std::thread([this, dag = std::move(dag), tok]() mutable {
+        workflow::DagExecutor exec(*wfJobs_, *wfCache_);
+        auto onProgress = [this](const workflow::NodeProgress& p) {
+            std::lock_guard<std::mutex> lk(wfMu_);
+            for (auto& n : wfNodes_)
+                if (n.id == p.id) {
+                    n.status = p.status;
+                    n.detail = p.detail;
+                    break;
+                }
+        };
+        const workflow::DagRunResult r = exec.run(dag, tok, onProgress);
+        std::lock_guard<std::mutex> lk(wfMu_);
+        for (auto& n : wfNodes_) {
+            n.status = r.statusOf(n.id);
+            auto it = r.output.find(n.id);  // show the node's actual output (JSON)
+            if (it != r.output.end() && !it->second.empty()) n.detail = it->second;
+        }
+        wfRan_ = r.ran;
+        wfCached_ = r.cached;
+        wfFailed_ = r.failed;
+        wfCancelled_ = r.cancelled;
+        wfRunning_ = false;
+        wfHasResult_ = true;
+    });
+}
+
+void AppShell::cancelWorkflow() { wfCancel_.cancel(); }
+
+bool AppShell::workflowRunning() const {
+    std::lock_guard<std::mutex> lk(wfMu_);
+    return wfRunning_;
+}
+
+AppShell::WorkflowSnapshot AppShell::workflowSnapshot() const {
+    std::lock_guard<std::mutex> lk(wfMu_);
+    WorkflowSnapshot s;
+    s.running = wfRunning_;
+    s.hasResult = wfHasResult_;
+    s.label = wfLabel_;
+    s.nodes = wfNodes_;
+    s.ran = wfRan_;
+    s.cached = wfCached_;
+    s.failed = wfFailed_;
+    s.cancelled = wfCancelled_;
+    return s;
 }
 
 DockJobResult AppShell::dockFor(const Molecule& m, const std::string& target, bool& computing) {
@@ -598,6 +679,7 @@ void AppShell::drawContent() {
         else if (panel == "Similarity")  panels::similarity(*this);
         else if (panel == "Legal")       panels::legal(*this);
         else if (panel == "Docking")     panels::docking(*this);
+        else if (panel == "Workflows")   panels::workflows(*this);
         else if (panel == "Library")     panels::library(*this);
         else if (panel == "Runs")        panels::runs(*this);
         else if (panel == "Presets")     panels::presets(*this);

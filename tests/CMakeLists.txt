@@ -12,6 +12,7 @@ add_executable(stimlab_tests
   test_storage.cpp
   test_agent.cpp
   test_workflow.cpp
+  test_pipelines.cpp
 )
 
 target_link_libraries(stimlab_tests PRIVATE

@@ -4,6 +4,7 @@
 #include <condition_variable>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <queue>
 #include <sstream>
 #include <system_error>
@@ -186,7 +187,8 @@ DagRunResult DagExecutor::run(const Dag& dag, const CancelToken& cancel, Progres
     std::condition_variable cv;
     int finished = 0;
     std::queue<int> ready;
-    std::vector<NodeProgress> pending;  // progress events, drained by the scheduler
+    std::vector<NodeProgress> pending;        // progress events, drained by the scheduler
+    std::vector<std::future<void>> futs;      // one per scheduled worker (joined before return)
     for (int i = 0; i < N; ++i)
         if (indeg[i] == 0) ready.push(i);
 
@@ -239,8 +241,17 @@ DagRunResult DagExecutor::run(const Dag& dag, const CancelToken& cancel, Progres
             NodeInputs inputs;
             for (const auto& d : nodes[i].deps) inputs[d] = output[idx[d]];
             const std::string k = key[nodes[i].id];
-            jobs_.submit([&, i, inputs, k] {
-                NodeResult r = nodes[i].run(inputs, cancel);
+            futs.push_back(jobs_.submit([&, i, inputs, k] {
+                // A throwing node fn must still finalize the node (else `finished`
+                // never reaches N and run() hangs) - treat it as a failure.
+                NodeResult r;
+                try {
+                    r = nodes[i].run(inputs, cancel);
+                } catch (const std::exception& e) {
+                    r = NodeResult::failure(std::string("exception: ") + e.what());
+                } catch (...) {
+                    r = NodeResult::failure("unknown exception");
+                }
                 std::lock_guard<std::mutex> lg(m);
                 if (r.ok) {
                     output[i] = r.output;
@@ -250,7 +261,7 @@ DagRunResult DagExecutor::run(const Dag& dag, const CancelToken& cancel, Progres
                     finalize(i, NodeStatus::Failed, r.error.empty() ? "failed" : r.error);
                 }
                 cv.notify_all();
-            });
+            }));
         }
 
         // Fire progress callbacks outside the lock (single-threaded here, so the
@@ -274,6 +285,15 @@ DagRunResult DagExecutor::run(const Dag& dag, const CancelToken& cancel, Progres
         for (const auto& p : batch) onProgress(p);
         lk.lock();
     }
+
+    // CRITICAL: every scheduled worker must FULLY return before this frame's locals
+    // (m, cv, status, ...) are destroyed. The last worker calls cv.notify_all() after
+    // finalize, which can wake the scheduler to exit here; without this join the
+    // scheduler could destroy cv/m while that worker is still unwinding the condvar
+    // machinery (a notify-then-destroy use-after-free). A future completes only after
+    // its packaged_task - and thus the whole worker lambda - has returned.
+    if (lk.owns_lock()) lk.unlock();
+    for (auto& f : futs) f.get();
 
     for (int i = 0; i < N; ++i) {
         res.status[nodes[i].id] = status[i];

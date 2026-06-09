@@ -4,6 +4,7 @@
 #include <chrono>
 #include <map>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <thread>
 
@@ -233,6 +234,28 @@ TEST_CASE("A failed node skips its downstream but the run reports it", "[workflo
     REQUIRE(log.count("b") == 0);
 }
 
+TEST_CASE("A node function that throws becomes a failure (no hang)", "[workflow][dag]") {
+    RunLog log;
+    Dag d;
+    Node a;
+    a.id = "a";
+    a.module = "A";
+    a.run = [](const NodeInputs&, const CancelToken&) -> NodeResult {
+        throw std::runtime_error("kaboom");
+    };
+    d.add(a);
+    d.add(makeNode("b", {"a"}, log, "B", 1, "x"));
+
+    JobSystem jobs(2);
+    MemoryNodeCache cache;
+    DagExecutor exec(jobs, cache);
+    const auto r = exec.run(d, CancelToken{});  // must terminate, not hang
+
+    REQUIRE_FALSE(r.ok);
+    REQUIRE(r.statusOf("a") == NodeStatus::Failed);
+    REQUIRE(r.statusOf("b") == NodeStatus::Skipped);
+}
+
 TEST_CASE("Wide DAG runs nodes concurrently and the sink sees all of them",
           "[workflow][concurrency]") {
     RunLog log;
@@ -274,11 +297,12 @@ TEST_CASE("Wide DAG runs nodes concurrently and the sink sees all of them",
 }
 
 TEST_CASE("DiskNodeCache round-trips an output", "[workflow][cache]") {
+    // The disk cache persists under %APPDATA%, so assert a miss on a key no test ever
+    // writes, and a round-trip on a key we write here (robust across repeated runs).
     DiskNodeCache cache("dag-unit-test");
-    const std::string key = "stimlab_unit_key_123";
-    REQUIRE_FALSE(cache.get(key).has_value());
-    cache.put(key, "hello-payload");
-    auto got = cache.get(key);
+    REQUIRE_FALSE(cache.get("stimlab_never_written_key_zzz").has_value());
+    cache.put("stimlab_roundtrip_key", "hello-payload");
+    auto got = cache.get("stimlab_roundtrip_key");
     REQUIRE(got.has_value());
     REQUIRE(*got == "hello-payload");
 }

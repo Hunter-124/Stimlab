@@ -5,7 +5,27 @@
 > precise point to resume from. Read this first, then [plan.md](plan.md) (the master spec) and the
 > approved build plan at `C:\Users\nigga\.claude\plans\i-want-you-to-deep-plum.md`.
 
-Last updated: 2026-06-08 · Branch: `master` · **Phase D COMPLETE** (WP-1/2/3 + all 4 WP-4 items, incl. the LLM agent loop).
+Last updated: 2026-06-09 · Branch: `master` · **Phase D COMPLETE** + **real docking live** + **WP-D workflow engine landed**.
+
+> **STATUS: WORKFLOW / DAG ENGINE LANDED (WP-D, priority #2). ctest 61/61.** The re-runnable prep→dock
+> pipelines are rebuilt as a content-cached, cancellable DAG with a live view:
+> - **Engine** `src/workflow/` (hand-rolled, NO Taskflow dep): `JobSystem` (worker pool + cooperative
+>   `CancelToken`), `Dag` (validate/topo), `DagExecutor` (parallel ready-queue scheduler). Content cache
+>   key = `hash(module,version,params,{dep→dep key})` (transitive → unchanged graph = full cache-hit
+>   resume; change one node → only it + downstream re-run). `INodeCache` with in-memory + `%APPDATA%/
+>   StimLab/cache` disk backends.
+> - **Pipeline** `src/modules/Pipelines.cpp`: `buildDockingPipeline(smiles,target,Services)` → 3 nodes
+>   (ligand_prep → embed3D; receptor_prep → locate prepared PDBQT; dock → dockDetailed). External inputs
+>   (receptor-prepared? vina present?) are fingerprinted into node params at build time so a provisioning
+>   change correctly invalidates the cache.
+> - **Live DAG view** = new **Workflows** panel: bezier node graph colored by per-node status
+>   (pending/running/cached/done/failed/cancelled) + Run/Cancel + a node-output table. The run executes on
+>   a worker thread via `AppShell::runWorkflow` (UI never blocks; mirrors the docking `dockFor` pattern).
+> - An **adversarial concurrency review** (subagent) of the engine found a real critical use-after-free
+>   (notify-then-destroy of the scheduler's `m`/`cv` by the last worker); fixed by joining worker futures
+>   before `run()` returns. A throwing node fn is caught → Failed (no hang). Both fixes have tests.
+> - Next per the user's priority order: **#3 expansive agent tools / web tools** (plan §8 WP-K). Packaging
+>   (#4) stays deferred. See [docs/PHASE_D.md](docs/PHASE_D.md) for the docking detail.
 
 > **STATUS: REAL DOCKING IS LIVE (WP-F + WP-G1), verified end-to-end. ctest 48/48.** Docking no longer
 > falls back to the descriptor estimate when an engine is provisioned - it runs **AutoDock Vina for real**

@@ -228,6 +228,14 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     if (char buf[128]; GetEnvironmentVariableA("STIMLAB_MOLECULE", buf, sizeof(buf)) > 0)
         shell.state().selectedMolecule = buf;
 
+    // Automation hook: deep-linking to the Workflows panel kicks one pipeline run so a
+    // capture shows the live DAG executing (harmless in normal use - this env path is
+    // only exercised by the screenshot tooling).
+    if (shell.state().activePanel == "Workflows") {
+        const stimlab::Molecule mm = shell.currentMolecule();
+        shell.runWorkflow(mm.smiles, "DAT", mm.name + " -> DAT");
+    }
+
     spdlog::info("UI ready - {} compounds in library (real chem engine)",
                  backend.services().library->count());
 

@@ -19,6 +19,7 @@ void metabolism(AppShell& shell);
 void similarity(AppShell& shell);
 void legal(AppShell& shell);
 void docking(AppShell& shell);
+void workflows(AppShell& shell);
 void library(AppShell& shell);
 void runs(AppShell& shell);
 void presets(AppShell& shell);

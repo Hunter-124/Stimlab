@@ -12,6 +12,7 @@
 
 #include "contracts/Services.h"
 #include "data/Domain.h"
+#include "workflow/Dag.h"
 
 struct ID3D11Device;
 struct ID3D11DeviceContext;
@@ -81,6 +82,29 @@ public:
     // completes so a result computed while the engine was absent is re-docked for real.
     void invalidateDock();
 
+    // ---- Workflows / DAG (WP-D) ----------------------------------------------
+    // Run the prep->dock pipeline as a live DAG off the UI thread. The Workflows
+    // panel polls workflowSnapshot() each frame for a thread-safe view of node states.
+    struct WfNode {
+        std::string              id;
+        std::string              module;
+        workflow::NodeStatus     status = workflow::NodeStatus::Pending;
+        std::string              detail;
+        std::vector<std::string> deps;
+    };
+    struct WorkflowSnapshot {
+        bool                running = false;
+        bool                hasResult = false;
+        std::string         label;
+        std::vector<WfNode> nodes;
+        int                 ran = 0, cached = 0, failed = 0, cancelled = 0;
+    };
+    void runWorkflow(const std::string& smiles, const std::string& targetId,
+                     const std::string& label);
+    void cancelWorkflow();
+    [[nodiscard]] WorkflowSnapshot workflowSnapshot() const;
+    [[nodiscard]] bool workflowRunning() const;
+
     // Assistant -> UI bridge.
     void requestHighlight(const std::string& panelId, const std::string& explanation);
     void frameHighlightCurrentWindow(const std::string& panelId);  // call inside a panel
@@ -147,6 +171,21 @@ private:
     DockJobResult         dockResult_;     // last completed result
     bool                  dockComputing_ = false;
     bool                  dockReady_ = false;
+
+    // Workflow run state (WP-D). The DAG runs on wfThread_ (off the UI thread);
+    // onProgress + the final result update wfNodes_/counters under wfMu_. Joined in
+    // the destructor. wfJobs_/wfCache_ are created lazily and outlive the worker.
+    std::unique_ptr<workflow::JobSystem>     wfJobs_;
+    std::unique_ptr<workflow::DiskNodeCache> wfCache_;
+    std::thread                              wfThread_;
+    mutable std::mutex                       wfMu_;
+    std::vector<WfNode>                      wfNodes_;
+    std::string                              wfLabel_;
+    bool                                     wfRunning_ = false;
+    bool                                     wfHasResult_ = false;
+    int                                      wfRan_ = 0, wfCached_ = 0, wfFailed_ = 0,
+                                             wfCancelled_ = 0;
+    workflow::CancelToken                    wfCancel_;
 
     // ---- agent ----
     // DECLARATION ORDER IS LOAD-BEARING: every member the worker thread touches
