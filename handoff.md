@@ -28,7 +28,11 @@ Last updated: 2026-06-09 · Branch: `master` · **v1 COMPLETE + all 5 post-v1 tr
 >   Windows on this same NVIDIA GPU, and a native-Windows AutoDock-GPU CUDA *source* build stays infeasible
 >   (Unix Makefile + CUDA 13 drops pre-sm_75; Uni-Dock/gnina are Linux-only). Torsionally-flexible ligand
 >   docking remains the documented STRETCH (Track F), unchanged.
-> - **D. Git remote + live CI** - PENDING a GitHub credential (no `gh`, no token on this host; `winget` present).
+> - **D. Git remote + live CI** - private repo **`Hunter-124/Stimulant-Laboratory`** created + `master` pushed
+>   (via the cached GCM credential; scopes repo+workflow). First Actions run failed at `vcpkg install` because
+>   `vcpkg.json`'s `builtin-baseline` was a LOCAL-only commit in the user's vcpkg (not on microsoft/vcpkg), so
+>   the runner's preinstalled vcpkg couldn't resolve it - **fixed by removing `builtin-baseline`** (deps are
+>   unconstrained, so each vcpkg uses its own baseline; local stays green, HEAD was only 1 commit past the pin).
 > - **E. Code-signing - INTENTIONALLY UNSIGNED** (user: educational/personal use, "I do not care" about certs).
 >   `scripts/sign.ps1` stays a clean exit-0 no-op; releases ship unsigned (a first-run SmartScreen warning is
 >   expected). No cert acquired. See [docs/PHASE_E.md](docs/PHASE_E.md).

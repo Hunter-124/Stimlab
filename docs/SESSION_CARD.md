@@ -38,7 +38,8 @@ ctest **69/69** on windows + windows-static; science, science-static, windows-cu
 ## 4. ENVIRONMENT (verified)
 RTX 3080 Ti (sm_86), driver 596.36. **CUDA Toolkit is now FULL: nvcc 13.3.33** at
 `C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.3\bin` (v13.2 stays runtime-only). MSVC v143 (cl 19.44),
-CMake 4.x, Ninja, vcpkg at `C:\Users\nigga\vcpkg`. **No git remote yet.** WSL2 status unknown (check `wsl --status`).
+CMake 4.x, Ninja, vcpkg at `C:\Users\nigga\vcpkg`. **Remote: `Hunter-124/Stimulant-Laboratory` (private)** via the
+cached GCM credential. WSL2 not used (user declined; Vina-GPU covers native GPU docking).
 
 ## 5. THE WORK — "do everything"  (one commit per item, green trunk; do A→B first, they're self-contained)
 
@@ -82,6 +83,10 @@ install a Linux GPU driver — the Windows driver is stubbed as `libcuda.so`). C
 infeasible: Unix Makefile + CUDA 13 drops pre-sm_75.)
 
 ### D. Git remote + live CI run  [PRECONDITION: a GitHub repo — `gh` or user-provided remote]
+> 🔄 **IN PROGRESS**: private repo `Hunter-124/Stimulant-Laboratory` created + `master` pushed (cached GCM
+> credential). CI fix: removed `vcpkg.json` `builtin-baseline` (it was a LOCAL-only vcpkg commit the runner
+> couldn't resolve → `vcpkg install` failed). Re-running Actions to confirm green.
+
 The repo has NO remote, so `.github/workflows/ci.yml` is written-but-unrun. Create/connect a GitHub repo
 (`gh repo create` or a user remote), push `master`, confirm the Actions run goes green on windows-latest (it
 uses the preinstalled vcpkg + x-gha binary cache; sanity-check the `vcpkg.json` builtin-baseline against the
