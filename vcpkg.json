@@ -27,12 +27,12 @@
   ],
   "features": {
     "science": {
-      "description": "Networked extras (Phase D agent): libcurl for the Anthropic LLM provider. Uses Windows-native Schannel TLS (no OpenSSL build). NOTE: there is intentionally no rdkit here - StimLab has its own in-house cheminformatics engine in src/chem (rdkit is not a port in this vcpkg registry).",
+      "description": "Networked extras (Phase D agent): libcurl for the Anthropic LLM provider. curl[ssl] resolves to Windows-native Schannel TLS here (the port's ssl feature pulls sspi on Windows), so there is no OpenSSL build. NOTE: there is intentionally no rdkit - StimLab has its own in-house cheminformatics engine in src/chem (rdkit is not a port in this vcpkg registry).",
       "dependencies": [
         {
           "name": "curl",
           "features": [
-            "schannel"
+            "ssl"
           ]
         }
       ]

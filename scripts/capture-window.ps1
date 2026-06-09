@@ -20,6 +20,7 @@ public static class W {
     [DllImport("user32.dll")] public static extern IntPtr FindWindow(string c, string n);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n);
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
     [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p);
     public struct RECT { public int L, T, R, B; }
@@ -43,8 +44,13 @@ try {
     }
     if ($hwnd -eq [IntPtr]::Zero) { throw "StimLab window not found" }
     [W]::ShowWindow($hwnd, 9) | Out-Null      # SW_RESTORE
+    # Force topmost so it sits above other (non-topmost) windows - SetForegroundWindow
+    # can't always steal focus, which leaves the window occluded for the BitBlt.
+    $HWND_TOPMOST = [IntPtr](-1); $HWND_NOTOPMOST = [IntPtr](-2)
+    $SWP = 0x40 -bor 0x1 -bor 0x2   # SHOWWINDOW | NOMOVE | NOSIZE
+    [W]::SetWindowPos($hwnd, $HWND_TOPMOST, 0,0,0,0, $SWP) | Out-Null
     [W]::SetForegroundWindow($hwnd) | Out-Null
-    Start-Sleep -Milliseconds 800
+    Start-Sleep -Milliseconds 900
     $r = New-Object W+RECT
     [W]::GetClientRect($hwnd, [ref]$r) | Out-Null
     $tl = New-Object W+POINT; $tl.X = 0; $tl.Y = 0

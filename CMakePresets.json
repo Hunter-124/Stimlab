@@ -54,6 +54,16 @@
       "configurePreset": "windows",
       "output": { "outputOnFailure": true },
       "execution": { "noTestsAction": "error", "stopOnFailure": false }
+    },
+    {
+      "name": "windows-science",
+      "inherits": "windows",
+      "configurePreset": "windows-science"
+    },
+    {
+      "name": "windows-cuda",
+      "inherits": "windows",
+      "configurePreset": "windows-cuda"
     }
   ]
 }
