@@ -33,7 +33,9 @@ AppShell::AppShell(Services services) : svc_(services) {
         {"Dashboard", "Dashboard",
          "Overview: library size, recent runs, and a snapshot of the selected compound."},
         {"Structure", "Structure Workbench",
-         "Identity + physicochemical properties of the selected molecule (2D depiction lands in Phase C)."},
+         "Identity + physicochemical properties of the selected molecule with a live 3D viewer."},
+        {"Input", "Molecule Input",
+         "Enter any SMILES (or load a library compound) to analyze an arbitrary structure."},
         {"Analog", "Analog Explorer",
          "Model a candidate derivative's profile and check it vs existing samples + predicted byproducts."},
         {"Compare", "Compare",
@@ -83,6 +85,7 @@ render::MolViewport* AppShell::viewer() {
 }
 
 Molecule AppShell::currentMolecule() const {
+    if (state_.hasCustom && state_.selectedMolecule == "__custom__") return state_.customMolecule;
     if (svc_.library) {
         if (auto m = svc_.library->byId(state_.selectedMolecule)) return *m;
         auto all = svc_.library->all();
@@ -232,6 +235,7 @@ void AppShell::drawContent() {
         const std::string& panel = state_.activePanel;
         if (panel == "Dashboard")        panels::dashboard(*this);
         else if (panel == "Structure")   panels::structureWorkbench(*this);
+        else if (panel == "Input")       panels::moleculeInput(*this);
         else if (panel == "Analog")      panels::analogExplorer(*this);
         else if (panel == "Compare")     panels::compare(*this);
         else if (panel == "Stability")   panels::stability(*this);

@@ -10,6 +10,7 @@ namespace panels {
 
 void dashboard(AppShell& shell);
 void structureWorkbench(AppShell& shell);
+void moleculeInput(AppShell& shell);
 void compare(AppShell& shell);
 void analogExplorer(AppShell& shell);
 void stability(AppShell& shell);

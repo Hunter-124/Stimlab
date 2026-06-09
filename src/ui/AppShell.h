@@ -26,6 +26,8 @@ struct PanelInfo {
 
 struct UiState {
     std::string selectedMolecule = "amphetamine";
+    Molecule    customMolecule;             // user-entered SMILES result (id "__custom__")
+    bool        hasCustom = false;          // customMolecule analyzed + selectable as active
     std::string activePanel = "Dashboard";
     std::string dockTarget;                 // chosen docking target
     std::string highlight;                  // panel id currently pulsing ("" = none)

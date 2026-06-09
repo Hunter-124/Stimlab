@@ -11,6 +11,7 @@
 #include <imgui.h>
 #include <implot.h>
 
+#include "chem/Descriptors.h"
 #include "chem/Embed3D.h"
 #include "chem/Smiles.h"
 #include "core/AppPaths.h"
@@ -359,6 +360,104 @@ void structureWorkbench(AppShell& shell) {
     if (!exportStatus.empty()) {
         ImGui::SameLine();
         ImGui::TextDisabled("%s", exportStatus.c_str());
+    }
+}
+
+// --------------------------------------------------------------- Molecule Input
+// Free-text SMILES -> the in-house parser -> full descriptors + 3D embedding, so
+// arbitrary structures (not just library compounds) can be analyzed. "Set as
+// active compound" routes the parsed molecule into every other panel.
+void moleculeInput(AppShell& shell) {
+    static char smilesBuf[256] = "CC(N)Cc1ccc(Cl)cc1";  // 4-chloroamphetamine example
+    static char nameBuf[96] = "My candidate";
+    static std::string status;
+    static chem::Conformer previewConf;
+    static ViewerUiState viewUi;
+    static Molecule preview;
+    static bool valid = false;
+    static std::string lastSmiles;
+
+    ImGui::TextWrapped(
+        "Enter any SMILES to analyze an arbitrary structure with the full StimLab engine "
+        "(descriptors, 3D embedding, ADMET, similarity, docking). Analysis only - no synthesis "
+        "guidance.");
+    ImGui::Spacing();
+    ImGui::SetNextItemWidth(440);
+    ImGui::InputText("SMILES", smilesBuf, sizeof(smilesBuf));
+    ImGui::SetNextItemWidth(260);
+    ImGui::InputText("Name", nameBuf, sizeof(nameBuf));
+    ImGui::SameLine();
+    const bool analyze = ImGui::Button("Analyze");
+
+    if (analyze || lastSmiles != smilesBuf) {
+        lastSmiles = smilesBuf;
+        auto parsed = chem::parseSmiles(smilesBuf);
+        if (parsed && !parsed->empty()) {
+            valid = true;
+            preview = Molecule{};
+            preview.id = "__custom__";
+            preview.name = nameBuf[0] ? std::string(nameBuf) : "(custom)";
+            preview.smiles = smilesBuf;
+            preview.formula = chem::molecularFormula(*parsed);
+            preview.molWeight = chem::molecularWeight(*parsed);
+            preview.logP = chem::crippenLogP(*parsed);
+            preview.tpsa = chem::tpsa(*parsed);
+            preview.hbd = chem::hbdCount(*parsed);
+            preview.hba = chem::hbaCount(*parsed);
+            preview.rotatableBonds = chem::rotatableBondCount(*parsed);
+            preview.drugClass = "User input";
+            preview.legalStatus = "(unscheduled / unknown)";
+            preview.notes = "Entered via the Molecule Input panel.";
+            previewConf = chem::embed3D(*parsed);
+            status = "Parsed OK - " + preview.formula;
+        } else {
+            valid = false;
+            status = "Invalid SMILES - check brackets, ring closures and atom symbols.";
+        }
+    }
+
+    ImGui::Spacing();
+    ImGui::TextColored(theme::verdictColor(valid ? 1 : 2), "%s", status.c_str());
+    ImGui::Separator();
+    if (!valid) return;
+
+    if (ImGui::BeginTable("inprop", 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable)) {
+        ImGui::TableSetupColumn("Properties", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("3D structure", ImGuiTableColumnFlags_WidthFixed, 360.0f);
+        ImGui::TableNextRow();
+
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextDisabled("Formula: %s", preview.formula.c_str());
+        ImGui::Spacing();
+        if (ImGui::BeginTable("inp", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+            for (const char* h : {"MW", "logP", "TPSA", "HBD", "HBA", "RotB"})
+                ImGui::TableSetupColumn(h);
+            ImGui::TableHeadersRow();
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted(f2(preview.molWeight).c_str());
+            ImGui::TableSetColumnIndex(1); ImGui::TextUnformatted(f2(preview.logP).c_str());
+            ImGui::TableSetColumnIndex(2); ImGui::TextUnformatted(f2(preview.tpsa).c_str());
+            ImGui::TableSetColumnIndex(3); ImGui::Text("%d", preview.hbd);
+            ImGui::TableSetColumnIndex(4); ImGui::Text("%d", preview.hba);
+            ImGui::TableSetColumnIndex(5); ImGui::Text("%d", preview.rotatableBonds);
+            ImGui::EndTable();
+        }
+        ImGui::Spacing();
+        if (ImGui::Button("Set as active compound")) {
+            shell.state().customMolecule = preview;
+            shell.state().hasCustom = true;
+            shell.state().selectedMolecule = "__custom__";
+            shell.requestHighlight("Structure",
+                "Your structure is now the active compound - every panel (Structure, ADMET, "
+                "Docking, ...) analyzes it.");
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("routes this structure into every other panel");
+
+        ImGui::TableSetColumnIndex(1);
+        ImGui::TextDisabled("3D STRUCTURE");
+        molViewer3D(shell, previewConf, "custom|" + lastSmiles, viewUi, 300.0f);
+        ImGui::EndTable();
     }
 }
 
