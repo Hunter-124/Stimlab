@@ -7,6 +7,7 @@ add_executable(stimlab_tests
   test_chem.cpp
   test_modules.cpp
   test_embed3d.cpp
+  test_molviewport.cpp
 )
 
 target_link_libraries(stimlab_tests PRIVATE
@@ -16,6 +17,7 @@ target_link_libraries(stimlab_tests PRIVATE
   stimlab_fakes
   stimlab_chem
   stimlab_modules
+  stimlab_render
 )
 
 target_compile_features(stimlab_tests PRIVATE cxx_std_20)

@@ -110,6 +110,17 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
 
     stimlab::RealBackend backend;
     stimlab::AppShell shell(backend.services());
+    // WP-2: give the shell the live DX11 device so the 3D molecular viewport can
+    // render into an off-screen target shown by ImGui in the Structure/Docking panels.
+    shell.setRenderDevice(device.device(), device.context());
+
+    // Optional: STIMLAB_PANEL / STIMLAB_MOLECULE select the initial panel + compound
+    // (handy for screenshots/automation; defaults are Dashboard/amphetamine).
+    if (char buf[128]; GetEnvironmentVariableA("STIMLAB_PANEL", buf, sizeof(buf)) > 0)
+        shell.state().activePanel = buf;
+    if (char buf[128]; GetEnvironmentVariableA("STIMLAB_MOLECULE", buf, sizeof(buf)) > 0)
+        shell.state().selectedMolecule = buf;
+
     spdlog::info("UI ready - {} compounds in library (real chem engine)",
                  backend.services().library->count());
 

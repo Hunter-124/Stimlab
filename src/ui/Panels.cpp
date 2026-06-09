@@ -11,7 +11,10 @@
 #include <imgui.h>
 #include <implot.h>
 
+#include "chem/Embed3D.h"
+#include "chem/Smiles.h"
 #include "core/AppPaths.h"
+#include "render/MolViewport.h"
 #include "ui/AppShell.h"
 #include "ui/Theme.h"
 
@@ -76,6 +79,112 @@ void moleculeSchematic(const Molecule& m, ImVec2 size) {
         dl->AddCircleFilled(oAtom, 6.0f, oxygen);
         dl->AddText(ImVec2(oAtom.x - 16, oAtom.y - 7), oxygen, "O");
     }
+}
+
+// Persistent per-panel state for an embedded 3D molecular viewport.
+struct ViewerUiState {
+    bool spacefill = false;
+    bool showH = false;
+    std::string lastKey;       // cache key of the molecule currently framed
+};
+
+// CPK legend swatch (color comes from the same table the renderer uses).
+void cpkSwatch(int z, const char* label) {
+    const std::uint32_t c = render::cpkColor(z);  // 0xAABBGGRR
+    const ImU32 col = IM_COL32(c & 0xFF, (c >> 8) & 0xFF, (c >> 16) & 0xFF, 0xFF);
+    ImGui::PushStyleColor(ImGuiCol_Button, col);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, col);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, col);
+    ImGui::Button("##sw", ImVec2(14, 14));
+    ImGui::PopStyleColor(3);
+    ImGui::SameLine(0, 4);
+    ImGui::TextUnformatted(label);
+}
+
+// Draw a chem::Conformer in an interactive 3D viewport (off-screen RT -> ImGui
+// image) with toggles + a CPK legend. `cacheKey` identifies the molecule so the
+// camera only auto-fits when the displayed structure changes. Returns false (and
+// draws a fallback note) if no GPU viewer is available.
+bool molViewer3D(AppShell& shell, const chem::Conformer& conf, const std::string& cacheKey,
+                 ViewerUiState& ui, float height) {
+    render::MolViewport* vp = shell.viewer();
+    if (!vp) {
+        ImGui::TextDisabled("3D viewer unavailable (no DirectX device).");
+        return false;
+    }
+
+    // Controls row.
+    ImGui::Checkbox("Spacefill", &ui.spacefill);
+    ImGui::SameLine();
+    ImGui::Checkbox("Show H", &ui.showH);
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Reset view")) ui.lastKey.clear();  // force a re-fit
+    ImGui::SameLine();
+    ImGui::TextDisabled("(drag: orbit  -  wheel: zoom  -  right-drag: pan)");
+
+    const render::MolScene scene = render::buildMolScene(conf, ui.spacefill, ui.showH);
+
+    // Auto-fit when the molecule (or toggle that changes framing) changes.
+    const std::string key = cacheKey + (ui.showH ? "|H" : "") + (ui.spacefill ? "|S" : "");
+    if (key != ui.lastKey) {
+        vp->resetCamera(scene);
+        ui.lastKey = key;
+    }
+
+    const float avail = ImGui::GetContentRegionAvail().x;
+    const int w = std::max(64, static_cast<int>(avail));
+    const int h = std::max(64, static_cast<int>(height));
+
+    if (conf.empty() || scene.atoms.empty()) {
+        ImGui::Dummy(ImVec2(static_cast<float>(w), static_cast<float>(h)));
+        ImGui::TextDisabled("(no atoms to display)");
+        return true;
+    }
+
+    void* srv = vp->draw(scene, w, h);
+    if (!srv) {
+        ImGui::TextDisabled("3D render failed.");
+        return false;
+    }
+
+    const ImVec2 imgPos = ImGui::GetCursorScreenPos();
+    ImGui::Image(reinterpret_cast<ImTextureID>(srv), ImVec2(static_cast<float>(w), static_cast<float>(h)));
+    const bool hovered = ImGui::IsItemHovered();
+
+    // Camera input - only while the image is hovered.
+    ImGuiIO& io = ImGui::GetIO();
+    if (hovered) {
+        if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+            const ImVec2 d = io.MouseDelta;
+            vp->orbit(d.x, d.y);
+        }
+        if (ImGui::IsMouseDragging(ImGuiMouseButton_Right) ||
+            ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
+            const ImVec2 d = io.MouseDelta;
+            vp->pan(d.x, d.y);
+        }
+        if (io.MouseWheel != 0.0f) vp->zoom(io.MouseWheel);
+    }
+    (void)imgPos;
+
+    // Legend (only elements that actually appear).
+    bool seen[120] = {false};
+    for (int i = 0; i < conf.size(); ++i) {
+        const int z = conf.z[i];
+        if (z >= 0 && z < 120) seen[z] = true;
+    }
+    struct LE { int z; const char* sym; };
+    const LE order[] = {{6, "C"}, {1, "H"}, {7, "N"}, {8, "O"}, {16, "S"}, {15, "P"},
+                        {9, "F"}, {17, "Cl"}, {35, "Br"}, {53, "I"}};
+    bool first = true;
+    for (const auto& e : order) {
+        if (!seen[e.z]) continue;
+        if (e.z == 1 && !ui.showH) continue;
+        if (!first) ImGui::SameLine(0, 12);
+        first = false;
+        cpkSwatch(e.z, e.sym);
+    }
+    return true;
 }
 
 // Build a full Markdown analysis report for one compound (identity -> legal).
@@ -179,9 +288,20 @@ void dashboard(AppShell& shell) {
 void structureWorkbench(AppShell& shell) {
     const Molecule m = shell.currentMolecule();
 
+    // Embed the selected molecule to a 3D conformer, caching by id so we only
+    // re-embed when the active compound changes (embedding is cheap but not free).
+    static std::string lastId;
+    static chem::Conformer conf;
+    static ViewerUiState viewUi;
+    if (m.id != lastId) {
+        lastId = m.id;
+        conf = chem::Conformer{};
+        if (auto parsed = chem::parseSmiles(m.smiles)) conf = chem::embed3D(*parsed);
+    }
+
     if (ImGui::BeginTable("idprop", 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable)) {
         ImGui::TableSetupColumn("Identity", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("2D schematic", ImGuiTableColumnFlags_WidthFixed, 280.0f);
+        ImGui::TableSetupColumn("3D structure", ImGuiTableColumnFlags_WidthFixed, 360.0f);
         ImGui::TableNextRow();
 
         ImGui::TableSetColumnIndex(0);
@@ -216,9 +336,11 @@ void structureWorkbench(AppShell& shell) {
         }
 
         ImGui::TableSetColumnIndex(1);
-        ImGui::TextDisabled("Schematic (illustrative)");
-        moleculeSchematic(m, ImVec2(260, 220));
-        ImGui::TextDisabled("Real 2D/3D depiction lands with RDKit (Phase C).");
+        ImGui::TextDisabled("3D STRUCTURE");
+        if (!molViewer3D(shell, conf, m.id, viewUi, 300.0f)) {
+            // Graceful fallback when no GPU device is available: 2D schematic.
+            moleculeSchematic(m, ImVec2(260, 220));
+        }
         ImGui::EndTable();
     }
 
@@ -471,6 +593,38 @@ void docking(AppShell& shell) {
         }
         ImGui::EndTable();
     }
+
+    // 3D pose overlay: show the docked ligand conformer for the selected pose
+    // (real engine, via dockDetailed), or - when no engine provided 3D - the
+    // embedded ligand structure as a stand-in. Engine/fallback is labeled.
+    ImGui::Spacing();
+    ImGui::TextDisabled("3D POSE / LIGAND");
+    const auto detail = s.docking->dockDetailed(m, st.dockTarget);
+    static int poseSel = 0;
+    if (!detail.poses.empty()) {
+        if (poseSel >= static_cast<int>(detail.poses.size())) poseSel = 0;
+        ImGui::SetNextItemWidth(160);
+        ImGui::SliderInt("Pose##dock", &poseSel, 0, static_cast<int>(detail.poses.size()) - 1);
+        ImGui::SameLine();
+        ImGui::TextDisabled("engine: %s%s", detail.engine.c_str(),
+                            detail.real ? "" : "  (descriptor estimate, not a docked score)");
+    } else {
+        poseSel = 0;
+    }
+    static std::string dockKey;
+    static chem::Conformer dockConf;
+    static ViewerUiState dockViewUi;
+    const std::string key = m.id + "|" + st.dockTarget + "|" + std::to_string(poseSel);
+    if (key != dockKey) {
+        dockKey = key;
+        dockConf = chem::Conformer{};
+        if (poseSel < static_cast<int>(detail.poses.size()) && !detail.poses[poseSel].ligand.empty())
+            dockConf = detail.poses[poseSel].ligand;
+        else if (auto parsed = chem::parseSmiles(m.smiles))
+            dockConf = chem::embed3D(*parsed);
+    }
+    molViewer3D(shell, dockConf, key, dockViewUi, 280.0f);
+
     ImGui::Spacing();
     ImGui::TextDisabled("Note: binding affinity is a target-engagement signal, never a make-it signal.");
 }

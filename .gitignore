@@ -26,6 +26,13 @@ CMakeUserPresets.json
 /third_party/_downloads/
 /third_party/_build/
 
+# Agent worktrees (git worktree under .claude; never commit)
+/.claude/
+
+# Local GUI-verification screenshots + scratch debug output
+verify_*.png
+viewport_dbg.txt
+
 # OS cruft
 Thumbs.db
 desktop.ini

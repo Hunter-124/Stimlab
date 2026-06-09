@@ -4,6 +4,7 @@
 
 #include <imgui.h>
 
+#include "render/MolViewport.h"
 #include "ui/Panels.h"
 #include "ui/Theme.h"
 
@@ -58,6 +59,27 @@ AppShell::AppShell(Services services) : svc_(services) {
         {"Settings", "Settings",
          "AI provider/keys, GPU mode, storage paths."},
     };
+}
+
+AppShell::~AppShell() = default;  // here MolViewport is a complete type
+
+void AppShell::setRenderDevice(ID3D11Device* device, ID3D11DeviceContext* context) {
+    renderDev_ = device;
+    renderCtx_ = context;
+    // Drop any viewport built against an old device; it is rebuilt lazily.
+    viewer_.reset();
+}
+
+render::MolViewport* AppShell::viewer() {
+    if (!renderDev_ || !renderCtx_) return nullptr;
+    if (!viewer_) {
+        viewer_ = std::make_unique<render::MolViewport>(renderDev_, renderCtx_);
+        if (!viewer_->valid()) {
+            viewer_.reset();
+            return nullptr;
+        }
+    }
+    return viewer_.get();
 }
 
 Molecule AppShell::currentMolecule() const {
