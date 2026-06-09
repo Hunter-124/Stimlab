@@ -11,6 +11,8 @@
 #include "agent/MockProvider.h"
 #include "agent/SystemPrompt.h"
 #include "agent/Tools.h"
+#include "chem/Descriptors.h"
+#include "chem/Smiles.h"
 #include "core/Config.h"
 #include "core/Secrets.h"
 #include "modules/Pipelines.h"
@@ -442,9 +444,207 @@ void AppShell::buildAgent() {
             }));
     }
 
+    registerAgentServiceTools();
+    registerAgentWebTools();
+
     agent_->configure(mock_.get(), registry_.get(), buildSystemPrompt());
     agent_->setModel(kDefaultModel);
     agentUsingAnthropic_ = false;
+}
+
+IToolRegistry* AppShell::toolRegistry() { return registry_.get(); }
+
+std::optional<Molecule> AppShell::resolveAgentCompound(const std::string& arg) const {
+    if (arg.empty()) return agentCompoundSnapshot();  // active compound
+    auto lower = [](std::string s) {
+        for (auto& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return s;
+    };
+    const std::string q = lower(arg);
+    if (svc_.library) {
+        for (const auto& m : svc_.library->all())
+            if (lower(m.id) == q || lower(m.name) == q) return m;
+    }
+    // Treat the argument as a raw SMILES and analyze it on the fly.
+    if (auto g = chem::parseSmiles(arg)) {
+        Molecule m;
+        m.id = "__agent__";
+        m.name = arg;
+        m.smiles = arg;
+        m.formula = chem::molecularFormula(*g);
+        m.molWeight = chem::molecularWeight(*g);
+        m.logP = chem::crippenLogP(*g);
+        m.tpsa = chem::tpsa(*g);
+        m.hbd = chem::hbdCount(*g);
+        m.hba = chem::hbaCount(*g);
+        m.rotatableBonds = chem::rotatableBondCount(*g);
+        m.drugClass = "(user SMILES)";
+        m.legalStatus = "unknown";
+        return m;
+    }
+    return std::nullopt;
+}
+
+void AppShell::registerAgentServiceTools() {
+    using agent::FunctionTool;
+    using nlohmann::json;
+
+    // Shared "compound" property: optional name/id/SMILES; empty -> active compound.
+    auto compoundProp = [] {
+        return json{{"compound",
+                     {{"type", "string"},
+                      {"description", "Library name/id or a raw SMILES. Omit to use the active compound."}}}};
+    };
+
+    // analyze_compound: one-call structure + property + stability/absorption/ADMET summary.
+    {
+        json schema = {{"type", "object"}, {"properties", compoundProp()}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "analyze_compound",
+            "Analyze a compound: identity + physicochemical properties (formula, MW, logP, TPSA, "
+            "HBD/HBA), overall molecular stability, absorption/PK (oral F, HIA, CNS penetration) and "
+            "the overall ADMET verdict. Structure-derived; analysis only.",
+            schema, [this](const json& args) -> ToolResult {
+                const auto mo = resolveAgentCompound(args.value("compound", ""));
+                if (!mo) return {"Could not resolve a compound from that argument.", true};
+                const Molecule& m = *mo;
+                json j = {{"name", m.name}, {"smiles", m.smiles}, {"formula", m.formula},
+                          {"molWeight", m.molWeight}, {"logP", m.logP}, {"tpsa", m.tpsa},
+                          {"hbd", m.hbd}, {"hba", m.hba}, {"drugClass", m.drugClass},
+                          {"legalStatus", m.legalStatus}};
+                if (svc_.stability) j["stabilityScore"] = svc_.stability->analyze(m).overallScore;
+                if (svc_.absorption) {
+                    const auto a = svc_.absorption->predict(m);
+                    j["oralBioavailabilityPct"] = a.bioavailabilityPct;
+                    j["hiaPct"] = a.hiaPct;
+                    j["cnsPenetrant"] = a.cnsPenetrant;
+                }
+                if (svc_.admet) j["admetOverall"] = verdictLabel(svc_.admet->screen(m).overall);
+                return {j.dump(), false};
+            }));
+    }
+
+    // screen_admet: metabolism / ADMET endpoints + verdicts.
+    {
+        json schema = {{"type", "object"}, {"properties", compoundProp()}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "screen_admet",
+            "Screen a compound's ADMET / metabolism endpoints (MAO/CYP/COMT routes, bioactivation, "
+            "hERG, protein binding) and return each endpoint's verdict. Structure-derived heuristics.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.admet) return {"ADMET service unavailable.", true};
+                const auto mo = resolveAgentCompound(args.value("compound", ""));
+                if (!mo) return {"Could not resolve a compound from that argument.", true};
+                const auto r = svc_.admet->screen(*mo);
+                json arr = json::array();
+                for (const auto& e : r.endpoints)
+                    arr.push_back({{"endpoint", e.name}, {"verdict", verdictLabel(e.verdict)},
+                                   {"detail", e.detail}});
+                return {json{{"overall", verdictLabel(r.overall)}, {"endpoints", arr}}.dump(), false};
+            }));
+    }
+
+    // dock_compound: run docking and return scored result (real engine or labeled estimate).
+    {
+        json props = compoundProp();
+        props["target"] = {{"type", "string"},
+                           {"description", "CNS target id or name, e.g. 'DAT', 'SERT', 'TAAR1'."}};
+        json schema = {{"type", "object"}, {"properties", props},
+                       {"required", json::array({"target"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "dock_compound",
+            "Dock a compound into a CNS target's binding site and return the predicted binding "
+            "affinity (kcal/mol, more negative = stronger), pose count, and whether a real docking "
+            "engine produced it or it is the labeled descriptor estimate. Binding affinity is a "
+            "target-engagement (pharmacology) signal, never a make-it signal.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.docking) return {"Docking service unavailable.", true};
+                const auto mo = resolveAgentCompound(args.value("compound", ""));
+                if (!mo) return {"Could not resolve a compound from that argument.", true};
+                const std::string target = args.value("target", "");
+                if (target.empty()) return {"A target is required.", true};
+                const auto d = svc_.docking->dockDetailed(*mo, target);
+                if (d.poses.empty()) return {"Docking produced no poses (" + d.log + ").", true};
+                return {json{{"compound", mo->name}, {"target", target}, {"engine", d.engine},
+                             {"real", d.real}, {"bestAffinityKcalPerMol", d.bestAffinity()},
+                             {"poses", d.poses.size()}}.dump(),
+                        false};
+            }));
+    }
+
+    // run_workflow: kick the prep->dock DAG and focus the Workflows panel.
+    {
+        json props = compoundProp();
+        props["target"] = {{"type", "string"}, {"description", "CNS target id or name (e.g. 'DAT')."}};
+        json schema = {{"type", "object"}, {"properties", props},
+                       {"required", json::array({"target"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "run_workflow",
+            "Start the re-runnable prep->dock workflow (ligand prep -> receptor prep -> dock) for a "
+            "compound + target as a live, content-cached DAG, and focus the Workflows panel so the "
+            "user can watch it run.",
+            schema, [this](const json& args) -> ToolResult {
+                const auto mo = resolveAgentCompound(args.value("compound", ""));
+                if (!mo) return {"Could not resolve a compound from that argument.", true};
+                std::string target = args.value("target", "");
+                if (target.empty()) return {"A target is required.", true};
+                if (const auto* p = docking::findPreset(target)) target = p->id;
+                runWorkflow(mo->smiles, target, mo->name + " -> " + target);
+                postNavigateAction("Workflows");
+                return {"Started the prep->dock workflow for " + mo->name + " into " + target +
+                            "; the Workflows panel shows live node status.",
+                        false};
+            }));
+    }
+
+    // list_runs: recent persisted run history.
+    {
+        json schema = {{"type", "object"}, {"properties", json::object()}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "list_runs", "List recent saved runs (docking/ADMET/etc.) from the persisted history.",
+            schema, [this](const json&) -> ToolResult {
+                if (!svc_.runs) return {"Run store unavailable.", true};
+                json arr = json::array();
+                for (const auto& r : svc_.runs->recent())
+                    arr.push_back({{"id", r.id}, {"kind", r.kind}, {"subject", r.subject},
+                                   {"status", r.status}, {"summary", r.summary}});
+                return {arr.dump(), false};
+            }));
+    }
+
+    // search_library: find compounds by name/class so the agent can ground itself.
+    {
+        json schema = {{"type", "object"},
+                       {"properties",
+                        {{"query", {{"type", "string"},
+                                    {"description", "Substring to match against name or drug class."}}}}},
+                       {"required", json::array({"query"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "search_library",
+            "Search the built-in known-substance library by name or drug class; returns matching "
+            "compounds with their SMILES and legal status.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.library) return {"Library unavailable.", true};
+                std::string q = args.value("query", "");
+                for (auto& c : q) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                json arr = json::array();
+                for (const auto& m : svc_.library->all()) {
+                    std::string hay = m.name + " " + m.drugClass;
+                    for (auto& c : hay) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                    if (q.empty() || hay.find(q) != std::string::npos)
+                        arr.push_back({{"name", m.name}, {"smiles", m.smiles},
+                                       {"drugClass", m.drugClass}, {"legalStatus", m.legalStatus}});
+                    if (arr.size() >= 25) break;
+                }
+                return {arr.dump(), false};
+            }));
+    }
+}
+
+void AppShell::registerAgentWebTools() {
+    // Web tools (web_search / web_fetch) need networking (libcurl, the science
+    // feature). Implemented in WebTools; registered here only when built with it.
+    // Without networking the agent simply has no web tools (graceful degrade).
 }
 
 void AppShell::reconfigureAgent() {

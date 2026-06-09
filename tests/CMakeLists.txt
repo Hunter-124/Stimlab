@@ -26,6 +26,7 @@ target_link_libraries(stimlab_tests PRIVATE
   stimlab_storage
   stimlab_agent
   stimlab_workflow
+  stimlab_ui
 )
 
 target_compile_features(stimlab_tests PRIVATE cxx_std_20)

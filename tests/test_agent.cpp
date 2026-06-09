@@ -11,6 +11,8 @@
 #include "agent/SystemPrompt.h"
 #include "agent/Tools.h"
 #include "contracts/IAgentTools.h"
+#include "modules/RealBackend.h"
+#include "ui/AppShell.h"
 
 using namespace stimlab;
 using namespace stimlab::agent;
@@ -113,6 +115,52 @@ TEST_CASE("Agent refuses synthesis requests and calls no tools (safety boundary)
     REQUIRE_FALSE(assistantText.empty());
     // The refusal redirects to what StimLab actually does.
     REQUIRE(assistantText.find("can't") != std::string::npos);
+}
+
+TEST_CASE("AppShell binds service-action tools the agent can invoke", "[agent][tools][service]") {
+    RealBackend backend;
+    AppShell shell(backend.services());
+    IToolRegistry* reg = shell.toolRegistry();
+    REQUIRE(reg != nullptr);
+    for (const char* name : {"analyze_compound", "screen_admet", "dock_compound", "run_workflow",
+                             "list_runs", "search_library"})
+        REQUIRE(reg->has(name));
+
+    // analyze a named library compound -> structure-derived properties + verdicts.
+    const auto a = reg->dispatch("analyze_compound", {{"compound", "amphetamine"}});
+    REQUIRE_FALSE(a.isError);
+    const auto ja = json::parse(a.content);
+    REQUIRE(ja.value("formula", "") == "C9H13N");
+    REQUIRE(ja.contains("admetOverall"));
+    REQUIRE(ja.contains("oralBioavailabilityPct"));
+
+    // analyze a RAW SMILES (caffeine) resolved on the fly.
+    const auto c = reg->dispatch("analyze_compound", {{"compound", "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"}});
+    REQUIRE_FALSE(c.isError);
+
+    // screen_admet golden: amphetamine -> overall WARN (MAO + CYP2D6). verdictLabel
+    // renders the human label ("Warning").
+    const auto ad = reg->dispatch("screen_admet", {{"compound", "amphetamine"}});
+    REQUIRE_FALSE(ad.isError);
+    REQUIRE(json::parse(ad.content).value("overall", "").find("Warn") != std::string::npos);
+
+    // dock into a target with no prepared receptor -> labeled estimate (real=false),
+    // finite affinity, no engine subprocess (hermetic).
+    const auto dk =
+        reg->dispatch("dock_compound", {{"compound", "amphetamine"}, {"target", "__unprepared_wf__"}});
+    REQUIRE_FALSE(dk.isError);
+    const auto jdk = json::parse(dk.content);
+    REQUIRE(jdk.value("real", true) == false);
+    REQUIRE(jdk.contains("bestAffinityKcalPerMol"));
+
+    // dock_compound requires a target.
+    REQUIRE(reg->dispatch("dock_compound", {{"compound", "amphetamine"}}).isError);
+
+    // search_library returns an array of matches.
+    const auto sl = reg->dispatch("search_library", {{"query", "cathinone"}});
+    REQUIRE_FALSE(sl.isError);
+    REQUIRE(json::parse(sl.content).is_array());
+    REQUIRE_FALSE(json::parse(sl.content).empty());
 }
 
 TEST_CASE("MockProvider keyword-routes the highlight target", "[agent][mock]") {

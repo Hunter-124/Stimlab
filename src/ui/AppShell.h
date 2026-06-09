@@ -6,6 +6,7 @@
 
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -20,6 +21,7 @@ struct ID3D11DeviceContext;
 namespace stimlab {
 
 class Config;
+class IToolRegistry;  // contracts/IAgentTools.h
 namespace render { class MolViewport; }
 namespace docking { class Provisioner; }
 namespace agent {
@@ -118,6 +120,8 @@ public:
     void setConfig(Config* config);
     [[nodiscard]] Config* config() { return config_; }
     [[nodiscard]] agent::Agent* agent() { return agent_.get(); }
+    // The agent's tool registry (enumeration / direct dispatch, e.g. tests).
+    [[nodiscard]] IToolRegistry* toolRegistry();
 
     // Settings helpers (encapsulate Config + DPAPI + agent reconfigure).
     [[nodiscard]] bool hasApiKey() const;
@@ -148,6 +152,11 @@ private:
     void drawAboutModal();
 
     void buildAgent();             // construct registry/tools/providers/agent (ctor)
+    void registerAgentServiceTools();  // bind dock/admet/analyze/run/list tools to Services
+    void registerAgentWebTools();      // bind web_search/web_fetch (science builds only)
+    // Resolve a tool's compound argument: "" -> active; else a library name/id; else a
+    // raw SMILES analyzed on the fly. nullopt if it is none of these.
+    [[nodiscard]] std::optional<Molecule> resolveAgentCompound(const std::string& arg) const;
     void reconfigureAgent();       // pick active provider + mode from Config
     void drainAgentActions();      // apply queued highlight/navigate on the UI thread
     [[nodiscard]] std::string buildSystemPrompt() const;
