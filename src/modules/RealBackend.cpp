@@ -8,7 +8,10 @@
 
 #include "chem/Analysis.h"
 #include "chem/Descriptors.h"
+#include "chem/Embed3D.h"
 #include "chem/Smiles.h"
+#include "modules/docking/Backends.h"
+#include "modules/docking/Presets.h"
 
 namespace stimlab {
 namespace {
@@ -365,23 +368,65 @@ private:
     const RealSimilarity& sim_;
 };
 
+// Docking now runs behind the frozen IDockingBackend seam: pick the best AVAILABLE
+// real engine (Vina, then smina) for the resolved CNS receptor preset; if none can
+// actually dock (no binary / no prepared receptor), fall back to the clearly-labeled
+// descriptor estimate. Both the legacy DockingResult and the 3D-bearing DockJobResult
+// are derived from one path so the two UI views always agree.
 class RealDocking final : public IDockingModule {
 public:
-    std::vector<std::string> targets() const override {
-        return {"DAT (dopamine transporter)", "NET (norepinephrine transporter)",
-                "SERT (serotonin transporter)", "TAAR1", "hERG (cardiac safety)"};
-    }
-    DockingResult dock(const Molecule& m, const std::string& target) const override {
-        DockingResult r;
-        r.moleculeId = m.id; r.targetName = target;
-        const double base = -(5.0 + m.logP * 0.8 + m.molWeight * 0.004);
-        for (int i = 0; i < 6; ++i)
-            r.poses.push_back({i + 1, base + i * 0.35, i * 0.9});
-        r.bestAffinity = r.poses.front().affinityKcalPerMol;
-        r.summary = "Estimated affinity " + std::to_string(r.bestAffinity).substr(0, 6) +
-                    " kcal/mol at " + target + " (descriptor model; wire AutoDock Vina for true docking).";
+    std::vector<std::string> targets() const override { return docking::presetNames(); }
+
+    std::vector<ReceptorTarget> presets() const override { return docking::cnsPresets(); }
+
+    DockJobResult dockDetailed(const Molecule& m, const std::string& target) const override {
+        ReceptorTarget tgt;
+        if (const ReceptorTarget* p = docking::findPreset(target)) tgt = *p;
+        else { tgt.id = target; tgt.name = target; }
+
+        auto graph = chem::parseSmiles(m.smiles);
+        if (!graph) {
+            DockJobResult r;
+            r.engine = "none"; r.real = false; r.targetId = tgt.id;
+            r.log = "Ligand SMILES could not be parsed.";
+            return r;
+        }
+        const chem::Conformer conf = chem::embed3D(*graph);
+
+        for (const IDockingBackend* b : realEngines()) {
+            if (!b->available()) continue;
+            DockJobResult r = b->dock(*graph, conf, tgt);
+            if (r.real && !r.poses.empty()) { r.targetId = tgt.id; return r; }
+        }
+        DockJobResult r = estimate_.dock(*graph, conf, tgt);
+        r.targetId = tgt.id;
         return r;
     }
+
+    DockingResult dock(const Molecule& m, const std::string& target) const override {
+        const DockJobResult d = dockDetailed(m, target);
+        DockingResult r;
+        r.moleculeId = m.id;
+        r.targetName = target;
+        for (const auto& p : d.poses) r.poses.push_back({p.rank, p.affinityKcalPerMol, p.rmsdLb});
+        r.bestAffinity = d.bestAffinity();
+        const std::string aff = std::to_string(r.bestAffinity).substr(0, 6);
+        r.summary = d.real
+            ? ("Best affinity " + aff + " kcal/mol at " + target + " (docked with " + d.engine + ").")
+            : ("Estimated affinity " + aff + " kcal/mol at " + target +
+               " (" + d.engine + " - structure-descriptor model, not a docked score).");
+        return r;
+    }
+
+private:
+    using BackendList = std::vector<const IDockingBackend*>;
+    const BackendList& realEngines() const {
+        static const docking::VinaBackend vina{docking::Engine::Vina};
+        static const docking::VinaBackend smina{docking::Engine::Smina};
+        static const BackendList list{&vina, &smina};
+        return list;
+    }
+    docking::EstimateBackend estimate_;
 };
 
 class RealRuns final : public IRunStore {

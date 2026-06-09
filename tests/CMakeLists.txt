@@ -8,6 +8,7 @@ add_executable(stimlab_tests
   test_modules.cpp
   test_embed3d.cpp
   test_molviewport.cpp
+  test_docking.cpp
 )
 
 target_link_libraries(stimlab_tests PRIVATE
