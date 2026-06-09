@@ -55,8 +55,15 @@ rendered in the WP-2 viewport; engine selectable; absent-engine path degrades gr
   Analog Explorer to arbitrary structures, not just slider-modeled ones).
 - **Persistence**: use the already-linked `sqlite3` — store runs/archive/exported reports in
   `%APPDATA%/StimLab/stimlab.db` (schema in `src/storage`); make the Runs panel live.
-- **Agent**: optional — `ILlmProvider` + libcurl (vcpkg `curl[ssl]`) for a real assistant loop with a
-  `navigate_ui`/`highlight_panel` tool bound to `AppShell::requestHighlight`.
+- **Agent** [DONE]: `contracts/ILlmProvider.h` + `contracts/IAgentTools.h`; `src/agent` lib with a
+  deterministic **MockProvider** (offline default) and an **AnthropicProvider** (libcurl + SSE Messages
+  API, behind `STIMLAB_HAVE_SCIENCE`); a threaded tool-calling **Agent** (autopilot + ask-first). Tools
+  `highlight_panel` / `navigate_ui` / `list_panels` / `get_active_compound` / `what_can_stimlab_do` bind
+  to `AppShell` via a thread-safe UI-action inbox (worker threads never touch ImGui). The API key is
+  persisted DPAPI-encrypted via `Settings`/`Secrets`. ctest 42/42. NOTE: vcpkg `curl[ssl]` resolves to
+  **Schannel** (sspi) on Windows here - no OpenSSL build; and `rdkit` was removed from the `science`
+  feature (not a port in this registry). The system prompt + tool set enforce the safety boundary:
+  the agent refuses synthesis/route/precursor/manufacturability requests.
 
 ## Execution notes
 - Freeze `IDockingBackend` + the `Embed3D` API FIRST, then WP-2 and WP-3 can run as parallel subagents

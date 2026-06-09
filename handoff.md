@@ -5,7 +5,7 @@
 > precise point to resume from. Read this first, then [plan.md](plan.md) (the master spec) and the
 > approved build plan at `C:\Users\nigga\.claude\plans\i-want-you-to-deep-plum.md`.
 
-Last updated: 2026-06-08 · Branch: `master` · **Phase D COMPLETE** (WP-1/2/3 + 3 of 4 WP-4 items).
+Last updated: 2026-06-08 · Branch: `master` · **Phase D COMPLETE** (WP-1/2/3 + all 4 WP-4 items, incl. the LLM agent loop).
 
 > **STATUS: Phase B COMPLETE + ENRICHED, verified.** `./scripts/dev-build.ps1 -Test` (or
 > `cmake --preset windows && cmake --build --preset windows`) produces `build/windows/bin/StimLab.exe`,
@@ -44,14 +44,35 @@ Last updated: 2026-06-08 · Branch: `master` · **Phase D COMPLETE** (WP-1/2/3 +
 >   receptor presets + best-effort engine provisioner. **gnina disabled** (no Win/CUDA build). With no
 >   engine on this host it degrades to the clearly-labeled descriptor estimate (poses still carry the
 >   embedded ligand so the viewer has geometry).
-> - **WP-4 (3 of 4):** full **Wildman-Crippen logP** atom typing (+regression test); a **Molecule Input**
+> - **WP-4 (ALL 4):** full **Wildman-Crippen logP** atom typing (+regression test); a **Molecule Input**
 >   panel (free-text SMILES -> full analysis + 3D); **SQLite** run-history persistence (live Runs panel,
->   `run_history` table under `%APPDATA%/StimLab/stimlab.db`).
+>   `run_history` table under `%APPDATA%/StimLab/stimlab.db`); and the **real LLM agent loop** (below).
 >
-> **Remaining (optional):** the real LLM agent loop (`ILlmProvider` + libcurl `curl[ssl]` behind the
-> `science` feature) - deferred (heavy build + needs an API key to verify). The assistant still
-> explains/highlights panels. **Gotcha learned:** a legacy Python-backend `stimlab.db` can pre-exist in
-> `%APPDATA%/StimLab` with a clashing `runs` table - the native store uses `run_history` to avoid it.
+> **WP-4 Agent DONE (this session). ctest 42/42 green.** A real tool-calling assistant replaces the
+> canned buttons:
+> - Frozen contracts `contracts/ILlmProvider.h` + `contracts/IAgentTools.h` (ITool/IToolRegistry).
+> - New `src/agent` static lib: a **MockProvider** (deterministic, offline default - keyword-routes a
+>   panel + refuses synthesis asks), an **AnthropicProvider** (libcurl + **SSE** streaming of the Messages
+>   API; all networking `#ifdef STIMLAB_HAVE_SCIENCE`), a threaded **Agent** tool-calling loop
+>   (autopilot + ask-first), and the safety system prompt.
+> - `AppShell` owns the agent + providers + registry + `Config`. A **thread-safe UI-action inbox**
+>   marshals worker-thread tool calls back to the UI thread so tools never touch ImGui. Bound tools:
+>   `highlight_panel`, `navigate_ui`, `list_panels`, `get_active_compound`, `what_can_stimlab_do`. The
+>   assistant panel streams the live loop (canned quick-prompts kept, now routed through the agent).
+> - Settings persist provider/model/mode + the **DPAPI-encrypted** API key via `Config` + `Secrets`.
+> - **Both presets build**: default `windows` is curl-free (agent falls back to MockProvider); the live
+>   Anthropic path builds under `windows-science`.
+>
+> **Build gotchas learned this session:**
+> - **`curl[ssl]` = Schannel on Windows here.** The vcpkg curl 8.20 port has no `schannel` feature; its
+>   `ssl` meta-feature pulls `sspi` (Schannel) on Windows, so `curl[ssl]` builds with **no OpenSSL**
+>   (~26s). The "long OpenSSL build" warning in the old plan does not apply. (Also dropped the dead
+>   `rdkit` from the `science` feature - it is not a port in this registry.)
+> - Default model is `claude-opus-4-8`; the request omits `temperature`/`top_p`/`budget_tokens` (Opus 4.x
+>   rejects sampling params with a 400). Model is a free-text Settings field (Haiku 4.5 is snappier).
+> - A **live** smoke test needs a real key entered in Settings (not done here - no key on this host).
+> - Legacy Python-backend `stimlab.db` can pre-exist in `%APPDATA%/StimLab` with a clashing `runs`
+>   table - the native store uses `run_history` to avoid it.
 
 ---
 
