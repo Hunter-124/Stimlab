@@ -41,12 +41,25 @@
       "cacheVariables": {
         "STIMLAB_ENABLE_CUDA": "ON"
       }
+    },
+    {
+      "name": "windows-static",
+      "inherits": "windows",
+      "displayName": "Windows x64 RELEASE - fully static (single self-contained exe)",
+      "description": "Phase E release build: x64-windows-static triplet + static CRT (/MT) so StimLab.exe needs no DLLs or VC++ redist. Heavier first build (all deps rebuilt static).",
+      "binaryDir": "${sourceDir}/build/windows-static",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static",
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+      }
     }
   ],
   "buildPresets": [
     { "name": "windows", "configurePreset": "windows" },
     { "name": "windows-science", "configurePreset": "windows-science" },
-    { "name": "windows-cuda", "configurePreset": "windows-cuda" }
+    { "name": "windows-cuda", "configurePreset": "windows-cuda" },
+    { "name": "windows-static", "configurePreset": "windows-static" }
   ],
   "testPresets": [
     {
