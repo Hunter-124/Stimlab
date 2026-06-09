@@ -82,6 +82,14 @@ FIRST RUN / SELF-PROVISIONING (optional, needs internet)
   descriptor estimate. The runtime self-heals: a corrupt component is re-provisioned
   (Settings > Verify + heal runtime; manifest.json is the source of truth).
 
+INTEGRITY (this build is intentionally UNSIGNED)
+  StimLab is an educational / personal-use project and ships without an Authenticode
+  signature, so Windows SmartScreen may show "Windows protected your PC" on first run:
+  click More info > Run anyway. Nothing here is signed or certified. (A maintainer with
+  a code-signing certificate can sign the exe via scripts\sign.ps1; absent a cert it is
+  a clean no-op.) The downloaded docking engine is size- and content-verified, and an
+  optional SHA-256 pin (STIMLAB_VINA_SHA256) cryptographically verifies vina.exe.
+
 $aiPara
 This build: preset '$Preset'$(if ($dlls) { " (bundled DLLs: " + (($dlls | ForEach-Object { $_.Name }) -join ', ') + ")" } else { " (fully static - single self-contained exe)" })$(if ($science) { " - live agent + web tools bundled" }).
 "@

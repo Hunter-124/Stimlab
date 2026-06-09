@@ -88,6 +88,10 @@ uses the preinstalled vcpkg + x-gha binary cache; sanity-check the `vcpkg.json` 
 runner). The job uploads the release zip artifact.
 
 ### E. Code-signing  [PRECONDITION: a real Authenticode cert — USER provides]
+> ⏭ **DECIDED — INTENTIONALLY UNSIGNED** (user: educational/personal use, doesn't want a cert). `sign.ps1`
+> stays a clean exit-0 no-op; the packaged README.txt now states the build is unsigned (SmartScreen expected).
+> No cert acquired. Nothing further to do unless a cert appears.
+
 `scripts/sign.ps1` is ready (signtool via `STIMLAB_SIGN_PFX`/`_PASSWORD` or `STIMLAB_SIGN_SHA1`; clean no-op
 without a cert). Ask the user for a cert; if none, leave it unsigned (SmartScreen warning expected) + documented.
 Do NOT acquire a cert on the user's behalf.
