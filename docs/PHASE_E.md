@@ -85,8 +85,27 @@ See the handoff STATUS banner for the headline summary.
   accurate path). Verified live on the RTX 3080 Ti: amphetamine→DAT, 64,000 GPU poses, 9 real ranked poses,
   −3.66 kcal/mol, exit 0 (`--selftest-dock --compute gpu`).
 
+## Post-v1 wave 2 - native GPU docking (2026-06-09)
+Continued the SESSION_CARD §5 work; ctest **70/70** on windows + windows-static + windows-cuda-static.
+
+- **A. Static-cudart self-contained GPU exe** (`913e09d`) - new `windows-cuda-static` preset (inherits
+  windows-cuda; x64-windows-static + /MT) links `CUDA::cudart_static` (triplet-selected in
+  `src/modules/CMakeLists.txt`). The GPU build is now a single ~3.21 MB exe needing NO `cudart64_*.dll`
+  (verified with `dumpbin /dependents` + a clean-dir `--selftest-dock --compute gpu` real dock).
+- **B. Vina-GPU (OpenCL) GPU engine** (`3145966`, UI `8832466`) - a 2nd GPU backend behind `IDockingBackend`.
+  Vina-GPU runs the REAL Vina MC+BFGS search on the GPU via the driver's OpenCL ICD - a **subprocess** engine,
+  so it compiles in EVERY preset (no CUDA toolkit, no new link deps). `ensureVinaGpu()` fetches only ~3.7 MB
+  (not the 37 MB upstream GUI) and compiles a GPU-matched `Kernel2_Opt.bin` via `Vina-GPU-K.exe`;
+  `VinaGpuBackend` reuses the rigid-PDBQT writer + `parseVinaPdbqt`, clamps the box <30 A, seeds `--seed 1`.
+  `realEngines()` orders GPU mode as Vina-GPU then CUDA. Verified: amphetamine->DAT, real dock, -4.80 kcal/mol
+  (vs CPU Vina -4.83 / CUDA grid -3.66), reproducible. A Settings "Provision Vina-GPU (OpenCL)" button wires it.
+- **C. Native flexible GPU docking** - SUPERSEDED BY B; the WSL2/Uni-Dock path is **not pursued** (user declined
+  WSL). Vina-GPU is the native-Windows real GPU search; a native AutoDock-GPU CUDA source build stays infeasible.
+- **E. Code-signing** - releases are **intentionally unsigned** (educational/personal use). `scripts/sign.ps1`
+  stays a no-op; a first-run SmartScreen warning is expected. No cert acquired.
+
 ### Still open (future, not blocking)
-- Additional GPU engines behind the same `IDockingBackend` seam: Vina-GPU (OpenCL, prebuilt Windows exe,
-  reuses the PDBQT+box contract) and a WSL2 subprocess to Linux Uni-Dock/AutoDock-GPU (the actual CUDA builds).
-- Static cudart (`CUDA::cudart_static`) for a self-contained single-exe GPU build (a `windows-cuda-static`).
-- A real git remote + a live Windows CI run; an actual code-signing certificate (unsigned trips SmartScreen).
+- **D. A real git remote + a live Windows CI run** - pending a GitHub credential on this host.
+- Torsionally-flexible (multi-DOF) ligand docking (a flexible PDBQT torsion-tree writer) - the documented
+  STRETCH (Track F); today both the CPU Vina and Vina-GPU paths dock a rigid ligand.
+- A WSL2 subprocess to Linux Uni-Dock/AutoDock-GPU remains a theoretical option but is intentionally skipped.

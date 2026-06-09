@@ -5,7 +5,33 @@
 > precise point to resume from. Read this first, then [plan.md](plan.md) (the master spec) and the
 > approved build plan at `C:\Users\nigga\.claude\plans\i-want-you-to-deep-plum.md`.
 
-Last updated: 2026-06-09 · Branch: `master` · **v1 COMPLETE + all 5 post-v1 tracks landed.**
+Last updated: 2026-06-09 · Branch: `master` · **v1 COMPLETE + all 5 post-v1 tracks landed + wave-2 GPU work.**
+
+> **STATUS: POST-v1 WAVE 2 - NATIVE GPU DOCKING (2026-06-09).** Continued the SESSION_CARD §5 work on a
+> continuously-green trunk (ctest 70/70 on windows + windows-static + windows-cuda-static; one commit per item):
+> - **A. Static-cudart self-contained GPU exe** (`913e09d`) - new `windows-cuda-static` preset (inherits
+>   windows-cuda; x64-windows-static + /MT) links `CUDA::cudart_static` (selected by the triplet in
+>   `src/modules/CMakeLists.txt`). ONE 3.21 MB StimLab.exe that GPU-docks with NO cudart64_*.dll required
+>   (`dumpbin /dependents` shows only system DLLs; this host has no cudart on PATH at all). Verified: copied
+>   alone to a clean dir, `--selftest-dock --compute gpu` -> CUDA GPU engine, real dock, -3.66, exit 0.
+> - **B. Vina-GPU (OpenCL) GPU docking backend** (`3145966` + UI `8832466`) - a 2nd GPU engine behind the
+>   frozen `IDockingBackend`: Vina-GPU runs the REAL AutoDock Vina MC+BFGS search on the GPU via the driver's
+>   OpenCL ICD (no CUDA build), so it is a SUBPROCESS engine compiled in EVERY preset. `Engine::VinaGpu` +
+>   `vinaGpuDir()` + `ensureVinaGpu()` (fetches only ~3.7 MB of DeltaGroupNJUPT/Vina-GPU - NOT the 37 MB GUI -
+>   then runs `Vina-GPU-K.exe` once to compile a GPU-matched `Kernel2_Opt.bin`); `VinaGpuBackend` mirrors
+>   `VinaBackend` (rigid PDBQT, reuses `parseVinaPdbqt`, box clamped <30 A, `--seed 1`). `realEngines()` orders
+>   by compute mode (Gpu = Vina-GPU then CUDA). Settings has a "Provision Vina-GPU (OpenCL)" button.
+>   Verified on the RTX 3080 Ti: amphetamine->DAT, real dock, 9 poses, **-4.80 kcal/mol** (matches CPU Vina's
+>   -4.83; far better than the CUDA grid's -3.66), reproducible, cached re-provision in 4s.
+> - **C. Native flexible GPU docking - SUPERSEDED BY B, NO WSL** (user declined WSL). The WSL2->Uni-Dock/
+>   AutoDock-GPU path is NOT pursued: Vina-GPU (Track B) already delivers the real Vina GPU search natively on
+>   Windows on this same NVIDIA GPU, and a native-Windows AutoDock-GPU CUDA *source* build stays infeasible
+>   (Unix Makefile + CUDA 13 drops pre-sm_75; Uni-Dock/gnina are Linux-only). Torsionally-flexible ligand
+>   docking remains the documented STRETCH (Track F), unchanged.
+> - **D. Git remote + live CI** - PENDING a GitHub credential (no `gh`, no token on this host; `winget` present).
+> - **E. Code-signing - INTENTIONALLY UNSIGNED** (user: educational/personal use, "I do not care" about certs).
+>   `scripts/sign.ps1` stays a clean exit-0 no-op; releases ship unsigned (a first-run SmartScreen warning is
+>   expected). No cert acquired. See [docs/PHASE_E.md](docs/PHASE_E.md).
 
 > **STATUS: POST-v1 ENHANCEMENTS COMPLETE (2026-06-09).** All five optional post-v1 tracks landed on a
 > continuously-green trunk (one commit per track; ctest 69/69 on windows + windows-static; science,

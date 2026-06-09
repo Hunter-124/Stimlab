@@ -43,6 +43,9 @@ CMake 4.x, Ninja, vcpkg at `C:\Users\nigga\vcpkg`. **No git remote yet.** WSL2 s
 ## 5. THE WORK — "do everything"  (one commit per item, green trunk; do A→B first, they're self-contained)
 
 ### A. Static cudart → self-contained GPU exe  [self-contained; do first]
+> ✅ **DONE** (`913e09d`): `windows-cuda-static` preset + `CUDA::cudart_static` (triplet-selected). 3.21 MB
+> exe, no cudart DLL import, clean-dir `--compute gpu` real dock, ctest 70/70.
+
 `windows-cuda` links DYNAMIC `CUDA::cudart` (needs `cudart64_*.dll` on PATH). Add a `windows-cuda-static` preset
 (x64-windows-static + `/MT` + `STIMLAB_ENABLE_CUDA`, point `CMAKE_CUDA_COMPILER` at nvcc 13.3, arch 86) and link
 **`CUDA::cudart_static`** in `src/modules/CMakeLists.txt` under `STIMLAB_ENABLE_CUDA`. Verify the exe runs
@@ -50,6 +53,12 @@ standalone from a clean dir with NO cudart DLL beside it, and `--selftest-dock -
 dock. Watch the `/MT` ↔ CUDA host-runtime match.
 
 ### B. Vina-GPU (OpenCL) docking backend  [self-contained; genuinely FLEXIBLE GPU docking — high value]
+> ✅ **DONE** (`3145966` + UI `8832466`): `Engine::VinaGpu` + `ensureVinaGpu()` (fetches ~3.7 MB, compiles a
+> GPU-matched kernel) + `VinaGpuBackend` (reuses `parseVinaPdbqt`, box <30, `--seed 1`) + `realEngines()` Gpu
+> ordering + Settings provision button. Verified amphetamine→DAT real dock −4.80 kcal/mol. NOTE: rigid-ligand
+> like the CPU path (the in-house PDBQT writer is rigid); the win over the CUDA grid is the real Vina MC+BFGS
+> search, not torsions. Truly-flexible ligand docking stays Track F.
+
 Add a 2nd GPU engine behind the frozen `IDockingBackend` (`src/contracts/IDockingBackend.h`). The
 **DeltaGroupNJUPT/Vina-GPU** repo ships PREBUILT Windows `Vina-GPU.exe` + `Vina-GPU-K.exe` (OpenCL on NVIDIA via
 the driver ICD — no CUDA build), taking Vina-style PDBQT receptor/ligand + `center_x/y/z` + `size_x/y/z` — the
@@ -61,6 +70,10 @@ run, **reuse `parseVinaPdbqt`**), and add it to `RealDocking::realEngines()` ord
 Verify a real dock vs DAT.
 
 ### C. WSL2 → Uni-Dock / AutoDock-GPU subprocess  [PRECONDITION: WSL2 + a distro — confirm with user]
+> ⏭ **SUPERSEDED BY B — NO WSL** (user declined WSL). Vina-GPU (Track B) delivers the real Vina GPU search
+> natively on Windows on this same NVIDIA GPU, so the WSL2/Uni-Dock path is intentionally not pursued; a
+> native-Windows AutoDock-GPU CUDA source build stays infeasible. (Torsional flexibility = Track F.)
+
 Real CUDA *flexible* GPU docking via Linux binaries. A `WslDockBackend : IDockingBackend` that shells
 `wsl.exe -e <linux binary>` to **Uni-Dock** (CUDA Vina re-impl; same PDBQT + center/size; compute ≥7.0 ✓) or
 AutoDock-GPU `adgpu_*_cuda12`, with `/mnt/c` ↔ `\\wsl$` path translation. WSL2 GPU passthrough is real (do NOT
