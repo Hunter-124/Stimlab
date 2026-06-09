@@ -140,6 +140,10 @@ public:
     [[nodiscard]] int  agentProviderIndex() const;
     void setAutopilot(bool on);
     [[nodiscard]] bool autopilot() const;
+    // Docking compute mode (0=Auto, 1=GPU, 2=CPU): persisted via Config and pushed to
+    // the docking module's engine selection. Changing it re-docks under the new engine.
+    void setComputeMode(int mode);
+    [[nodiscard]] int  computeMode() const;
     [[nodiscard]] bool anthropicReady() const;       // key present AND transport built
     [[nodiscard]] bool anthropicTransport() const;   // built with libcurl (science feature)
     [[nodiscard]] std::string activeProviderLabel() const;

@@ -18,7 +18,16 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
 if(MSVC)
-  add_compile_options(/W4 /permissive- /Zc:__cplusplus /Zc:preprocessor /utf-8 /EHsc /MP)
+  # Scope the C++ warning/conformance flags to CXX so nvcc (CUDA) is not handed MSVC-only
+  # flags like /permissive- that it does not understand.
+  add_compile_options(
+    "$<$<COMPILE_LANGUAGE:CXX>:/W4>"
+    "$<$<COMPILE_LANGUAGE:CXX>:/permissive->"
+    "$<$<COMPILE_LANGUAGE:CXX>:/Zc:__cplusplus>"
+    "$<$<COMPILE_LANGUAGE:CXX>:/Zc:preprocessor>"
+    "$<$<COMPILE_LANGUAGE:CXX>:/utf-8>"
+    "$<$<COMPILE_LANGUAGE:CXX>:/EHsc>"
+    "$<$<COMPILE_LANGUAGE:CXX>:/MP>")
   add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE
                           _CRT_SECURE_NO_WARNINGS
                           _SILENCE_ALL_CXX20_DEPRECATION_WARNINGS
@@ -37,6 +46,9 @@ if(STIMLAB_ENABLE_WEBVIEW2)
   add_compile_definitions(STIMLAB_HAVE_WEBVIEW2=1)
 endif()
 if(STIMLAB_ENABLE_CUDA)
+  if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+    set(CMAKE_CUDA_ARCHITECTURES 86)  # RTX 3080 Ti = sm_86 (CUDA 13 dropped pre-sm_75)
+  endif()
   enable_language(CUDA)
   find_package(CUDAToolkit REQUIRED)
   add_compile_definitions(STIMLAB_HAVE_CUDA=1)

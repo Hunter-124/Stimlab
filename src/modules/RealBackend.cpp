@@ -13,6 +13,9 @@
 #include "modules/docking/Backends.h"
 #include "modules/docking/Presets.h"
 #include "modules/docking/ReceptorPrep.h"
+#ifdef STIMLAB_HAVE_CUDA
+#  include "modules/docking/CudaBackend.h"
+#endif
 #include "storage/RunStore.h"
 
 namespace stimlab {
@@ -436,10 +439,37 @@ public:
 
 private:
     using BackendList = std::vector<const IDockingBackend*>;
-    const BackendList& realEngines() const {
+    // Engines to TRY, in order, for the current compute mode. The backends are static
+    // singletons (stateless); only the small ordered pointer list is built per call
+    // (mode is a runtime user setting, so this can't be one fixed static list).
+    //   Auto - Vina (accurate, flexible) first; the GPU engine as a fallback when no
+    //          CPU engine binary is present.
+    //   Cpu  - Vina/smina only (skip the GPU engine).
+    //   Gpu  - the CUDA GPU engine only.
+    // dockDetailed() falls back to the labeled descriptor estimate when none of these
+    // produce a real dock, so every mode degrades honestly.
+    BackendList realEngines() const {
         static const docking::VinaBackend vina{docking::Engine::Vina};
         static const docking::VinaBackend smina{docking::Engine::Smina};
-        static const BackendList list{&vina, &smina};
+#ifdef STIMLAB_HAVE_CUDA
+        static const docking::CudaBackend cuda;
+#endif
+        const docking::ComputeMode mode = docking::computeMode();
+        BackendList list;
+        if (mode == docking::ComputeMode::Gpu) {
+#ifdef STIMLAB_HAVE_CUDA
+            list.push_back(&cuda);  // GPU forced: CUDA only, else the labeled estimate
+#endif
+        } else if (mode == docking::ComputeMode::Cpu) {
+            list.push_back(&vina);
+            list.push_back(&smina);  // CPU only: skip the GPU engine
+        } else {                     // Auto: accurate CPU first, GPU as a fallback
+            list.push_back(&vina);
+            list.push_back(&smina);
+#ifdef STIMLAB_HAVE_CUDA
+            list.push_back(&cuda);
+#endif
+        }
         return list;
     }
     docking::EstimateBackend estimate_;

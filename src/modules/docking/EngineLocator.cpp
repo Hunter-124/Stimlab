@@ -1,6 +1,7 @@
 #include "modules/docking/EngineLocator.h"
 
 #include <array>
+#include <atomic>
 #include <cctype>
 #include <cstdlib>
 #include <fstream>
@@ -18,6 +19,18 @@
 #endif
 
 namespace stimlab::docking {
+
+// Process-wide compute-mode preference (a single global user setting). Thread-safe.
+namespace {
+std::atomic<int> g_computeMode{static_cast<int>(ComputeMode::Auto)};
+}  // namespace
+void setComputeMode(ComputeMode m) {
+    g_computeMode.store(static_cast<int>(m), std::memory_order_relaxed);
+}
+ComputeMode computeMode() {
+    return static_cast<ComputeMode>(g_computeMode.load(std::memory_order_relaxed));
+}
+
 namespace {
 
 namespace fs = std::filesystem;

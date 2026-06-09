@@ -24,6 +24,7 @@
 #include "core/Log.h"
 #include "data/Domain.h"
 #include "modules/RealBackend.h"
+#include "modules/docking/EngineLocator.h"
 #include "modules/docking/Presets.h"
 #include "modules/docking/Provisioning.h"
 #include "render/Dx11Device.h"
@@ -49,7 +50,7 @@ std::string wToUtf8(const std::wstring& w) {
 // path, and writes a report to stdout (parent console) AND runtime/selftest-dock.txt.
 // Exit code 0 = a real engine dock succeeded; 2 = fell back to the descriptor
 // estimate; other = setup error. This is the WP-3 acceptance gate made runnable.
-int runHeadlessDock(const std::string& smiles, const std::string& target) {
+int runHeadlessDock(const std::string& smiles, const std::string& target, const std::string& compute) {
     using namespace stimlab;
     AppPaths::instance().ensureLayout();
     log::init();
@@ -69,6 +70,14 @@ int runHeadlessDock(const std::string& smiles, const std::string& target) {
     emit("== StimLab docking selftest (real-engine acceptance) ==");
     emit("ligand : " + smiles);
     emit("target : " + target);
+
+    // Optional compute-mode override (auto/gpu/cpu) so the GPU engine is headlessly
+    // testable: --selftest-dock --compute gpu exercises the first-party CUDA backend.
+    docking::ComputeMode mode = docking::ComputeMode::Auto;
+    if (compute == "gpu") mode = docking::ComputeMode::Gpu;
+    else if (compute == "cpu") mode = docking::ComputeMode::Cpu;
+    docking::setComputeMode(mode);
+    emit("compute: " + compute);
 
     docking::Provisioner prov;
     // Provision exactly the requested target (resolved by id or display name) so a
@@ -144,14 +153,16 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         bool selftest = false;
         std::string smiles = "CC(N)Cc1ccccc1";  // amphetamine
         std::string target = "DAT";
+        std::string compute = "auto";  // auto | gpu | cpu
         for (int i = 1; i < argc; ++i) {
             const std::wstring a = argv[i];
             if (a == L"--selftest-dock") selftest = true;
             else if (a == L"--smiles" && i + 1 < argc) smiles = wToUtf8(argv[++i]);
             else if (a == L"--target" && i + 1 < argc) target = wToUtf8(argv[++i]);
+            else if (a == L"--compute" && i + 1 < argc) compute = wToUtf8(argv[++i]);
         }
         if (argv) LocalFree(argv);
-        if (selftest) return runHeadlessDock(smiles, target);
+        if (selftest) return runHeadlessDock(smiles, target, compute);
     }
 
     stimlab::AppPaths::instance().ensureLayout();

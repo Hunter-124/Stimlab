@@ -1161,11 +1161,21 @@ void settings(AppShell& shell) {
         shell.setAutopilot(autop);
     ImGui::Spacing();
 
-    ImGui::TextDisabled("COMPUTE");
-    static int gpu = 0;
-    ImGui::RadioButton("Auto", &gpu, 0); ImGui::SameLine();
-    ImGui::RadioButton("GPU (CUDA)", &gpu, 1); ImGui::SameLine();
-    ImGui::RadioButton("CPU", &gpu, 2);
+    ImGui::TextDisabled("COMPUTE (docking engine)");
+    int compute = shell.computeMode();
+    bool computeChanged = false;
+    computeChanged |= ImGui::RadioButton("Auto", &compute, 0); ImGui::SameLine();
+    computeChanged |= ImGui::RadioButton("GPU (CUDA)", &compute, 1); ImGui::SameLine();
+    computeChanged |= ImGui::RadioButton("CPU", &compute, 2);
+    if (computeChanged) shell.setComputeMode(compute);
+#ifdef STIMLAB_HAVE_CUDA
+    ImGui::TextDisabled("Auto: AutoDock Vina (flexible) first, CUDA GPU as fallback. GPU: first-party "
+                        "CUDA rigid-body dock (Vina scoring) on this NVIDIA GPU. CPU: Vina/smina only.");
+#else
+    ImGui::TextDisabled("Auto/CPU: AutoDock Vina (flexible). GPU (CUDA) is not in this build - the "
+                        "windows-cuda preset adds the first-party CUDA GPU dock; here GPU falls back "
+                        "to the labeled descriptor estimate.");
+#endif
     ImGui::Spacing();
 
     ImGui::TextDisabled("STORAGE");

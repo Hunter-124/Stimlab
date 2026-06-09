@@ -35,12 +35,15 @@
     },
     {
       "name": "windows-cuda",
-      "inherits": "windows-science",
-      "displayName": "Windows x64 + science + CUDA - Phase D",
-      "description": "Full stack incl. CUDA-accelerated engines (needs CUDA Toolkit w/ nvcc).",
+      "inherits": "windows",
+      "displayName": "Windows x64 + CUDA - first-party GPU docking engine",
+      "description": "Adds the first-party CUDA GPU docking backend (nvcc-compiled kernel). Lean base (no science/curl/webview2 - GPU docking needs none of them). Requires the full CUDA Toolkit with nvcc; CMAKE_CUDA_COMPILER points at v13.3 and the arch defaults to sm_86 (RTX 3080 Ti). Override CMAKE_CUDA_COMPILER/ARCHITECTURES for a different toolkit/GPU.",
       "binaryDir": "${sourceDir}/build/windows-cuda",
       "cacheVariables": {
-        "STIMLAB_ENABLE_CUDA": "ON"
+        "STIMLAB_ENABLE_CUDA": "ON",
+        "CMAKE_CUDA_COMPILER": "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.3/bin/nvcc.exe",
+        "CMAKE_CUDA_ARCHITECTURES": "86",
+        "CMAKE_CUDA_FLAGS": "-allow-unsupported-compiler"
       }
     },
     {

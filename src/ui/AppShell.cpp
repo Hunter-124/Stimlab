@@ -17,6 +17,7 @@
 #include "core/Config.h"
 #include "core/Secrets.h"
 #include "modules/Pipelines.h"
+#include "modules/docking/EngineLocator.h"
 #include "modules/docking/Presets.h"
 #include "modules/docking/Provisioning.h"
 #include "modules/docking/ReceptorPrep.h"
@@ -34,7 +35,17 @@ constexpr const char* kCfgProvider = "agent.provider";  // 0 = Anthropic, 1 = Of
 constexpr const char* kCfgApiKey   = "agent.apiKey";    // DPAPI-encrypted base64 blob
 constexpr const char* kCfgModel    = "agent.model";
 constexpr const char* kCfgMode     = "agent.mode";      // "autopilot" | "askfirst"
+constexpr const char* kCfgCompute  = "compute.mode";    // 0=Auto, 1=GPU, 2=CPU
 constexpr const char* kDefaultModel = "claude-opus-4-8";
+
+// Map the Settings radio value (0/1/2) to the docking compute-mode enum.
+docking::ComputeMode toComputeMode(int v) {
+    switch (v) {
+        case 1:  return docking::ComputeMode::Gpu;
+        case 2:  return docking::ComputeMode::Cpu;
+        default: return docking::ComputeMode::Auto;
+    }
+}
 }  // namespace
 
 namespace {
@@ -802,6 +813,8 @@ void AppShell::reconfigureAgent() {
 void AppShell::setConfig(Config* config) {
     config_ = config;
     reconfigureAgent();
+    // Push the persisted docking compute mode (Auto/GPU/CPU) into the docking module.
+    docking::setComputeMode(toComputeMode(config_ ? config_->get<int>(kCfgCompute, 0) : 0));
 }
 
 // ---- Settings helpers ----
@@ -853,6 +866,16 @@ void AppShell::setAutopilot(bool on) {
 
 bool AppShell::autopilot() const {
     return !config_ || config_->get<std::string>(kCfgMode, "autopilot") != "askfirst";
+}
+
+void AppShell::setComputeMode(int mode) {
+    if (config_) { config_->set(kCfgCompute, mode); config_->save(); }
+    docking::setComputeMode(toComputeMode(mode));
+    invalidateDock();  // re-dock under the new engine selection on the next frame
+}
+
+int AppShell::computeMode() const {
+    return config_ ? config_->get<int>(kCfgCompute, 0) : 0;
 }
 
 bool AppShell::anthropicReady() const { return anthropic_ && anthropic_->ready(); }

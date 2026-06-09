@@ -25,3 +25,12 @@ target_link_libraries(stimlab_modules PUBLIC
 )
 
 target_compile_features(stimlab_modules PUBLIC cxx_std_20)
+
+# First-party CUDA GPU docking backend (CudaBackend.cpp host + CudaScore.cu kernel),
+# compiled only in the CUDA build. The kernel is pure POD so nvcc never sees C++20.
+if(STIMLAB_ENABLE_CUDA)
+  target_sources(stimlab_modules PRIVATE
+    docking/CudaBackend.cpp
+    docking/CudaScore.cu)
+  target_link_libraries(stimlab_modules PUBLIC CUDA::cudart)
+endif()

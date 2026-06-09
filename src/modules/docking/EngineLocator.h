@@ -20,6 +20,17 @@ namespace stimlab::docking {
 // Which engine to look for / provision.
 enum class Engine { Vina, Smina, Obabel };
 
+// User compute-mode preference for docking-engine selection:
+//   Auto - best available: the accurate CPU engine (Vina) first, the GPU engine as a
+//          fallback when no CPU engine is present, then the labeled estimate.
+//   Gpu  - force the CUDA GPU engine (then fall back to the labeled estimate).
+//   Cpu  - CPU engines only (skip the GPU engine).
+// Process-wide (a single global user setting); the docking module reads it when
+// ordering engines. Defaults to Auto. Thread-safe.
+enum class ComputeMode { Auto, Gpu, Cpu };
+void                      setComputeMode(ComputeMode m);
+[[nodiscard]] ComputeMode computeMode();
+
 // The directory engine binaries live in: %APPDATA%/StimLab/runtime/engines.
 std::filesystem::path enginesDir();
 
