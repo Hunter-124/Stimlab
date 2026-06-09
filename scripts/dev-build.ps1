@@ -25,7 +25,11 @@ if (-not (Test-Path $Vcvars)) {
     $Vcvars = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 }
 
-$steps = "set VCPKG_ROOT=$VcpkgRoot && cmake --preset $Preset"
+# Quote the cmd `set` (set "NAME=value") so the trailing space before && is NOT
+# captured into VCPKG_ROOT - an unquoted `set VAR=x && cmd` stores "x " (trailing
+# space), which corrupts the toolchain path ("...vcpkg /scripts/...") and breaks a
+# from-scratch configure (a populated cache hides it; a clean build does not).
+$steps = "set `"VCPKG_ROOT=$VcpkgRoot`" && cmake --preset $Preset"
 if (-not $ConfigureOnly) { $steps += " && cmake --build --preset $Preset" }
 if ($Test) { $steps += " && ctest --preset $Preset --output-on-failure" }
 
