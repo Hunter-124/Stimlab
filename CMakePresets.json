@@ -53,13 +53,25 @@
         "VCPKG_TARGET_TRIPLET": "x64-windows-static",
         "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded$<$<CONFIG:Debug>:Debug>"
       }
+    },
+    {
+      "name": "windows-science-static",
+      "inherits": "windows-static",
+      "displayName": "Windows x64 RELEASE - fully static + science (single exe w/ live agent + web tools)",
+      "description": "Phase E science release: everything in windows-static (x64-windows-static + static CRT /MT) PLUS the science feature, so ONE self-contained StimLab.exe also carries the live Anthropic provider + web_search/web_fetch. curl[ssl] resolves to Windows-native Schannel and is linked statically (no OpenSSL, no DLLs). Heavier first build (static libcurl).",
+      "binaryDir": "${sourceDir}/build/windows-science-static",
+      "cacheVariables": {
+        "VCPKG_MANIFEST_FEATURES": "science",
+        "STIMLAB_ENABLE_SCIENCE": "ON"
+      }
     }
   ],
   "buildPresets": [
     { "name": "windows", "configurePreset": "windows" },
     { "name": "windows-science", "configurePreset": "windows-science" },
     { "name": "windows-cuda", "configurePreset": "windows-cuda" },
-    { "name": "windows-static", "configurePreset": "windows-static" }
+    { "name": "windows-static", "configurePreset": "windows-static" },
+    { "name": "windows-science-static", "configurePreset": "windows-science-static" }
   ],
   "testPresets": [
     {
@@ -82,6 +94,11 @@
       "name": "windows-static",
       "inherits": "windows",
       "configurePreset": "windows-static"
+    },
+    {
+      "name": "windows-science-static",
+      "inherits": "windows",
+      "configurePreset": "windows-science-static"
     }
   ]
 }

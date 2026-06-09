@@ -39,6 +39,26 @@ Copy-Item $exe $stage
 $dlls = Get-ChildItem $binDir -Filter *.dll -ErrorAction SilentlyContinue
 foreach ($d in $dlls) { Copy-Item $d.FullName $stage }
 
+# The science presets statically bundle libcurl, so the live Anthropic provider + web
+# tools ship inside this exe; the plain presets are curl-free (offline assistant only).
+$science = $Preset -like "*science*"
+$aiPara = if ($science) {
+@"
+AI ASSISTANT (live provider + web tools INCLUDED in this build)
+  This build bundles the live Anthropic provider and the keyless web_search /
+  web_fetch tools (static libcurl, Windows-native Schannel TLS). The offline
+  assistant works out of the box; add an Anthropic API key in Settings (stored
+  encrypted via Windows DPAPI) to enable the live agent.
+"@
+} else {
+@"
+AI ASSISTANT (optional)
+  The offline assistant navigates and explains. For the live provider + web tools,
+  build the science release (build.ps1 -Release -Science) and add an Anthropic API
+  key in Settings (stored encrypted via Windows DPAPI).
+"@
+}
+
 $readme = @"
 StimLab $Version - native CNS-stimulant computational pharmacology suite (x64 Windows)
 
@@ -62,12 +82,8 @@ FIRST RUN / SELF-PROVISIONING (optional, needs internet)
   descriptor estimate. The runtime self-heals: a corrupt component is re-provisioned
   (Settings > Verify + heal runtime; manifest.json is the source of truth).
 
-AI ASSISTANT (optional)
-  The offline assistant navigates and explains. For the live provider + web tools,
-  use the science build and add an Anthropic API key in Settings (stored encrypted
-  via Windows DPAPI).
-
-This build: preset '$Preset'$(if ($dlls) { " (bundled DLLs: " + (($dlls | ForEach-Object { $_.Name }) -join ', ') + ")" } else { " (fully static - single self-contained exe)" }).
+$aiPara
+This build: preset '$Preset'$(if ($dlls) { " (bundled DLLs: " + (($dlls | ForEach-Object { $_.Name }) -join ', ') + ")" } else { " (fully static - single self-contained exe)" })$(if ($science) { " - live agent + web tools bundled" }).
 "@
 Set-Content -Path (Join-Path $stage "README.txt") -Value $readme -Encoding ASCII
 

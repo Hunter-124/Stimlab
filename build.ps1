@@ -7,9 +7,12 @@
 #   .\build.ps1 -Release -Clean # ... wiping the build dir first (from-scratch)
 #   .\build.ps1 -NoTest         # skip ctest
 #   .\build.ps1 -Science        # dev build WITH the live LLM + web tools (libcurl)
+#   .\build.ps1 -Release -Science # static single-exe release that ALSO bundles the
+#                                 # live agent + web tools (curl[ssl], Schannel, static)
 #
 # -Release produces dist\StimLab-<Version>-win-x64\StimLab.exe (a self-contained exe
-# needing no DLLs / no VC++ redist) and a matching .zip.
+# needing no DLLs / no VC++ redist) and a matching .zip. Adding -Science to -Release
+# makes that single exe also carry the live Anthropic provider + web_search/web_fetch.
 [CmdletBinding()]
 param(
     [switch]$Release,
@@ -22,8 +25,12 @@ $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 Set-Location $root
 
-# Pick the preset. -Release wins (static, packaged); else dev (dynamic), optionally science.
-$preset = if ($Release) { "windows-static" } elseif ($Science) { "windows-science" } else { "windows" }
+# Pick the preset. -Release wins (static, packaged); -Release -Science is the static
+# release that also bundles the live agent + web tools; else dev (dynamic), optionally science.
+$preset = if ($Release -and $Science) { "windows-science-static" }
+          elseif ($Release)           { "windows-static" }
+          elseif ($Science)           { "windows-science" }
+          else                        { "windows" }
 
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host " StimLab build  |  preset=$preset  test=$(-not $NoTest)  release=$Release" -ForegroundColor Cyan
