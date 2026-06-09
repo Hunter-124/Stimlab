@@ -18,8 +18,18 @@
 #include <vector>
 
 #include "contracts/IDockingBackend.h"
+#include "core/Manifest.h"
 
 namespace stimlab::docking {
+
+// Record the currently-provisioned engine binaries + prepared receptors into
+// %APPDATA%/StimLab/manifest.json (the self-heal source of truth). Called after a
+// successful provision.
+void writeRuntimeManifest();
+
+// Self-heal on launch: load the manifest, delete any corrupt component so a later
+// provision re-fetches it, and return the post-heal status. Safe with no manifest.
+ManifestStatus selfHealManifest();
 
 class Provisioner {
 public:

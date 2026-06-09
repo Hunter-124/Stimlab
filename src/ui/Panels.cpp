@@ -16,6 +16,7 @@
 #include "chem/Embed3D.h"
 #include "chem/Smiles.h"
 #include "core/AppPaths.h"
+#include "core/Manifest.h"
 #include "modules/docking/Presets.h"
 #include "modules/docking/Provisioning.h"
 #include "render/MolViewport.h"
@@ -1125,6 +1126,28 @@ void settings(AppShell& shell) {
 
     ImGui::TextDisabled("STORAGE");
     ImGui::TextWrapped("All state lives under %%APPDATA%%/StimLab (db, artifacts, runtime, presets, logs).");
+    ImGui::Spacing();
+
+    ImGui::TextDisabled("RUNTIME (self-provisioned components)");
+    auto fmtManifest = [](const ManifestStatus& st) {
+        if (st.total == 0)
+            return std::string("Nothing provisioned yet - use the Docking panel's Provision button.");
+        std::string s = std::to_string(st.present) + "/" + std::to_string(st.total) +
+                        " components verified (size + content hash)";
+        if (!st.missing.empty()) s += ", " + std::to_string(st.missing.size()) + " missing";
+        if (!st.corrupt.empty()) s += ", " + std::to_string(st.corrupt.size()) + " corrupt (healed)";
+        return s + ".";
+    };
+    static std::string mfStatus;
+    static bool mfInit = false;
+    if (!mfInit) {
+        mfInit = true;
+        mfStatus = fmtManifest(Manifest::load(AppPaths::instance().manifest()).verify());
+    }
+    ImGui::TextWrapped("%s", mfStatus.c_str());
+    if (ImGui::Button("Verify + heal runtime")) mfStatus = fmtManifest(docking::selfHealManifest());
+    ImGui::SameLine();
+    ImGui::TextDisabled("Deletes any corrupt engine/receptor so it re-provisions; manifest.json is the source of truth.");
 }
 
 // ------------------------------------------------------------------- Compare

@@ -20,6 +20,7 @@ public:
     [[nodiscard]] std::filesystem::path logs() const       { return root_ / "logs"; }
     [[nodiscard]] std::filesystem::path cache() const     { return root_ / "cache"; }
     [[nodiscard]] std::filesystem::path config() const    { return root_ / "config.json"; }
+    [[nodiscard]] std::filesystem::path manifest() const  { return root_ / "manifest.json"; }
 
     // Create the full directory layout if missing. Returns false on filesystem error.
     bool ensureLayout() const;

@@ -13,6 +13,7 @@ add_executable(stimlab_tests
   test_agent.cpp
   test_workflow.cpp
   test_pipelines.cpp
+  test_manifest.cpp
 )
 
 target_link_libraries(stimlab_tests PRIVATE

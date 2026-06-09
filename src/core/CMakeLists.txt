@@ -4,6 +4,7 @@ add_library(stimlab_core STATIC
   Log.cpp
   Config.cpp
   Secrets.cpp
+  Manifest.cpp
 )
 
 target_include_directories(stimlab_core PUBLIC

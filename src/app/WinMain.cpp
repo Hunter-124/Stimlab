@@ -150,7 +150,14 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
 
     stimlab::AppPaths::instance().ensureLayout();
     stimlab::log::init();
-    spdlog::info("StimLab starting (Phase D: real chem engine + 3D viewer + docking)");
+    spdlog::info("StimLab starting (real chem engine + 3D viewer + docking + workflows + agent)");
+
+    // Self-heal the provisioned runtime: delete any corrupt engine/receptor so it is
+    // re-fetched on the next provision (manifest.json is the source of truth).
+    if (const auto st = stimlab::docking::selfHealManifest(); st.total > 0) {
+        spdlog::info("Runtime manifest: {}/{} components verified ({} missing, {} corrupt-healed)",
+                     st.present, st.total, st.missing.size(), st.corrupt.size());
+    }
 
     ImGui_ImplWin32_EnableDpiAwareness();
 

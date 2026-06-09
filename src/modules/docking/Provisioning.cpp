@@ -1,11 +1,39 @@
 #include "modules/docking/Provisioning.h"
 
+#include <filesystem>
+#include <system_error>
 #include <utility>
 
+#include "core/AppPaths.h"
+#include "core/Manifest.h"
 #include "modules/docking/EngineLocator.h"
 #include "modules/docking/ReceptorPrep.h"
 
 namespace stimlab::docking {
+
+namespace fs = std::filesystem;
+
+void writeRuntimeManifest() {
+    Manifest m;
+    if (auto vina = locateEngine(Engine::Vina)) m.addFromFile("engine:vina", "engine", *vina);
+    if (auto obabel = locateEngine(Engine::Obabel)) m.addFromFile("engine:obabel", "engine", *obabel);
+    std::error_code ec;
+    const fs::path rdir = receptorsDir();
+    if (fs::exists(rdir, ec) && fs::is_directory(rdir, ec)) {
+        for (fs::directory_iterator it(rdir, ec), end; it != end && !ec; it.increment(ec)) {
+            if (it->is_regular_file(ec) && it->path().extension() == ".pdbqt")
+                m.addFromFile("receptor:" + it->path().stem().string(), "receptor", it->path());
+        }
+    }
+    m.save(AppPaths::instance().manifest());
+}
+
+ManifestStatus selfHealManifest() {
+    Manifest m = Manifest::load(AppPaths::instance().manifest());
+    if (m.empty()) return {};
+    m.heal();           // delete corrupt files so a later provision re-fetches them
+    return m.verify();  // status after healing
+}
 
 Provisioner::~Provisioner() {
     if (worker_.joinable()) worker_.join();
@@ -50,7 +78,10 @@ void Provisioner::run(bool allowDownload, std::vector<ReceptorTarget> headline) 
         receptorsReady_.store(ready);
     }
 
-    // 3) Final summary.
+    // 3) Record what is now on disk into the manifest (self-heal source of truth).
+    writeRuntimeManifest();
+
+    // 4) Final summary.
     std::string s = vina.fetched ? "Vina ready. " : ("Vina unavailable: " + vina.note + " ");
     s += std::to_string(ready) + "/" + std::to_string(headline.size()) + " headline receptors prepared.";
     if (!allowDownload && (ready == 0 || !vina.fetched))
