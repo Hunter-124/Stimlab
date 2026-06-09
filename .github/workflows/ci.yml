@@ -1,0 +1,82 @@
+name: CI
+
+# Build + test the shipping presets and publish the release zip. Mirrors
+# scripts/ci.ps1 (the local equivalent). No GPU/CUDA job - GitHub-hosted runners have
+# no NVIDIA GPU, so the AutoDock-GPU path is exercised locally only.
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Cache vcpkg-built dependencies in the GitHub Actions cache (cold build ~minutes,
+  # warm build seconds). Uses the runner's preinstalled vcpkg.
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+
+jobs:
+  build-test:
+    name: build + ctest (windows-latest)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CMake + Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Set up MSVC (x64)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      # x-gha binary cache needs these two tokens exported into the job env.
+      - name: Enable vcpkg GitHub Actions binary cache
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Point VCPKG_ROOT at the preinstalled vcpkg
+        shell: pwsh
+        run: echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+
+      - name: windows (dynamic) - configure, build, ctest
+        shell: pwsh
+        run: |
+          cmake --preset windows
+          cmake --build --preset windows
+          ctest --preset windows --output-on-failure
+
+      - name: windows-static (single self-contained exe) - configure, build, ctest
+        shell: pwsh
+        run: |
+          cmake --preset windows-static
+          cmake --build --preset windows-static
+          ctest --preset windows-static --output-on-failure
+
+      - name: Package release zip
+        shell: pwsh
+        run: ./scripts/package.ps1 -NoBuild -Preset windows-static -Version 0.1.0
+
+      # Optional code-signing: only runs if a cert secret is configured (no-op otherwise).
+      - name: Code-sign (optional)
+        if: ${{ env.STIMLAB_SIGN_SHA1 != '' || env.STIMLAB_SIGN_PFX != '' }}
+        shell: pwsh
+        env:
+          STIMLAB_SIGN_PFX: ${{ secrets.STIMLAB_SIGN_PFX }}
+          STIMLAB_SIGN_PFX_PASSWORD: ${{ secrets.STIMLAB_SIGN_PFX_PASSWORD }}
+          STIMLAB_SIGN_SHA1: ${{ secrets.STIMLAB_SIGN_SHA1 }}
+        run: ./scripts/sign.ps1 -Exe dist/StimLab-0.1.0-win-x64/StimLab.exe
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: StimLab-win-x64
+          path: dist/StimLab-*-win-x64.zip
+          if-no-files-found: error
