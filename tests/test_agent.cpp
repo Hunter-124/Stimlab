@@ -10,6 +10,7 @@
 #include "agent/MockProvider.h"
 #include "agent/SystemPrompt.h"
 #include "agent/Tools.h"
+#include "agent/WebTools.h"
 #include "contracts/IAgentTools.h"
 #include "modules/RealBackend.h"
 #include "ui/AppShell.h"
@@ -161,6 +162,76 @@ TEST_CASE("AppShell binds service-action tools the agent can invoke", "[agent][t
     REQUIRE_FALSE(sl.isError);
     REQUIRE(json::parse(sl.content).is_array());
     REQUIRE_FALSE(json::parse(sl.content).empty());
+}
+
+TEST_CASE("htmlToText strips scripts/styles/tags and decodes entities", "[agent][web]") {
+    const std::string html =
+        "<html><head><style>body{color:red}</style><title>T</title></head>"
+        "<body><script>alert(1)</script><p>Hello &amp; welcome &lt;ok&gt;</p></body></html>";
+    const std::string text = agent::htmlToText(html);
+    REQUIRE(text.find("alert") == std::string::npos);    // script removed
+    REQUIRE(text.find("color") == std::string::npos);    // style removed
+    REQUIRE(text.find("Hello & welcome") != std::string::npos);  // tags stripped, &amp; decoded
+    REQUIRE(text.find('<') != std::string::npos);        // &lt; decoded back to '<'
+}
+
+TEST_CASE("parseDuckDuckGoHtml extracts hits and un-wraps redirect URLs", "[agent][web]") {
+    const std::string html =
+        "<div class=\"result results_links\">"
+        "<a rel=\"nofollow\" class=\"result__a\" "
+        "href=\"//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Famphetamine&amp;rut=x\">"
+        "Amphetamine - Example</a>"
+        "<a class=\"result__snippet\" href=\"#\">A CNS stimulant.</a></div>";
+    const auto hits = agent::parseDuckDuckGoHtml(html, 6);
+    REQUIRE(hits.size() == 1);
+    REQUIRE(hits[0].title == "Amphetamine - Example");
+    REQUIRE(hits[0].url == "https://example.com/amphetamine");   // uddg= un-wrapped + decoded
+    REQUIRE(hits[0].snippet == "A CNS stimulant.");
+}
+
+TEST_CASE("webToolsAvailable reflects the build, and degrades when absent", "[agent][web]") {
+#ifdef STIMLAB_HAVE_SCIENCE
+    REQUIRE(agent::webToolsAvailable());
+#else
+    REQUIRE_FALSE(agent::webToolsAvailable());
+    // Without networking the calls return a clear error rather than crashing.
+    REQUIRE_FALSE(agent::webSearch("amphetamine").ok);
+    REQUIRE_FALSE(agent::webFetch("https://example.com").ok);
+#endif
+}
+
+// Hidden ([.]) so normal ctest never hits the network; run explicitly in a science
+// build: stimlab_tests.exe "[live]"
+TEST_CASE("LIVE web_search returns real hits", "[.][live][web]") {
+    if (!agent::webToolsAvailable()) {
+        SUCCEED("web tools not compiled in this build");
+        return;
+    }
+    const auto r = agent::webSearch("amphetamine pharmacology", 5);
+    INFO("error: " << r.error);
+    REQUIRE(r.ok);
+    REQUIRE_FALSE(r.hits.empty());
+    REQUIRE_FALSE(r.hits.front().url.empty());
+    REQUIRE_FALSE(r.hits.front().title.empty());
+}
+
+TEST_CASE("compare_compounds ranks multiple compounds", "[agent][tools][service]") {
+    RealBackend backend;
+    AppShell shell(backend.services());
+    IToolRegistry* reg = shell.toolRegistry();
+    REQUIRE(reg->has("compare_compounds"));
+
+    const auto r = reg->dispatch("compare_compounds",
+                                 {{"compounds", json::array({"amphetamine", "caffeine"})}});
+    REQUIRE_FALSE(r.isError);
+    const auto j = json::parse(r.content);
+    REQUIRE(j.is_array());
+    REQUIRE(j.size() == 2);
+    REQUIRE(j[0].contains("admetOverall"));
+    REQUIRE(j[0].contains("stabilityScore"));
+
+    // A single compound can't be compared.
+    REQUIRE(reg->dispatch("compare_compounds", {{"compounds", json::array({"amphetamine"})}}).isError);
 }
 
 TEST_CASE("MockProvider keyword-routes the highlight target", "[agent][mock]") {

@@ -8,6 +8,7 @@ add_library(stimlab_agent STATIC
   SystemPrompt.cpp
   MockProvider.cpp
   AnthropicProvider.cpp
+  WebTools.cpp
   Agent.cpp
 )
 
