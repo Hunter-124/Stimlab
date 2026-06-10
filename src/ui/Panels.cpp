@@ -40,13 +40,25 @@ void verdictText(Verdict v) {
 
 void statCard(const char* title, const std::string& value, const char* sub, float w = 168.0f,
               float h = 84.0f, float valueScale = 1.6f) {
-    ImGui::BeginChild(title, ImVec2(w, h), ImGuiChildFlags_Borders);
-    ImGui::TextDisabled("%s", title);
-    ImGui::SetWindowFontScale(valueScale);
+    // valueScale parameter kept for call-site compat; ignored — theme fonts govern size.
+    (void)valueScale;
+    if (!theme::beginCard(title, ImVec2(w, h > 84.0f ? h : 104.0f))) return;
+    theme::pushSmallStrong();
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
+    ImGui::TextUnformatted(title);
+    ImGui::PopStyleColor();
+    theme::popFont();
+    theme::pushValue();
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextHi));
     ImGui::TextUnformatted(value.c_str());
-    ImGui::SetWindowFontScale(1.0f);
-    if (sub) ImGui::TextDisabled("%s", sub);
-    ImGui::EndChild();
+    ImGui::PopStyleColor();
+    theme::popFont();
+    if (sub) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
+        ImGui::TextUnformatted(sub);
+        ImGui::PopStyleColor();
+    }
+    theme::endCard();
 }
 
 // A small decorative 2D schematic (real RDKit depiction arrives in Phase C).
@@ -396,40 +408,122 @@ void dashboard(AppShell& shell) {
     Services& s = shell.services();
     const Molecule m = shell.currentMolecule();
 
-    statCard("LIBRARY", std::to_string(s.library ? s.library->count() : 0), "compounds");
-    ImGui::SameLine();
-    statCard("RECENT RUNS", std::to_string(s.runs ? s.runs->recent().size() : 0), "this session");
-    ImGui::SameLine();
-    statCard("ACTIVE", m.name, m.drugClass.c_str(), 240.0f);
+    // ---- Hero card ----------------------------------------------------------
+    if (theme::beginCard("hero", ImVec2(-1.0f, 132.0f))) {
+        // Compound name
+        theme::pushH2();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextHi));
+        ImGui::TextUnformatted(m.name.c_str());
+        ImGui::PopStyleColor();
+        theme::popFont();
+        ImGui::SameLine(0, 10);
+        theme::badge(m.drugClass.c_str());
+        ImGui::SameLine(0, 6);
+        theme::badge(m.legalStatus.c_str(), theme::kTextDim, theme::kSurfaceHi);
+        // Formula + truncated SMILES
+        std::string smilesTrunc = m.smiles;
+        if (smilesTrunc.size() > 60) smilesTrunc = smilesTrunc.substr(0, 60) + "\xe2\x80\xa6";  // UTF-8 ellipsis
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
+        ImGui::Text("%s   %s", m.formula.c_str(), smilesTrunc.c_str());
+        ImGui::PopStyleColor();
+        // Inline physchem chips
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
+        ImGui::Text("MW %.1f   logP %.2f   TPSA %.0f   HBD %d   HBA %d",
+                    m.molWeight, m.logP, m.tpsa, m.hbd, m.hba);
+        ImGui::PopStyleColor();
+        theme::endCard();
+    }
     ImGui::Spacing();
 
-    ImGui::TextDisabled("SNAPSHOT  -  %s", m.name.c_str());
-    ImGui::Separator();
-
+    // ---- Responsive metric grid ---------------------------------------------
     if (s.stability && s.absorption && s.admet) {
         const auto stab = s.stability->analyze(m);
-        const auto abs = s.absorption->predict(m);
-        const auto adm = s.admet->screen(m);
+        const auto abs  = s.absorption->predict(m);
+        const auto adm  = s.admet->screen(m);
 
-        statCard("STABILITY", f0(stab.overallScore) + "/100", stab.shelfLifeEstimate.c_str(), 200.0f);
-        ImGui::SameLine();
-        statCard("ORAL F", f0(abs.bioavailabilityPct) + "%",
-                 abs.cnsPenetrant ? "CNS-penetrant" : "low CNS", 168.0f);
-        ImGui::SameLine();
-        statCard("HIA", f0(abs.hiaPct) + "%", "intestinal abs.", 168.0f);
-        ImGui::SameLine();
+        const float spacing = 8.0f;
+        const float avail   = ImGui::GetContentRegionAvail().x;
+        const int cols      = std::max(1, static_cast<int>(avail / (215.0f + spacing)));
+        const float cw      = (avail - spacing * (cols - 1)) / static_cast<float>(cols);
+
+        // Helper to lay out a tile, advancing row as needed.
+        int tileIdx = 0;
+        auto nextTile = [&]() {
+            const int col = tileIdx % cols;
+            if (col != 0) ImGui::SameLine(0, spacing);
+            ++tileIdx;
+        };
+
+        // Tile 1 — Stability
+        nextTile();
+        theme::metricCard("STABILITY", (f0(stab.overallScore) + "/100").c_str(),
+                          stab.shelfLifeEstimate.c_str(), theme::kTextHi, cw);
+
+        // Tile 2 — Oral F
+        nextTile();
+        theme::metricCard("ORAL F", (f0(abs.bioavailabilityPct) + "%").c_str(),
+                          abs.cnsPenetrant ? "CNS-penetrant" : "low CNS",
+                          theme::kTextHi, cw);
+
+        // Tile 3 — HIA
+        nextTile();
+        theme::metricCard("HIA", (f0(abs.hiaPct) + "%").c_str(), "intestinal abs.",
+                          theme::kTextHi, cw);
+
+        // Tile 4 — ADMET
         {
-            ImGui::BeginChild("ADMETcard", ImVec2(200, 84), ImGuiChildFlags_Borders);
-            ImGui::TextDisabled("ADMET");
-            ImGui::SetWindowFontScale(1.4f);
-            verdictText(adm.overall);
-            ImGui::SetWindowFontScale(1.0f);
-            ImGui::TextDisabled("%zu endpoints", adm.endpoints.size());
-            ImGui::EndChild();
+            nextTile();
+            const std::string epCount = std::to_string(adm.endpoints.size()) + " endpoints";
+            const ImVec4 admetCol = theme::verdictColor(static_cast<int>(adm.overall));
+            const ImU32 admetColU32 = ImGui::ColorConvertFloat4ToU32(admetCol);
+            theme::metricCard("ADMET", verdictLabel(adm.overall), epCount.c_str(),
+                              admetColU32, cw);
         }
+
+        // Tile 5 — Library
+        nextTile();
+        theme::metricCard("LIBRARY",
+                          std::to_string(s.library ? s.library->count() : 0).c_str(),
+                          "compounds", theme::kTextHi, cw);
+
+        // Tile 6 — Runs
+        nextTile();
+        theme::metricCard("RUNS",
+                          std::to_string(s.runs ? s.runs->recent().size() : 0).c_str(),
+                          "this session", theme::kTextHi, cw);
+
+        // ---- Summaries ------------------------------------------------------
         ImGui::Spacing();
-        ImGui::TextWrapped("%s", stab.summary.c_str());
-        ImGui::TextWrapped("%s", abs.summary.c_str());
+        theme::sectionHeader("Snapshot");
+
+        // Two side-by-side summary cards, each half width.
+        const float halfW = (avail - spacing) * 0.5f;
+        if (theme::beginCard("##stabsum", ImVec2(halfW, 0.0f), true)) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kText));
+            ImGui::TextWrapped("%s", stab.summary.c_str());
+            ImGui::PopStyleColor();
+            theme::endCard();
+        }
+        ImGui::SameLine(0, spacing);
+        if (theme::beginCard("##abssum", ImVec2(halfW, 0.0f), true)) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kText));
+            ImGui::TextWrapped("%s", abs.summary.c_str());
+            ImGui::PopStyleColor();
+            theme::endCard();
+        }
+    } else {
+        // Services not yet ready — show library/runs tiles only.
+        const float spacing = 8.0f;
+        const float avail   = ImGui::GetContentRegionAvail().x;
+        const int cols      = std::max(1, static_cast<int>(avail / (215.0f + spacing)));
+        const float cw      = (avail - spacing * (cols - 1)) / static_cast<float>(cols);
+        theme::metricCard("LIBRARY",
+                          std::to_string(s.library ? s.library->count() : 0).c_str(),
+                          "compounds", theme::kTextHi, cw);
+        ImGui::SameLine(0, spacing);
+        theme::metricCard("RUNS",
+                          std::to_string(s.runs ? s.runs->recent().size() : 0).c_str(),
+                          "this session", theme::kTextHi, cw);
     }
 }
 
@@ -469,7 +563,7 @@ void structureWorkbench(AppShell& shell) {
             ImGui::EndTable();
         }
         ImGui::Spacing();
-        ImGui::TextDisabled("PHYSICOCHEMICAL");
+        theme::sectionHeader("Physicochemical");
         if (ImGui::BeginTable("props", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
             for (const char* h : {"MW", "logP", "TPSA", "HBD", "HBA", "RotB"})
                 ImGui::TableSetupColumn(h);
@@ -485,7 +579,7 @@ void structureWorkbench(AppShell& shell) {
         }
 
         ImGui::TableSetColumnIndex(1);
-        ImGui::TextDisabled("3D STRUCTURE");
+        theme::sectionHeader("3D Structure");
         if (!molViewer3D(shell, conf, m.id, viewUi, 300.0f)) {
             // Graceful fallback when no GPU device is available: 2D schematic.
             moleculeSchematic(m, ImVec2(260, 220));
@@ -603,7 +697,7 @@ void moleculeInput(AppShell& shell) {
         ImGui::TextDisabled("routes this structure into every other panel");
 
         ImGui::TableSetColumnIndex(1);
-        ImGui::TextDisabled("3D STRUCTURE");
+        theme::sectionHeader("3D Structure");
         molViewer3D(shell, previewConf, "custom|" + lastSmiles, viewUi, 300.0f);
         ImGui::EndTable();
     }
@@ -646,7 +740,7 @@ void stability(AppShell& shell) {
         ImGui::EndTable();
     }
     ImGui::Spacing();
-    ImGui::TextDisabled("LIKELY DEGRADANTS");
+    theme::sectionHeader("Likely Degradants");
     for (const auto& d : r.degradants)
         ImGui::BulletText("%s  -  %s (%s)", d.name.c_str(), d.pathway.c_str(), d.note.c_str());
 }
@@ -776,10 +870,10 @@ void legal(AppShell& shell) {
     if (!shell.services().legal) return;
     const auto r = shell.services().legal->score(m);
 
-    ImGui::TextDisabled("JURISDICTION");
+    theme::sectionHeader("Jurisdiction");
     ImGui::TextUnformatted(r.jurisdiction.c_str());
     ImGui::Spacing();
-    ImGui::TextDisabled("SUBSTANTIAL SIMILARITY");
+    theme::sectionHeader("Substantial Similarity");
     ImGui::ProgressBar(static_cast<float>(r.substantialSimilarity / 100.0), ImVec2(-1, 0),
                        (f0(r.substantialSimilarity) + " / 100").c_str());
     ImGui::Spacing();
@@ -802,7 +896,7 @@ void docking(AppShell& shell) {
     UiState& st = shell.state();
     if (st.dockTarget.empty() && !targets.empty()) st.dockTarget = targets.front();
 
-    ImGui::TextDisabled("TARGET (binding/pharmacology only)");
+    theme::sectionHeader("Target");
     ImGui::SetNextItemWidth(360);
     if (ImGui::BeginCombo("##target", st.dockTarget.c_str())) {
         for (const auto& t : targets) {
@@ -900,7 +994,7 @@ void docking(AppShell& shell) {
                : ("Estimated affinity " + f2(d.bestAffinity()) + " kcal/mol at " + st.dockTarget +
                   " (" + d.engine + " - structure-descriptor model, not a docked score).");
 
-    theme::sectionHeader("DOCKING RESULT");
+    theme::sectionHeader("Docking Result");
 
     // Headline metric cards. The affinity card is deliberately large + high-contrast so
     // the primary number reads at a glance; companions summarise pose count / provenance.
@@ -977,7 +1071,7 @@ void docking(AppShell& shell) {
     // ranks start at 1 (never negative) and affinity is drawn downward from 0. The
     // selected pose is overlaid highlighted so the chart and table stay in sync. ------
     if (hasResult) {
-        theme::sectionHeader("AFFINITY BY POSE");
+        theme::sectionHeader("Affinity By Pose");
         if (ImPlot::BeginPlot("##dock", ImVec2(-1, 200),
                               ImPlotFlags_NoMouseText | ImPlotFlags_NoLegend)) {
             const int n = static_cast<int>(d.poses.size());
@@ -1032,7 +1126,7 @@ void docking(AppShell& shell) {
     // poses carry their own coordinates; the labeled estimate carries the embedded
     // ligand as a stand-in so the viewport always has geometry). Engine is labeled.
     ImGui::Spacing();
-    theme::sectionHeader("3D POSE / LIGAND");
+    theme::sectionHeader("3D Pose / Ligand");
     if (hasResult) {
         ImGui::SetNextItemWidth(160);
         ImGui::SliderInt("Pose##dock", &poseSel, 0, static_cast<int>(d.poses.size()) - 1);
@@ -1097,7 +1191,7 @@ void workflows(AppShell& shell) {
         "provisioning a receptor/engine re-runs only the affected nodes.");
     ImGui::Spacing();
 
-    ImGui::TextDisabled("TARGET (binding/pharmacology only)");
+    theme::sectionHeader("Target");
     ImGui::SetNextItemWidth(360);
     if (ImGui::BeginCombo("##wftarget", st.dockTarget.c_str())) {
         for (const auto& t : targets) {
@@ -1345,7 +1439,7 @@ void presets(AppShell& shell) {
 
 // -------------------------------------------------------------------- Settings
 void settings(AppShell& shell) {
-    ImGui::TextDisabled("AI ASSISTANT");
+    theme::sectionHeader("AI Assistant");
     ImGui::TextWrapped(
         "The assistant explains panels, reads the selected compound's real structure-derived "
         "properties, and navigates/highlights the UI. It never provides synthesis, route, or "
@@ -1382,7 +1476,7 @@ void settings(AppShell& shell) {
     ImGui::Spacing();
 
     // API key - encrypted at rest via DPAPI; plaintext never persisted or shown.
-    ImGui::TextDisabled("API KEY (encrypted at rest via Windows DPAPI)");
+    theme::sectionHeader("API Key (encrypted at rest via Windows DPAPI)");
     static char keyBuf[256] = {0};
     ImGui::SetNextItemWidth(360);
     ImGui::InputTextWithHint(
@@ -1407,13 +1501,13 @@ void settings(AppShell& shell) {
     }
     ImGui::Spacing();
 
-    ImGui::TextDisabled("BEHAVIOR");
+    theme::sectionHeader("Behavior");
     bool autop = shell.autopilot();
     if (ImGui::Checkbox("Autopilot - run navigate/highlight tools automatically", &autop))
         shell.setAutopilot(autop);
     ImGui::Spacing();
 
-    ImGui::TextDisabled("COMPUTE (docking engine)");
+    theme::sectionHeader("Compute (docking engine)");
     int compute = shell.computeMode();
     bool computeChanged = false;
     computeChanged |= ImGui::RadioButton("Auto", &compute, 0); ImGui::SameLine();
@@ -1452,11 +1546,11 @@ void settings(AppShell& shell) {
     }
     ImGui::Spacing();
 
-    ImGui::TextDisabled("STORAGE");
+    theme::sectionHeader("Storage");
     ImGui::TextWrapped("All state lives under %%APPDATA%%/StimLab (db, artifacts, runtime, presets, logs).");
     ImGui::Spacing();
 
-    ImGui::TextDisabled("RUNTIME (self-provisioned components)");
+    theme::sectionHeader("Runtime (self-provisioned components)");
     auto fmtManifest = [](const ManifestStatus& st) {
         if (st.total == 0)
             return std::string("Nothing provisioned yet - use the Docking panel's Provision button.");
@@ -1563,7 +1657,7 @@ void compare(AppShell& shell) {
         rowD("HIA%", [](const Row& r) { return f0(r.ab.hiaPct) + "%"; });
         rowD("logBB", [](const Row& r) { return f2(r.ab.logBB) + (r.ab.cnsPenetrant ? " (CNS)" : ""); });
         ImGui::TableNextRow();
-        ImGui::TableSetColumnIndex(0); ImGui::TextDisabled("ADMET");
+        ImGui::TableSetColumnIndex(0); ImGui::TextDisabled("ADMET");  // inline table cell label, not a section header
         for (int i = 0; i < static_cast<int>(rows.size()); ++i) {
             ImGui::TableSetColumnIndex(i + 1);
             verdictText(rows[i].ad.overall);
@@ -1972,7 +2066,7 @@ void analogExplorer(AppShell& shell) {
                 if (ImGui::BeginTable("aeknobs", 2, ImGuiTableFlags_BordersInnerV)) {
                     ImGui::TableNextRow();
                     ImGui::TableSetColumnIndex(0);
-                    theme::sectionHeader("PROPERTIES");
+                    theme::sectionHeader("Properties");
                     ImGui::SetNextItemWidth(200); ImGui::SliderFloat("logP", &logP, -3.0f, 5.0f, "%.2f");
                     ImGui::SetNextItemWidth(200); ImGui::SliderFloat("TPSA", &tpsa, 0.0f, 150.0f, "%.0f");
                     ImGui::SetNextItemWidth(200); ImGui::SliderFloat("MW", &mw, 80.0f, 400.0f, "%.0f");
@@ -1980,7 +2074,7 @@ void analogExplorer(AppShell& shell) {
                     ImGui::SetNextItemWidth(200); ImGui::SliderInt("H-bond acceptors", &hba, 0, 10);
                     ImGui::SetNextItemWidth(200); ImGui::SliderInt("Rotatable bonds", &rot, 0, 12);
                     ImGui::TableSetColumnIndex(1);
-                    theme::sectionHeader("FUNCTIONAL GROUPS");
+                    theme::sectionHeader("Functional Groups");
                     ImGui::Checkbox("Ester (hydrolysis-labile)", &ester);
                     ImGui::Checkbox("Catechol (oxidation / COMT)", &catechol);
                     ImGui::Checkbox("Aryl ketone (beta-keto)", &arylKetone);
@@ -2096,13 +2190,11 @@ void analogExplorer(AppShell& shell) {
         statCard("HIA", f0(ab.hiaPct) + "%", "intestinal abs.", 150.0f);
         ImGui::SameLine();
         {
-            ImGui::BeginChild("aeADMET", ImVec2(170, 84), ImGuiChildFlags_Borders);
-            ImGui::TextDisabled("ADMET");
-            ImGui::SetWindowFontScale(1.3f);
-            verdictText(ad.overall);
-            ImGui::SetWindowFontScale(1.0f);
-            ImGui::TextDisabled("%zu endpoints", ad.endpoints.size());
-            ImGui::EndChild();
+            const std::string aeEpCount = std::to_string(ad.endpoints.size()) + " endpoints";
+            const ImU32 aeAdmetCol = ImGui::ColorConvertFloat4ToU32(
+                theme::verdictColor(static_cast<int>(ad.overall)));
+            theme::metricCard("ADMET", verdictLabel(ad.overall), aeEpCount.c_str(),
+                              aeAdmetCol, 170.0f, 104.0f);
         }
         ImGui::Spacing();
 
@@ -2134,7 +2226,7 @@ void analogExplorer(AppShell& shell) {
         }
 
         ImGui::Spacing();
-        theme::sectionHeader("PREDICTED BYPRODUCTS / INTERACTIONS");
+        theme::sectionHeader("Predicted Byproducts / Interactions");
         for (const auto& d : st.degradants)
             ImGui::BulletText("Degradant: %s  (%s)", d.name.c_str(), d.pathway.c_str());
         for (const auto& e : ad.endpoints) {

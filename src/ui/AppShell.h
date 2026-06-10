@@ -173,6 +173,7 @@ private:
     void drawContent();
     void drawAssistant();
     void drawAboutModal();
+    void drawCommandPalette();
 
     void buildAgent();             // construct registry/tools/providers/agent (ctor)
     void registerAgentServiceTools();  // bind dock/admet/analyze/run/list tools to Services
@@ -235,6 +236,10 @@ private:
     Config* config_ = nullptr;
     bool    agentUsingAnthropic_ = false;
     char    chatBuf_[1024] = {0};
+
+    // Command palette state.
+    bool cmdPaletteOpen_ = false;
+    char cmdPaletteBuf_[128] = {};
 
     std::unique_ptr<agent::ToolRegistry>      registry_;
     std::unique_ptr<agent::MockProvider>      mock_;

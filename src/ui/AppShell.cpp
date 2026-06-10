@@ -70,37 +70,37 @@ void pulseBorder(const ImVec2& min, const ImVec2& max, double elapsed) {
 AppShell::AppShell(Services services) : svc_(services) {
     panels_ = {
         {"Dashboard", "Dashboard",
-         "Overview: library size, recent runs, and a snapshot of the selected compound.", "Compound"},
+         "Overview of your library, recent activity, and a snapshot of the selected compound.", "Workspace"},
         {"Structure", "Structure Workbench",
-         "Identity + physicochemical properties of the selected molecule with a live 3D viewer.", "Compound"},
+         "Identity and physicochemical properties of the selected molecule with a live 3D viewer.", "Workspace"},
         {"Input", "Molecule Input",
-         "Enter any SMILES (or load a library compound) to analyze an arbitrary structure.", "Compound"},
+         "Enter any SMILES string to analyze an arbitrary structure not already in the library.", "Workspace"},
         {"Library", "Library",
-         "Browse, search and select compounds from the default + imported library.", "Compound"},
+         "Browse, search, and select compounds from the built-in and imported library.", "Workspace"},
         {"Stability", "Stability",
-         "Degradation liabilities (hydrolysis/oxidation/photolysis/thermal/pH) and a shelf-life estimate.", "Analysis"},
+         "Degradation liabilities (hydrolysis, oxidation, photolysis, thermal, pH) and a shelf-life estimate.", "Predict"},
         {"Absorption", "Absorption / PK",
-         "Permeability, oral bioavailability, BBB penetration and P-gp efflux - to narrow candidates.", "Analysis"},
+         "Permeability, oral bioavailability, brain penetration, and efflux.", "Predict"},
         {"Metabolism", "Metabolism (ADMET)",
-         "Metabolic routes, harmful metabolites, drug-drug interactions, hERG and safety flags.", "Analysis"},
+         "Metabolic routes, risky metabolites, drug interactions, and safety flags (hERG).", "Predict"},
         {"Analog", "Analog Explorer",
-         "Model or draw a candidate derivative, preview its structure, and screen it vs existing samples.", "Discovery"},
+         "Model or draw a candidate derivative, preview its structure, and screen it against existing samples.", "Discover"},
         {"Compare", "Compare",
-         "Side-by-side comparison of up to three compounds across stability, absorption and ADMET.", "Discovery"},
+         "Side-by-side comparison of up to three compounds across stability, absorption, and metabolism.", "Discover"},
         {"Similarity", "Similarity",
-         "Structural + pharmacophore similarity vs the curated known-substance reference set.", "Discovery"},
+         "Structural and pharmacophore similarity to known substances.", "Discover"},
         {"Docking", "Docking",
-         "Predicted ligand->target BINDING AFFINITY (pharmacology) at DAT/NET/SERT/TAAR1.", "Discovery"},
+         "Predicted binding affinity of the compound against CNS targets.", "Discover"},
         {"Workflows", "Workflows",
-         "Re-runnable prep->dock pipeline as a live, content-cached, cancellable DAG.", "Discovery"},
+         "Re-runnable prep to dock pipeline you can watch run live.", "Discover"},
         {"Legal", "Legal Analog",
          "Substantial-similarity scorecard vs controlled references (illustrative, not legal advice).", "Reference"},
         {"Runs", "Runs",
          "History of analyses with status and summaries.", "Reference"},
         {"Presets", "Presets / Targets",
-         "CNS target presets and reusable analysis panels.", "Reference"},
+         "CNS target presets and reusable analysis configurations.", "Reference"},
         {"Settings", "Settings",
-         "AI provider/keys, GPU mode, storage paths.", "System"},
+         "AI provider and API keys, GPU mode, and storage paths.", "System"},
     };
     provisioner_ = std::make_unique<docking::Provisioner>();
     buildAgent();
@@ -943,6 +943,10 @@ void AppShell::draw() {
         drawAssistant();
     }
 
+    // Ctrl+K opens the command palette from anywhere.
+    if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_K)) cmdPaletteOpen_ = true;
+
+    drawCommandPalette();
     drawAboutModal();
 }
 
@@ -954,6 +958,8 @@ void AppShell::drawMainMenuBar() {
         }
         if (ImGui::BeginMenu("View")) {
             ImGui::MenuItem("Assistant panel", nullptr, &state_.showAssistant);
+            ImGui::Separator();
+            if (ImGui::MenuItem("Command palette", "Ctrl+K")) cmdPaletteOpen_ = true;
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Help")) {
@@ -961,7 +967,7 @@ void AppShell::drawMainMenuBar() {
             ImGui::EndMenu();
         }
         ImGui::Separator();
-        ImGui::TextDisabled("StimLab  -  CNS-stimulant analysis suite  -  real chem engine + 3D + docking");
+        ImGui::TextDisabled("StimLab");
         ImGui::EndMainMenuBar();
     }
 }
@@ -969,14 +975,23 @@ void AppShell::drawMainMenuBar() {
 void AppShell::drawNavigator() {
     if (ImGui::Begin("Navigator", nullptr, kPaneFlags)) {
         // Brand.
-        ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(1));
-        ImGui::SetWindowFontScale(1.5f);
+        ImGui::Dummy(ImVec2(0, 4));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kPrimaryBright));
+        theme::pushTitle();
         ImGui::TextUnformatted("StimLab");
-        ImGui::SetWindowFontScale(1.0f);
+        theme::popFont();
         ImGui::PopStyleColor();
         ImGui::SameLine();
-        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 6.0f);
-        ImGui::TextDisabled("CNS lab");
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.0f);
+        theme::pushSmallStrong();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
+        ImGui::TextUnformatted("v0.1");
+        ImGui::PopStyleColor();
+        theme::popFont();
+        ImGui::Dummy(ImVec2(0, 2));
+
+        // Command palette shortcut button.
+        if (ImGui::Button("Search...  (Ctrl K)", ImVec2(-1, 0))) cmdPaletteOpen_ = true;
         ImGui::Dummy(ImVec2(0, 2));
 
         // Active compound picker (library + any user-drawn/entered custom compound).
@@ -1006,7 +1021,7 @@ void AppShell::drawNavigator() {
         // Grouped workspace navigation in a scroll region so the footer stays pinned.
         const float footer = state_.showAssistant ? 8.0f : 48.0f;
         ImGui::BeginChild("navlist", ImVec2(0, -footer), 0);
-        static const char* kGroupOrder[] = {"Compound", "Analysis", "Discovery",
+        static const char* kGroupOrder[] = {"Workspace", "Predict", "Discover",
                                             "Reference", "System"};
         for (const char* group : kGroupOrder) {
             bool wroteHeader = false;
@@ -1019,8 +1034,17 @@ void AppShell::drawNavigator() {
                     wroteHeader = true;
                 }
                 const bool selected = (state_.activePanel == p.id);
-                if (selected) ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(1));
-                if (ImGui::Selectable(p.label.c_str(), selected, 0, ImVec2(0, 28)))
+                // Draw 3px accent bar at the left edge when selected.
+                if (selected) {
+                    const ImVec2 itemMin = ImGui::GetCursorScreenPos();
+                    const float itemH = 30.0f;
+                    ImGui::GetWindowDrawList()->AddRectFilled(
+                        itemMin, ImVec2(itemMin.x + 3.0f, itemMin.y + itemH),
+                        theme::kPrimary, 1.5f);
+                    ImGui::PushStyleColor(ImGuiCol_Text,
+                        ImGui::ColorConvertU32ToFloat4(theme::kTextHi));
+                }
+                if (ImGui::Selectable(p.label.c_str(), selected, 0, ImVec2(0, 30)))
                     state_.activePanel = p.id;
                 if (selected) ImGui::PopStyleColor();
                 if (isHighlighted(p.id)) {
@@ -1044,24 +1068,56 @@ void AppShell::drawContent() {
         const Molecule cur = currentMolecule();
         std::string label = "Dashboard";
         std::string help;
+        std::string group;
         for (const auto& p : panels_) {
-            if (p.id == state_.activePanel) { label = p.label; help = p.help; break; }
+            if (p.id == state_.activePanel) { label = p.label; help = p.help; group = p.group; break; }
         }
 
-        const float titleY = ImGui::GetCursorPosY();
-        ImGui::SetWindowFontScale(1.45f);
-        ImGui::TextUnformatted(label.c_str());
-        ImGui::SetWindowFontScale(1.0f);
-        // Active-compound chip, right-aligned on the title row.
-        {
-            const std::string chip = cur.name;
-            const float chipW = ImGui::CalcTextSize(chip.c_str()).x + 18.0f;
-            ImGui::SameLine();
-            ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - chipW);
-            ImGui::SetCursorPosY(titleY + 4.0f);
-            theme::pill(chip.c_str(), theme::kAccentSoft, theme::kAccent);
+        // Breadcrumb line: "<Group> › <Panel label>" in kTextDim.
+        if (!group.empty()) {
+            theme::pushSmallStrong();
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
+            ImGui::Text("%s  \xe2\x80\xba  %s", group.c_str(), label.c_str());
+            ImGui::PopStyleColor();
+            theme::popFont();
         }
-        if (!help.empty()) ImGui::TextDisabled("%s", help.c_str());
+
+        // Title row: page title (left) + compound chips (right).
+        const float titleRowY = ImGui::GetCursorPosY();
+
+        // Compute right-side chip widths first so we know where title ends.
+        const float padChip = 14.0f;
+        float chipsTotalW = 0.0f;
+        if (!cur.name.empty())
+            chipsTotalW += ImGui::CalcTextSize(cur.name.c_str()).x + padChip;
+        if (!cur.drugClass.empty())
+            chipsTotalW += ImGui::CalcTextSize(cur.drugClass.c_str()).x + padChip + 6.0f;
+
+        theme::pushTitle();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextHi));
+        ImGui::TextUnformatted(label.c_str());
+        ImGui::PopStyleColor();
+        theme::popFont();
+
+        // Right-align chips on the same row as the title.
+        float rightX = ImGui::GetContentRegionMax().x - chipsTotalW;
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(rightX);
+        ImGui::SetCursorPosY(titleRowY + 2.0f);
+        if (!cur.name.empty()) {
+            theme::badge(cur.name.c_str(), theme::kTextHi, theme::kPrimarySoft);
+            if (!cur.drugClass.empty()) {
+                ImGui::SameLine(0, 6);
+                theme::badge(cur.drugClass.c_str(), theme::kTextDim, theme::kSurfaceHi);
+            }
+        }
+
+        // Help / subtitle.
+        if (!help.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
+            ImGui::TextWrapped("%s", help.c_str());
+            ImGui::PopStyleColor();
+        }
         ImGui::Spacing();
         ImGui::PushStyleColor(ImGuiCol_Separator, theme::kBorder);
         ImGui::Separator();
@@ -1093,7 +1149,7 @@ void AppShell::drawContent() {
 
 void AppShell::drawAssistant() {
     if (ImGui::Begin("Assistant", nullptr, kPaneFlags)) {
-        ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(0));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kAccent2));
         ImGui::TextUnformatted("StimLab Assistant");
         ImGui::PopStyleColor();
 
@@ -1123,7 +1179,7 @@ void AppShell::drawAssistant() {
         ImGui::EndDisabled();
 
         // Quick prompts (canned fallbacks - now routed through the real loop).
-        ImGui::TextDisabled("TRY ASKING");
+        theme::sectionHeader("Try asking");
         ImGui::BeginDisabled(busy);
         struct QP { const char* label; const char* prompt; };
         static const QP kQuick[] = {
@@ -1139,7 +1195,7 @@ void AppShell::drawAssistant() {
 
         ImGui::Spacing();
         ImGui::Separator();
-        ImGui::TextDisabled("CONVERSATION");
+        theme::sectionHeader("Conversation");
 
         const float reserve = (snap.status == agent::AgentStatus::AwaitingApproval) ? 132.0f : 40.0f;
         ImGui::BeginChild("##log", ImVec2(0, -reserve), ImGuiChildFlags_Borders);
@@ -1150,7 +1206,8 @@ void AppShell::drawAssistant() {
         for (const auto& e : snap.transcript) {
             switch (e.kind) {
                 case agent::TranscriptEntry::Kind::User:
-                    ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(1));
+                    ImGui::PushStyleColor(ImGuiCol_Text,
+                        ImGui::ColorConvertU32ToFloat4(theme::kPrimaryBright));
                     ImGui::TextWrapped("You: %s", e.text.c_str());
                     ImGui::PopStyleColor();
                     break;
@@ -1205,6 +1262,77 @@ void AppShell::drawAssistant() {
     }
     frameHighlightCurrentWindow("Assistant");
     ImGui::End();
+}
+
+void AppShell::drawCommandPalette() {
+    if (cmdPaletteOpen_) {
+        ImGui::OpenPopup("##cmdpalette");
+        cmdPaletteOpen_ = false;
+    }
+    ImGui::SetNextWindowSize(ImVec2(560, 0), ImGuiCond_Always);
+    if (ImGui::BeginPopup("##cmdpalette",
+            ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration)) {
+        // Auto-focus the search box on appear.
+        if (ImGui::IsWindowAppearing()) {
+            ImGui::SetKeyboardFocusHere(0);
+            cmdPaletteBuf_[0] = '\0';
+        }
+
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputTextWithHint("##cmdq", "Jump to a panel...",
+                                 cmdPaletteBuf_, sizeof(cmdPaletteBuf_));
+
+        // Build lowercase query for case-insensitive matching.
+        std::string q = cmdPaletteBuf_;
+        for (auto& c : q) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+        ImGui::Separator();
+
+        // Scrollable list of matching panels.
+        ImGui::BeginChild("##cmdlist", ImVec2(0, 320), 0);
+        bool firstMatch = true;
+        const bool enterPressed = ImGui::IsKeyPressed(ImGuiKey_Enter, false);
+        for (const auto& p : panels_) {
+            // Case-insensitive match against label, group, and help.
+            auto lower = [](const std::string& s) {
+                std::string out = s;
+                for (auto& c : out) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                return out;
+            };
+            if (!q.empty()) {
+                const std::string hay = lower(p.label) + " " + lower(p.group) + " " + lower(p.help);
+                if (hay.find(q) == std::string::npos) continue;
+            }
+
+            // Press Enter to navigate to the first match.
+            if (firstMatch && enterPressed) {
+                state_.activePanel = p.id;
+                ImGui::CloseCurrentPopup();
+                ImGui::EndChild();
+                ImGui::EndPopup();
+                return;
+            }
+
+            // Selectable row: label + dim group.
+            char rowId[128];
+            snprintf(rowId, sizeof(rowId), "%s##cmdrow_%s", p.label.c_str(), p.id.c_str());
+            if (ImGui::Selectable(rowId, false, 0, ImVec2(0, 24))) {
+                state_.activePanel = p.id;
+                ImGui::CloseCurrentPopup();
+                ImGui::EndChild();
+                ImGui::EndPopup();
+                return;
+            }
+            ImGui::SameLine(0, 0);
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
+            ImGui::Text("  %s", p.group.c_str());
+            ImGui::PopStyleColor();
+
+            firstMatch = false;
+        }
+        ImGui::EndChild();
+        ImGui::EndPopup();
+    }
 }
 
 void AppShell::drawAboutModal() {

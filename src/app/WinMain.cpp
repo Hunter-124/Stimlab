@@ -31,6 +31,9 @@
 #include "ui/AppShell.h"
 #include "ui/Theme.h"
 
+// App icon resource id (see src/app/StimLab.rc, compiled into the exe).
+#define IDI_APPICON 101
+
 // Forward decl from imgui_impl_win32 (handles input/message translation).
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 
@@ -194,10 +197,16 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     wc.lpfnWndProc = WndProc;
     wc.hInstance = hInstance;
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    // Brand icon (title bar + taskbar). The same resource is the exe's Explorer icon.
+    wc.hIcon = static_cast<HICON>(LoadImageW(hInstance, MAKEINTRESOURCEW(IDI_APPICON), IMAGE_ICON,
+                                             0, 0, LR_DEFAULTSIZE | LR_SHARED));
+    wc.hIconSm = static_cast<HICON>(LoadImageW(hInstance, MAKEINTRESOURCEW(IDI_APPICON), IMAGE_ICON,
+                                               GetSystemMetrics(SM_CXSMICON),
+                                               GetSystemMetrics(SM_CYSMICON), LR_SHARED));
     wc.lpszClassName = L"StimLabWindow";
     RegisterClassExW(&wc);
 
-    HWND hwnd = CreateWindowExW(0, wc.lpszClassName, L"StimLab - CNS-stimulant analysis suite",
+    HWND hwnd = CreateWindowExW(0, wc.lpszClassName, L"StimLab",
                                 WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 1480, 920,
                                 nullptr, nullptr, hInstance, nullptr);
     if (!hwnd) {
@@ -226,15 +235,31 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     static std::string iniPath = (stimlab::AppPaths::instance().root() / "imgui.ini").string();
     io.IniFilename = iniPath.c_str();
 
-    // Crisp UI font: prefer Segoe UI (ships on Windows); fall back to ImGui default.
+    // Crisp UI fonts: Segoe UI (body) + Segoe UI Semibold (semi), both scalable.
+    // The first font added becomes the ImGui default face.
     {
-        const char* segoe = "C:\\Windows\\Fonts\\segoeui.ttf";
-        if (std::filesystem::exists(segoe)) {
+        const char* segoeBody = "C:\\Windows\\Fonts\\segoeui.ttf";
+        const char* segoeSemi = "C:\\Windows\\Fonts\\seguisb.ttf";
+
+        ImFont* bodyPtr = nullptr;
+        ImFont* semiPtr = nullptr;
+
+        if (std::filesystem::exists(segoeBody)) {
             ImFontConfig cfg;
             cfg.OversampleH = 2;
             cfg.OversampleV = 2;
-            io.Fonts->AddFontFromFileTTF(segoe, 18.0f, &cfg);
+            bodyPtr = io.Fonts->AddFontFromFileTTF(segoeBody, 17.0f, &cfg);
         }
+
+        if (std::filesystem::exists(segoeSemi)) {
+            ImFontConfig cfg;
+            cfg.OversampleH = 2;
+            cfg.OversampleV = 2;
+            semiPtr = io.Fonts->AddFontFromFileTTF(segoeSemi, 17.0f, &cfg);
+        }
+
+        stimlab::theme::fonts().body = bodyPtr;
+        stimlab::theme::fonts().semi = (semiPtr != nullptr) ? semiPtr : bodyPtr;
     }
 
     stimlab::theme::apply();
