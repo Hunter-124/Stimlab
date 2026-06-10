@@ -24,11 +24,15 @@ namespace stimlab::docking {
 
 // Parse a Vina/smina output PDBQT string into ranked poses. `reference` supplies
 // the per-atom z, the bond list and heavyCount that the coordinate-only PDBQT
-// lacks; parsed coordinates are matched positionally to the reference atom order
-// (heavy atoms + polar H, exactly as written by writeRigidPdbqt / obabel). Poses
-// are returned sorted by ascending affinity (most negative = strongest first).
-// Non-finite affinities/coordinates are skipped. Returns empty on no MODELs.
+// lacks. Poses are returned sorted by ascending affinity (strongest first).
+//
+// `serialToConf` maps each output ATOM (in file order) to its index in `reference`.
+// The flexible writer reorders atoms into the torsion tree, so without this map an
+// index-only match would scramble elements/bonds; pass the writer's serialToConf so
+// docked coordinates are scattered back onto the original topology. When it is null
+// or empty, coordinates are matched positionally (the legacy/rigid behaviour).
 std::vector<DockPose> parseVinaPdbqt(const std::string& output,
-                                     const chem::Conformer& reference);
+                                     const chem::Conformer& reference,
+                                     const std::vector<int>* serialToConf = nullptr);
 
 }  // namespace stimlab::docking

@@ -1,5 +1,6 @@
 #include "ui/AppShell.h"
 
+#include <cctype>
 #include <cmath>
 #include <utility>
 
@@ -69,37 +70,37 @@ void pulseBorder(const ImVec2& min, const ImVec2& max, double elapsed) {
 AppShell::AppShell(Services services) : svc_(services) {
     panels_ = {
         {"Dashboard", "Dashboard",
-         "Overview: library size, recent runs, and a snapshot of the selected compound."},
+         "Overview: library size, recent runs, and a snapshot of the selected compound.", "Compound"},
         {"Structure", "Structure Workbench",
-         "Identity + physicochemical properties of the selected molecule with a live 3D viewer."},
+         "Identity + physicochemical properties of the selected molecule with a live 3D viewer.", "Compound"},
         {"Input", "Molecule Input",
-         "Enter any SMILES (or load a library compound) to analyze an arbitrary structure."},
-        {"Analog", "Analog Explorer",
-         "Model a candidate derivative's profile and check it vs existing samples + predicted byproducts."},
-        {"Compare", "Compare",
-         "Side-by-side comparison of up to three compounds across stability, absorption and ADMET."},
-        {"Stability", "Stability",
-         "Degradation liabilities (hydrolysis/oxidation/photolysis/thermal/pH) and a shelf-life estimate."},
-        {"Absorption", "Absorption / PK",
-         "Permeability, oral bioavailability, BBB penetration and P-gp efflux - to narrow candidates."},
-        {"Metabolism", "Metabolism (ADMET)",
-         "Metabolic routes, harmful metabolites, drug-drug interactions, hERG and safety flags."},
-        {"Similarity", "Similarity",
-         "Structural + pharmacophore similarity vs the curated known-substance reference set."},
-        {"Legal", "Legal Analog",
-         "Substantial-similarity scorecard vs controlled references (illustrative, not legal advice)."},
-        {"Docking", "Docking",
-         "Predicted ligand->target BINDING AFFINITY (pharmacology) at DAT/NET/SERT/TAAR1."},
-        {"Workflows", "Workflows",
-         "Re-runnable prep->dock pipeline as a live, content-cached, cancellable DAG."},
+         "Enter any SMILES (or load a library compound) to analyze an arbitrary structure.", "Compound"},
         {"Library", "Library",
-         "Browse, search and select compounds from the default + imported library."},
+         "Browse, search and select compounds from the default + imported library.", "Compound"},
+        {"Stability", "Stability",
+         "Degradation liabilities (hydrolysis/oxidation/photolysis/thermal/pH) and a shelf-life estimate.", "Analysis"},
+        {"Absorption", "Absorption / PK",
+         "Permeability, oral bioavailability, BBB penetration and P-gp efflux - to narrow candidates.", "Analysis"},
+        {"Metabolism", "Metabolism (ADMET)",
+         "Metabolic routes, harmful metabolites, drug-drug interactions, hERG and safety flags.", "Analysis"},
+        {"Analog", "Analog Explorer",
+         "Model or draw a candidate derivative, preview its structure, and screen it vs existing samples.", "Discovery"},
+        {"Compare", "Compare",
+         "Side-by-side comparison of up to three compounds across stability, absorption and ADMET.", "Discovery"},
+        {"Similarity", "Similarity",
+         "Structural + pharmacophore similarity vs the curated known-substance reference set.", "Discovery"},
+        {"Docking", "Docking",
+         "Predicted ligand->target BINDING AFFINITY (pharmacology) at DAT/NET/SERT/TAAR1.", "Discovery"},
+        {"Workflows", "Workflows",
+         "Re-runnable prep->dock pipeline as a live, content-cached, cancellable DAG.", "Discovery"},
+        {"Legal", "Legal Analog",
+         "Substantial-similarity scorecard vs controlled references (illustrative, not legal advice).", "Reference"},
         {"Runs", "Runs",
-         "History of analyses with status and summaries."},
+         "History of analyses with status and summaries.", "Reference"},
         {"Presets", "Presets / Targets",
-         "CNS target presets and reusable analysis panels."},
+         "CNS target presets and reusable analysis panels.", "Reference"},
         {"Settings", "Settings",
-         "AI provider/keys, GPU mode, storage paths."},
+         "AI provider/keys, GPU mode, storage paths.", "System"},
     };
     provisioner_ = std::make_unique<docking::Provisioner>();
     buildAgent();
@@ -967,18 +968,30 @@ void AppShell::drawMainMenuBar() {
 
 void AppShell::drawNavigator() {
     if (ImGui::Begin("Navigator", nullptr, kPaneFlags)) {
+        // Brand.
         ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(1));
-        ImGui::SetWindowFontScale(1.25f);
+        ImGui::SetWindowFontScale(1.5f);
         ImGui::TextUnformatted("StimLab");
         ImGui::SetWindowFontScale(1.0f);
         ImGui::PopStyleColor();
-        ImGui::TextDisabled("Stimulant Laboratory");
-        ImGui::Spacing();
+        ImGui::SameLine();
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 6.0f);
+        ImGui::TextDisabled("CNS lab");
+        ImGui::Dummy(ImVec2(0, 2));
 
-        ImGui::TextDisabled("ACTIVE COMPOUND");
+        // Active compound picker (library + any user-drawn/entered custom compound).
+        theme::sectionHeader("ACTIVE COMPOUND");
         if (svc_.library) {
             const Molecule cur = currentMolecule();
+            ImGui::SetNextItemWidth(-1);
             if (ImGui::BeginCombo("##compound", cur.name.c_str())) {
+                if (state_.hasCustom) {
+                    const bool sel = (state_.selectedMolecule == "__custom__");
+                    if (ImGui::Selectable((state_.customMolecule.name + "  (custom)").c_str(), sel))
+                        state_.selectedMolecule = "__custom__";
+                    if (sel) ImGui::SetItemDefaultFocus();
+                    ImGui::Separator();
+                }
                 for (const auto& m : svc_.library->all()) {
                     const bool sel = (m.id == state_.selectedMolecule);
                     if (ImGui::Selectable(m.name.c_str(), sel)) state_.selectedMolecule = m.id;
@@ -986,29 +999,41 @@ void AppShell::drawNavigator() {
                 }
                 ImGui::EndCombo();
             }
+            ImGui::TextDisabled("%s", cur.drugClass.empty() ? "-" : cur.drugClass.c_str());
         }
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::TextDisabled("WORKSPACE");
-        ImGui::Spacing();
+        ImGui::Dummy(ImVec2(0, 4));
 
-        for (const auto& p : panels_) {
-            const bool selected = (state_.activePanel == p.id);
-            if (ImGui::Selectable(p.label.c_str(), selected, 0, ImVec2(0, 26))) {
-                state_.activePanel = p.id;
+        // Grouped workspace navigation in a scroll region so the footer stays pinned.
+        const float footer = state_.showAssistant ? 8.0f : 48.0f;
+        ImGui::BeginChild("navlist", ImVec2(0, -footer), 0);
+        static const char* kGroupOrder[] = {"Compound", "Analysis", "Discovery",
+                                            "Reference", "System"};
+        for (const char* group : kGroupOrder) {
+            bool wroteHeader = false;
+            for (const auto& p : panels_) {
+                if (p.group != group) continue;
+                if (!wroteHeader) {
+                    std::string up = group;
+                    for (auto& ch : up) ch = static_cast<char>(std::toupper((unsigned char)ch));
+                    theme::sectionHeader(up.c_str());
+                    wroteHeader = true;
+                }
+                const bool selected = (state_.activePanel == p.id);
+                if (selected) ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(1));
+                if (ImGui::Selectable(p.label.c_str(), selected, 0, ImVec2(0, 28)))
+                    state_.activePanel = p.id;
+                if (selected) ImGui::PopStyleColor();
+                if (isHighlighted(p.id)) {
+                    pulseBorder(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
+                                ImGui::GetTime() - state_.highlightStart);
+                }
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", p.help.c_str());
             }
-            if (isHighlighted(p.id)) {
-                pulseBorder(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
-                            ImGui::GetTime() - state_.highlightStart);
-            }
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", p.help.c_str());
         }
+        ImGui::EndChild();
 
-        ImGui::Spacing();
-        ImGui::Separator();
-        if (!state_.showAssistant && ImGui::Button("Open Assistant", ImVec2(-1, 0))) {
+        if (!state_.showAssistant && ImGui::Button("Open Assistant", ImVec2(-1, 0)))
             state_.showAssistant = true;
-        }
     }
     frameHighlightCurrentWindow("Navigator");
     ImGui::End();
@@ -1023,13 +1048,24 @@ void AppShell::drawContent() {
             if (p.id == state_.activePanel) { label = p.label; help = p.help; break; }
         }
 
-        ImGui::SetWindowFontScale(1.35f);
+        const float titleY = ImGui::GetCursorPosY();
+        ImGui::SetWindowFontScale(1.45f);
         ImGui::TextUnformatted(label.c_str());
         ImGui::SetWindowFontScale(1.0f);
-        ImGui::SameLine();
-        ImGui::TextDisabled("   *  %s", cur.name.c_str());
+        // Active-compound chip, right-aligned on the title row.
+        {
+            const std::string chip = cur.name;
+            const float chipW = ImGui::CalcTextSize(chip.c_str()).x + 18.0f;
+            ImGui::SameLine();
+            ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - chipW);
+            ImGui::SetCursorPosY(titleY + 4.0f);
+            theme::pill(chip.c_str(), theme::kAccentSoft, theme::kAccent);
+        }
         if (!help.empty()) ImGui::TextDisabled("%s", help.c_str());
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Separator, theme::kBorder);
         ImGui::Separator();
+        ImGui::PopStyleColor();
         ImGui::Spacing();
 
         const std::string& panel = state_.activePanel;

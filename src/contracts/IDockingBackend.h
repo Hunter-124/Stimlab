@@ -56,6 +56,15 @@ struct DockJobResult {
     std::vector<DockPose> poses; // ranked best (most negative) first
     std::string log;             // status / notes / fallback reason
 
+    // ---- search confidence (set by the convergent real-engine search) ---------
+    // A real dock now repeats an independent flexible-ligand search with fresh seeds
+    // and escalating exhaustiveness until the best affinity stabilises (or a budget
+    // is hit). These let the UI report how trustworthy the number is.
+    int    searchRuns = 1;        // independent search runs aggregated into this result
+    double affinitySpread = 0.0;  // kcal/mol spread of the per-run best affinity
+    bool   converged = false;     // best affinity stabilised within tolerance
+    int    torsions = 0;          // active rotatable bonds the ligand was docked with
+
     [[nodiscard]] bool empty() const { return poses.empty(); }
     [[nodiscard]] double bestAffinity() const {
         return poses.empty() ? 0.0 : poses.front().affinityKcalPerMol;

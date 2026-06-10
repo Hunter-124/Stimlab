@@ -42,6 +42,7 @@ struct ReceptorPdbqt {
     std::string text;            // full receptor PDBQT (ATOM records, no torsion tree)
     int         atomCount = 0;   // receptor ATOM lines written (heavy atoms)
     int         keptHetero = 0;  // non-water HETATM atoms kept (cofactors in keepHetero)
+    int         keptModified = 0;   // modified-residue HETATM atoms kept as protein (e.g. MSE)
     int         droppedHetero = 0;  // waters/additives/ligand atoms removed
     std::string note;            // human-readable summary of what was kept/dropped
 

@@ -3,6 +3,8 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <functional>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -75,6 +77,41 @@ bool isPolarHydrogen(const chem::Conformer& conf, const std::vector<std::vector<
 
 }  // namespace
 
+// Forward declarations of the public typing/charge helpers used by the line emitter.
+std::string autodockAtomType(int z, bool aromatic, bool polarH);
+double approxPartialCharge(const chem::Molecule& graph, const chem::Conformer& conf, int posIndex);
+
+namespace {
+
+// Format one fixed-width AutoDock PDBQT ATOM line for kept position `i` with the
+// given 1-based `serial`. Shared by the rigid and flexible writers so both emit
+// byte-identical atom records (only the surrounding tree differs).
+std::string pdbqtAtomLine(const chem::Molecule& graph, const chem::Conformer& conf,
+                          const std::vector<std::vector<int>>& adj, int i, int serial,
+                          const std::string& res) {
+    const int z = conf.z[i];
+    const bool isH = (z == 1);
+    const bool polar = isH && isPolarHydrogen(conf, adj, i);
+    bool aromatic = false;
+    if (i < conf.heavyCount && i < static_cast<int>(graph.atoms.size()))
+        aromatic = graph.atoms[i].aromatic;
+    const std::string adType = autodockAtomType(z, aromatic, polar);
+    const double charge = approxPartialCharge(graph, conf, i);
+    const chem::Vec3 p = conf.pos[i];
+    const double x = std::isfinite(p.x) ? p.x : 0.0;
+    const double y = std::isfinite(p.y) ? p.y : 0.0;
+    const double zc = std::isfinite(p.z) ? p.z : 0.0;
+    char atomName[8];
+    std::snprintf(atomName, sizeof(atomName), "%.2s%d", elementSymbol(z), serial);
+    char line[128];
+    std::snprintf(line, sizeof(line),
+                  "ATOM  %5d %-4.4s %-3.3s A%4d    %8.3f%8.3f%8.3f%6.2f%6.2f%10.3f %-2.2s\n",
+                  serial, atomName, res.c_str(), 1, x, y, zc, 1.00, 0.00, charge, adType.c_str());
+    return line;
+}
+
+}  // namespace
+
 std::string autodockAtomType(int z, bool aromatic, bool polarH) {
     switch (z) {
         case 1:  return polarH ? "HD" : "H";   // HD = polar (H-bonding) hydrogen
@@ -128,9 +165,6 @@ double approxPartialCharge(const chem::Molecule& graph, const chem::Conformer& c
 PdbqtLigand writeRigidPdbqt(const chem::Molecule& graph, const chem::Conformer& conf,
                             const std::string& resName) {
     PdbqtLigand out{};
-    out.atomCount = 0;
-    out.heavyCount = 0;
-    out.polarH = 0;
     if (conf.empty()) return out;
 
     const auto adj = adjacency(conf);
@@ -138,42 +172,17 @@ PdbqtLigand writeRigidPdbqt(const chem::Molecule& graph, const chem::Conformer& 
     body.reserve(conf.size() * 80);
 
     // Residue label: PDB columns are 3 wide; truncate/pad defensively.
-    std::string res = resName.empty() ? std::string("LIG") : resName.substr(0, 3);
+    const std::string res = resName.empty() ? std::string("LIG") : resName.substr(0, 3);
 
     int serial = 0;
-    char line[128];
     for (int i = 0; i < conf.size(); ++i) {
         const int z = conf.z[i];
         const bool isH = (z == 1);
-        const bool polar = isH && isPolarHydrogen(conf, adj, i);
         // United-atom PDBQT: keep heavy atoms and polar H only.
-        if (isH && !polar) continue;
-
-        bool aromatic = false;
-        if (i < conf.heavyCount && i < static_cast<int>(graph.atoms.size()))
-            aromatic = graph.atoms[i].aromatic;
-
-        const std::string adType = autodockAtomType(z, aromatic, polar);
-        const double charge = approxPartialCharge(graph, conf, i);
-        const chem::Vec3 p = conf.pos[i];
-        const double x = std::isfinite(p.x) ? p.x : 0.0;
-        const double y = std::isfinite(p.y) ? p.y : 0.0;
-        const double zc = std::isfinite(p.z) ? p.z : 0.0;
-
+        if (isH && !isPolarHydrogen(conf, adj, i)) continue;
         ++serial;
-        // PDB ATOM record name: element symbol + position-local index (cosmetic).
-        char atomName[8];
-        std::snprintf(atomName, sizeof(atomName), "%.2s%d", elementSymbol(z), serial);
-
-        // Fixed-width AutoDock PDBQT ATOM line. Columns mirror the PDB spec; the
-        // trailing partial charge (%6.3f) and right-justified 2-char type are the
-        // PDBQT-specific extension fields Vina reads.
-        std::snprintf(line, sizeof(line),
-                      "ATOM  %5d %-4.4s %-3.3s A%4d    %8.3f%8.3f%8.3f%6.2f%6.2f%10.3f %-2.2s\n",
-                      serial, atomName, res.c_str(), 1, x, y, zc, 1.00, 0.00, charge,
-                      adType.c_str());
-        body += line;
-
+        body += pdbqtAtomLine(graph, conf, adj, i, serial, res);
+        out.serialToConf.push_back(i);
         ++out.atomCount;
         if (isH) ++out.polarH; else ++out.heavyCount;
     }
@@ -189,6 +198,139 @@ PdbqtLigand writeRigidPdbqt(const chem::Molecule& graph, const chem::Conformer& 
     text += "ENDROOT\n";
     text += "TORSDOF 0\n";
     out.text = std::move(text);
+    out.torsions = 0;
+    return out;
+}
+
+PdbqtLigand writeFlexiblePdbqt(const chem::Molecule& graph, const chem::Conformer& conf,
+                               const std::string& resName) {
+    PdbqtLigand out{};
+    if (conf.empty()) return out;
+
+    const auto adj = adjacency(conf);
+    const std::string res = resName.empty() ? std::string("LIG") : resName.substr(0, 3);
+    const int n = conf.size();
+
+    // Kept atoms = heavy atoms + polar hydrogens (united-atom convention).
+    std::vector<int> keptIndex(n, -1);
+    std::vector<int> keptList;
+    keptList.reserve(n);
+    for (int i = 0; i < n; ++i) {
+        const bool isH = (conf.z[i] == 1);
+        if (isH && !isPolarHydrogen(conf, adj, i)) continue;
+        keptIndex[i] = static_cast<int>(keptList.size());
+        keptList.push_back(i);
+    }
+    if (keptList.empty()) return out;
+    const int K = static_cast<int>(keptList.size());
+
+    // ---- rotatable-bond perception (read from the heavy-atom graph) -----------
+    auto heavyDeg = [&](int i) {
+        return (i < static_cast<int>(graph.atoms.size())) ? static_cast<int>(graph.atoms[i].nbr.size()) : 0;
+    };
+    auto isCarbonyl = [&](int c) {
+        if (c < 0 || c >= static_cast<int>(graph.atoms.size())) return false;
+        for (int bi : graph.atoms[c].bonds) {
+            const auto& bb = graph.bonds[bi];
+            if (bb.order == 2.0 && graph.atoms[bb.other(c)].z == 8) return true;
+        }
+        return false;
+    };
+    auto graphBond = [&](int a, int b) -> const chem::Bond* {
+        if (a < 0 || a >= static_cast<int>(graph.atoms.size())) return nullptr;
+        for (int bi : graph.atoms[a].bonds) {
+            const auto& bb = graph.bonds[bi];
+            if (bb.other(a) == b) return &bb;
+        }
+        return nullptr;
+    };
+    auto isRotatable = [&](int a, int b) -> bool {
+        if (a >= conf.heavyCount || b >= conf.heavyCount) return false;  // heavy-heavy only
+        const chem::Bond* bb = graphBond(a, b);
+        if (!bb) return false;
+        if (bb->order != 1.0 || bb->aromatic || bb->inRing) return false;   // single, acyclic
+        if (heavyDeg(a) < 2 || heavyDeg(b) < 2) return false;               // non-terminal
+        // Amide C-N is planar (partial double-bond character): not a free torsion.
+        if ((graph.atoms[a].z == 6 && graph.atoms[b].z == 7 && isCarbonyl(a)) ||
+            (graph.atoms[b].z == 6 && graph.atoms[a].z == 7 && isCarbonyl(b)))
+            return false;
+        return true;
+    };
+
+    // ---- fragment the ligand on rotatable bonds (union-find over kept atoms) ---
+    std::vector<int> uf(K);
+    for (int i = 0; i < K; ++i) uf[i] = i;
+    std::function<int(int)> findRoot = [&](int x) {
+        while (uf[x] != x) { uf[x] = uf[uf[x]]; x = uf[x]; }
+        return x;
+    };
+    auto unite = [&](int a, int b) { uf[findRoot(a)] = findRoot(b); };
+
+    struct RotEdge { int a, b; };  // conformer heavy-atom indices
+    std::vector<RotEdge> rotEdges;
+    for (const auto& bp : conf.bonds) {
+        const int u = bp.first, v = bp.second;
+        if (u < 0 || v < 0 || u >= n || v >= n) continue;
+        if (keptIndex[u] < 0 || keptIndex[v] < 0) continue;  // bond to a dropped nonpolar H
+        if (isRotatable(u, v)) { rotEdges.push_back({u, v}); continue; }  // split: do not unite
+        unite(keptIndex[u], keptIndex[v]);
+    }
+    const int nRot = static_cast<int>(rotEdges.size());
+
+    std::unordered_map<int, std::vector<int>> frags;  // fragment root -> kept conf indices
+    for (int ki = 0; ki < K; ++ki) frags[findRoot(ki)].push_back(keptList[ki]);
+    int rootFrag = findRoot(0);
+    size_t bestSize = 0;
+    for (const auto& kv : frags)
+        if (kv.second.size() > bestSize) { bestSize = kv.second.size(); rootFrag = kv.first; }
+
+    auto fragOf = [&](int confIdx) { return findRoot(keptIndex[confIdx]); };
+
+    // ---- serialise the AutoDock torsion tree ----------------------------------
+    std::vector<int> serial(n, -1);
+    int next = 1;
+    std::string text;
+    text.reserve(K * 80 + 128);
+
+    auto writeAtom = [&](int confIdx) {
+        serial[confIdx] = next++;
+        text += pdbqtAtomLine(graph, conf, adj, confIdx, serial[confIdx], res);
+        out.serialToConf.push_back(confIdx);
+        if (conf.z[confIdx] == 1) ++out.polarH; else ++out.heavyCount;
+        ++out.atomCount;
+    };
+    auto writeAtoms = [&](int frag, int entry) {
+        if (entry >= 0) writeAtom(entry);
+        for (int ci : frags[frag])
+            if (ci != entry) writeAtom(ci);
+    };
+    std::function<void(int, int)> writeBranches = [&](int frag, int parentFrag) {
+        for (const auto& e : rotEdges) {
+            const int fa = fragOf(e.a), fb = fragOf(e.b);
+            int a = -1, b = -1, child = -1;
+            if (fa == frag && fb != frag && fb != parentFrag) { a = e.a; b = e.b; child = fb; }
+            else if (fb == frag && fa != frag && fa != parentFrag) { a = e.b; b = e.a; child = fa; }
+            else continue;
+            // The child's entry atom `b` will be the very next serial assigned.
+            text += "BRANCH " + std::to_string(serial[a]) + " " + std::to_string(next) + "\n";
+            writeAtoms(child, b);
+            writeBranches(child, frag);
+            text += "ENDBRANCH " + std::to_string(serial[a]) + " " + std::to_string(serial[b]) + "\n";
+        }
+    };
+
+    std::string header;
+    header += "REMARK  StimLab flexible ligand (" + std::to_string(nRot) +
+              " active torsions; approximate partial charges)\n";
+    header += "REMARK  binding-affinity prediction only; not a synthesis artifact\n";
+    text = header + "ROOT\n";
+    writeAtoms(rootFrag, -1);
+    text += "ENDROOT\n";
+    writeBranches(rootFrag, -1);
+    text += "TORSDOF " + std::to_string(nRot) + "\n";
+
+    out.text = std::move(text);
+    out.torsions = nRot;
     return out;
 }
 

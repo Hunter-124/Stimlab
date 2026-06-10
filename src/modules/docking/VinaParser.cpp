@@ -65,7 +65,22 @@ bool parseAtomXyz(const std::string& line, double& x, double& y, double& z) {
 // (e.g. a writer dropped/added an H), we keep the reference z/bonds for the atoms
 // we have and clamp heavyCount so indices stay valid for the 3D viewer.
 chem::Conformer makeConformer(const std::vector<chem::Vec3>& coords,
-                              const chem::Conformer& reference) {
+                              const chem::Conformer& reference,
+                              const std::vector<int>* order) {
+    // Order-aware path: the writer emitted atoms in a permuted (torsion-tree) order,
+    // so scatter each output coordinate back onto its source atom in `reference`. The
+    // full topology (z, bonds, heavyCount) is preserved; atoms not emitted (nonpolar
+    // H) keep their embedded positions.
+    if (order && !order->empty()) {
+        chem::Conformer c = reference;
+        const int n = static_cast<int>(coords.size());
+        for (int k = 0; k < n && k < static_cast<int>(order->size()); ++k) {
+            const int idx = (*order)[k];
+            if (idx >= 0 && idx < static_cast<int>(c.pos.size())) c.pos[idx] = coords[k];
+        }
+        return c;
+    }
+
     chem::Conformer c;
     c.pos = coords;
     const int n = static_cast<int>(coords.size());
@@ -81,7 +96,8 @@ chem::Conformer makeConformer(const std::vector<chem::Vec3>& coords,
 }  // namespace
 
 std::vector<DockPose> parseVinaPdbqt(const std::string& output,
-                                     const chem::Conformer& reference) {
+                                     const chem::Conformer& reference,
+                                     const std::vector<int>* serialToConf) {
     std::vector<DockPose> poses;
     std::istringstream in(output);
     std::string line;
@@ -98,7 +114,7 @@ std::vector<DockPose> parseVinaPdbqt(const std::string& output,
             p.affinityKcalPerMol = aff;
             p.rmsdLb = lb;
             p.rmsdUb = ub;
-            p.ligand = makeConformer(coords, reference);
+            p.ligand = makeConformer(coords, reference, serialToConf);
             poses.push_back(std::move(p));
         }
         inModel = false;

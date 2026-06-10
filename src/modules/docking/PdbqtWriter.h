@@ -19,6 +19,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "chem/Embed3D.h"
 #include "chem/Molecule.h"
@@ -37,10 +38,16 @@ double approxPartialCharge(const chem::Molecule& graph, const chem::Conformer& c
 // Result of writing a ligand: the PDBQT text plus the count of ATOM records emitted
 // (heavy atoms + polar hydrogens), so callers/tests can verify without re-parsing.
 struct PdbqtLigand {
-    std::string text;       // full PDBQT (ROOT ... ENDROOT ... TORSDOF 0)
+    std::string text;       // full PDBQT (ROOT ... ENDROOT ... TORSDOF n)
     int         atomCount;  // number of ATOM lines written
     int         heavyCount; // heavy-atom subset of atomCount
     int         polarH;     // polar-hydrogen subset of atomCount
+    int         torsions = 0;  // active rotatable bonds (TORSDOF; 0 for the rigid writer)
+    // For each emitted ATOM (in file order), the source conformer index. The engine
+    // preserves atom order in its output, so this maps a docked pose's coordinates
+    // back onto the original conformer topology (the flexible writer reorders atoms
+    // into the torsion tree, so an index-only mapping would scramble elements/bonds).
+    std::vector<int> serialToConf;
 };
 
 // Write a rigid PDBQT for `conf` (typed via `graph`). `resName` is the 3-letter
@@ -48,5 +55,15 @@ struct PdbqtLigand {
 // an empty .text with atomCount==0 for an empty conformer.
 PdbqtLigand writeRigidPdbqt(const chem::Molecule& graph, const chem::Conformer& conf,
                             const std::string& resName = "LIG");
+
+// Write a TORSIONALLY FLEXIBLE PDBQT so the docking engine can BEND and ROTATE the
+// ligand. Rotatable bonds (acyclic single bonds between two non-terminal heavy atoms,
+// excluding amide C-N) are detected from `graph`; the ligand is split into rigid
+// fragments on them and serialised as an AutoDock ROOT/BRANCH/ENDBRANCH torsion tree
+// with TORSDOF = #rotatable bonds. Atom serials are assigned in strict file order so
+// every BRANCH references already-emitted atoms (the correctness the engine's tree
+// parser requires). Degrades to a single rigid ROOT when no rotatable bond exists.
+PdbqtLigand writeFlexiblePdbqt(const chem::Molecule& graph, const chem::Conformer& conf,
+                               const std::string& resName = "LIG");
 
 }  // namespace stimlab::docking

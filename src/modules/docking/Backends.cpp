@@ -1,10 +1,17 @@
 #include "modules/docking/Backends.h"
 
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <system_error>
+#include <vector>
+
+#include "chem/Embed3D.h"
 
 #include "chem/Descriptors.h"
 #include "core/AppPaths.h"
@@ -26,7 +33,7 @@ namespace chem = stimlab::chem;
 
 // Run a process to completion with no console window; return its exit code (or -1
 // if it could not be launched). Windows-only; the fallback path never calls this.
-int runProcess(const std::wstring& cmdline, const fs::path& workdir) {
+int runProcess(const std::wstring& cmdline, const fs::path& workdir, unsigned timeoutMs = 180000) {
 #ifdef _WIN32
     STARTUPINFOW si{};
     si.cb = sizeof(si);
@@ -36,7 +43,13 @@ int runProcess(const std::wstring& cmdline, const fs::path& workdir) {
     BOOL ok = CreateProcessW(nullptr, buf.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
                              nullptr, wd.empty() ? nullptr : wd.c_str(), &si, &pi);
     if (!ok) return -1;
-    WaitForSingleObject(pi.hProcess, 180000);  // 3-minute cap
+    if (WaitForSingleObject(pi.hProcess, timeoutMs) == WAIT_TIMEOUT) {
+        TerminateProcess(pi.hProcess, 1);            // a hung search must not wedge the worker
+        WaitForSingleObject(pi.hProcess, 5000);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        return -2;  // distinct from a clean non-zero exit
+    }
     DWORD code = 1;
     GetExitCodeProcess(pi.hProcess, &code);
     CloseHandle(pi.hProcess);
@@ -45,6 +58,7 @@ int runProcess(const std::wstring& cmdline, const fs::path& workdir) {
 #else
     (void)cmdline;
     (void)workdir;
+    (void)timeoutMs;
     return -1;
 #endif
 }
@@ -55,6 +69,133 @@ std::string readFile(const fs::path& p) {
     std::ostringstream ss;
     ss << in.rdbuf();
     return ss.str();
+}
+
+// Convergent FLEXIBLE-ligand search shared by the CPU and GPU Vina backends. It
+// repeats an INDEPENDENT search (fresh --seed, escalating --exhaustiveness on CPU)
+// with a torsionally flexible ligand and keeps going until the best affinity
+// stabilises within a tolerance across two consecutive runs, or a run/time budget
+// is reached - so a single noisy search can't produce a low-confidence number.
+// Falls back to a rigid ligand if the flexible torsion tree is rejected on the
+// first run, so a flex-writer bug can never lose a dock that would otherwise work.
+DockJobResult runVinaSearch(const std::string& engineName, const fs::path& bin,
+                            const fs::path& workdir, bool gpu, const std::string& tag,
+                            const chem::Molecule& graph, const chem::Conformer& ligand3d,
+                            const ReceptorTarget& target) {
+    DockJobResult r;
+    r.engine = engineName;
+    r.real = false;
+    r.targetId = target.id;
+
+    const PdbqtLigand flex = writeFlexiblePdbqt(graph, ligand3d);
+    const PdbqtLigand rigid = writeRigidPdbqt(graph, ligand3d);
+    if (flex.atomCount == 0 && rigid.atomCount == 0) {
+        r.log = "Ligand PDBQT preparation produced no atoms.";
+        return r;
+    }
+
+    const fs::path dir = AppPaths::instance().cache();
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    const fs::path ligPath = dir / ("lig_" + tag + ".pdbqt");
+    const fs::path outPath = dir / ("dock_" + tag + ".pdbqt");
+
+    bool useFlexible = flex.atomCount > 0;
+    int  torsions = useFlexible ? flex.torsions : 0;
+    const std::vector<int>* activeOrder = useFlexible ? &flex.serialToConf : &rigid.serialToConf;
+    auto writeLig = [&](const std::string& text) {
+        std::ofstream o(ligPath, std::ios::binary);
+        o << text;
+    };
+    writeLig(useFlexible ? flex.text : rigid.text);
+
+    auto num = [](double v) { return std::to_wstring(v); };
+    auto clampSize = [](double s) { return s > 28.0 ? 28.0 : (s < 1.0 ? 1.0 : s); };  // Vina-GPU < 30 A
+    auto buildCmd = [&](int seed, int exh) -> std::wstring {
+        std::wstring c = L"\"" + bin.wstring() + L"\"" +
+            L" --receptor \"" + fs::path(target.receptorPath).wstring() + L"\"" +
+            L" --ligand \"" + ligPath.wstring() + L"\"" +
+            L" --out \"" + outPath.wstring() + L"\"" +
+            L" --seed " + std::to_wstring(seed) +
+            L" --center_x " + num(target.box.cx) + L" --center_y " + num(target.box.cy) +
+            L" --center_z " + num(target.box.cz);
+        if (gpu) {
+            // Vina-GPU has no --exhaustiveness; thoroughness comes from --thread lanes +
+            // independent seeds. Box is clamped < 30 A per the engine's limitation.
+            c += L" --thread 8000";
+            c += L" --size_x " + num(clampSize(target.box.sx)) +
+                 L" --size_y " + num(clampSize(target.box.sy)) +
+                 L" --size_z " + num(clampSize(target.box.sz));
+        } else {
+            c += L" --exhaustiveness " + std::to_wstring(exh);
+            c += L" --size_x " + num(target.box.sx) + L" --size_y " + num(target.box.sy) +
+                 L" --size_z " + num(target.box.sz);
+        }
+        return c;
+    };
+    auto runOnce = [&](int seed, int exh) -> std::vector<DockPose> {
+        fs::remove(outPath, ec);  // never let a stale output misparse as this run's poses
+        const int code = runProcess(buildCmd(seed, exh), workdir, 300000);
+        if (code != 0) return {};
+        return parseVinaPdbqt(readFile(outPath), ligand3d, activeOrder);
+    };
+
+    using clock = std::chrono::steady_clock;
+    const auto t0 = clock::now();
+    constexpr int  kMaxRuns = 5;
+    constexpr long long kBudgetMs = 150000;  // stop STARTING new runs past ~2.5 min
+    constexpr double kTol = 0.2;             // kcal/mol: best affinity considered "stable"
+    const int exhSchedule[5] = {16, 24, 32, 32, 32};
+
+    std::vector<DockPose> best;
+    double bestAff = 1e9;
+    std::vector<double> runBests;
+    bool converged = false;
+
+    for (int i = 0; i < kMaxRuns; ++i) {
+        const long long elapsed =
+            std::chrono::duration_cast<std::chrono::milliseconds>(clock::now() - t0).count();
+        if (i >= 2 && elapsed > kBudgetMs) break;  // always do >= 2 runs, then respect the budget
+
+        auto poses = runOnce(i + 1, exhSchedule[i]);
+        if (poses.empty() && useFlexible && i == 0) {
+            useFlexible = false; torsions = 0;     // flexible tree rejected -> rigid fallback
+            activeOrder = &rigid.serialToConf;
+            writeLig(rigid.text);
+            poses = runOnce(i + 1, exhSchedule[i]);
+        }
+        if (poses.empty()) continue;               // failed run; keep trying within budget
+
+        const double a = poses.front().affinityKcalPerMol;
+        runBests.push_back(a);
+        if (a < bestAff) { bestAff = a; best = poses; }
+        if (runBests.size() >= 2 &&
+            std::abs(runBests[runBests.size() - 1] - runBests[runBests.size() - 2]) <= kTol) {
+            converged = true;
+            break;
+        }
+    }
+
+    if (best.empty()) {
+        r.log = "Ran " + engineName + " but parsed no poses from its output.";
+        return r;
+    }
+    double mn = runBests.front(), mx = runBests.front();
+    for (double v : runBests) { mn = std::min(mn, v); mx = std::max(mx, v); }
+    r.poses = std::move(best);
+    r.real = true;
+    r.searchRuns = static_cast<int>(runBests.size());
+    r.affinitySpread = mx - mn;
+    r.converged = converged;
+    r.torsions = torsions;
+    char note[256];
+    std::snprintf(note, sizeof note,
+                  "%s: %d run(s), best %.2f kcal/mol, spread %.2f; %s; %d torsions (%s).",
+                  engineName.c_str(), r.searchRuns, bestAff, r.affinitySpread,
+                  converged ? "converged" : "budget/limit reached", torsions,
+                  useFlexible ? "flexible" : "rigid fallback");
+    r.log = note;
+    return r;
 }
 
 }  // namespace
@@ -112,50 +253,10 @@ DockJobResult VinaBackend::dock(const chem::Molecule& graph, const chem::Conform
         return r;
     }
 
-    // Ligand prep with OUR rigid PDBQT writer (a clean ROOT avoids the Meeko/tree.h
-    // gotcha that flexible PDBQTs trip in Vina).
-    const PdbqtLigand lig = writeRigidPdbqt(graph, ligand3d);
-    if (lig.atomCount == 0) {
-        r.log = "Ligand PDBQT preparation produced no atoms.";
-        return r;
-    }
-
-    const fs::path dir = AppPaths::instance().cache();
-    std::error_code ec;
-    fs::create_directories(dir, ec);
-    const fs::path ligPath = dir / ("lig_" + target.id + ".pdbqt");
-    const fs::path outPath = dir / ("dock_" + target.id + ".pdbqt");
-    {
-        std::ofstream o(ligPath, std::ios::binary);
-        o << lig.text;
-    }
-
-    auto num = [](double v) { return std::to_wstring(v); };
-    // A fixed --seed makes a dock reproducible run-to-run (Vina is otherwise seeded
-    // randomly): the two UI views agree, and results become cacheable by input hash.
-    const std::wstring cmd =
-        L"\"" + bin->wstring() + L"\"" + L" --receptor \"" + fs::path(target.receptorPath).wstring() +
-        L"\"" + L" --ligand \"" + ligPath.wstring() + L"\"" + L" --out \"" + outPath.wstring() + L"\"" +
-        L" --seed 1" +
-        L" --center_x " + num(target.box.cx) + L" --center_y " + num(target.box.cy) +
-        L" --center_z " + num(target.box.cz) + L" --size_x " + num(target.box.sx) +
-        L" --size_y " + num(target.box.sy) + L" --size_z " + num(target.box.sz);
-
-    const int code = runProcess(cmd, dir);
-    if (code != 0) {
-        r.log = displayName() + " subprocess exited with code " + std::to_string(code) + ".";
-        return r;
-    }
-
-    auto poses = parseVinaPdbqt(readFile(outPath), ligand3d);
-    if (poses.empty()) {
-        r.log = "Ran " + displayName() + " but parsed no poses from its output.";
-        return r;
-    }
-    r.poses = std::move(poses);
-    r.real = true;
-    r.log = "Docked with " + displayName() + " (" + std::to_string(r.poses.size()) + " poses).";
-    return r;
+    // Flexible-ligand, convergent search (bends/rotates the ligand; repeats until the
+    // best affinity stabilises). Falls back to a rigid ligand internally if needed.
+    return runVinaSearch(displayName(), *bin, AppPaths::instance().cache(), /*gpu=*/false,
+                         target.id, graph, ligand3d, target);
 }
 
 // ------------------------------------------------------------ VinaGpuBackend
@@ -191,56 +292,11 @@ DockJobResult VinaGpuBackend::dock(const chem::Molecule& graph, const chem::Conf
         return r;
     }
 
-    // Same rigid-PDBQT ligand prep the CPU Vina path uses (clean ROOT, no Meeko tree).
-    const PdbqtLigand lig = writeRigidPdbqt(graph, ligand3d);
-    if (lig.atomCount == 0) {
-        r.log = "Ligand PDBQT preparation produced no atoms.";
-        return r;
-    }
-
-    const fs::path dir = AppPaths::instance().cache();
-    fs::create_directories(dir, ec);
-    const fs::path ligPath = dir / ("lig_gpu_" + target.id + ".pdbqt");
-    const fs::path outPath = dir / ("dock_gpu_" + target.id + ".pdbqt");
-    {
-        std::ofstream o(ligPath, std::ios::binary);
-        o << lig.text;
-    }
-    // Remove a stale output so a failed run can't leave a previous pose set to misparse.
-    fs::remove(outPath, ec);
-
-    auto num = [](double v) { return std::to_wstring(v); };
-    // Vina-GPU caps the search box at < 30 A per axis (README "Limitation"); clamp so an
-    // over-large preset box never makes the engine reject the job.
-    auto clampSize = [](double s) { return s > 28.0 ? 28.0 : (s < 1.0 ? 1.0 : s); };
-    // Mirror VinaBackend's invocation but with Vina-GPU's --thread lanes (8000 = the
-    // upstream example's value; the README advises < 10000) and a fixed --seed for
-    // run-to-run reproducibility, exactly like the CPU path.
-    const std::wstring cmd =
-        L"\"" + bin->wstring() + L"\"" + L" --receptor \"" + fs::path(target.receptorPath).wstring() +
-        L"\"" + L" --ligand \"" + ligPath.wstring() + L"\"" + L" --out \"" + outPath.wstring() + L"\"" +
-        L" --seed 1 --thread 8000" +
-        L" --center_x " + num(target.box.cx) + L" --center_y " + num(target.box.cy) +
-        L" --center_z " + num(target.box.cz) + L" --size_x " + num(clampSize(target.box.sx)) +
-        L" --size_y " + num(clampSize(target.box.sy)) + L" --size_z " + num(clampSize(target.box.sz));
-
-    // Run IN the engine's own folder so it finds Kernel2_Opt.bin (+ the OpenCL source).
-    const int code = runProcess(cmd, engineDir);
-    if (code != 0) {
-        r.log = displayName() + " subprocess exited with code " + std::to_string(code) + ".";
-        return r;
-    }
-
-    auto poses = parseVinaPdbqt(readFile(outPath), ligand3d);
-    if (poses.empty()) {
-        r.log = "Ran " + displayName() + " but parsed no poses from its output.";
-        return r;
-    }
-    r.poses = std::move(poses);
-    r.real = true;
-    r.log = "Docked with " + displayName() + " (" + std::to_string(r.poses.size()) +
-            " poses, GPU OpenCL Vina search).";
-    return r;
+    // Flexible-ligand, convergent search on the GPU (runs in the engine's own folder so
+    // it finds Kernel2_Opt.bin). Same torsion-tree ligand + multi-seed convergence as
+    // the CPU path; --thread lanes replace --exhaustiveness for the GPU engine.
+    return runVinaSearch(displayName(), *bin, engineDir, /*gpu=*/true, "gpu_" + target.id,
+                         graph, ligand3d, target);
 }
 
 }  // namespace stimlab::docking

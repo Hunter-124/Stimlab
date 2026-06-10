@@ -37,6 +37,7 @@ struct PanelInfo {
     std::string id;     // stable key used by the content router + highlight
     std::string label;  // display label
     std::string help;   // one-line description shown by the assistant
+    std::string group;  // navigator section, e.g. "Compound" / "Analysis" / "Discovery"
 };
 
 struct UiState {

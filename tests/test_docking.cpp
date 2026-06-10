@@ -123,6 +123,55 @@ TEST_CASE("Rigid PDBQT writer emits a clean ROOT ligand", "[docking][pdbqt]") {
     REQUIRE(lig.text.find("inf") == std::string::npos);
 }
 
+TEST_CASE("Flexible PDBQT writer builds a valid torsion tree", "[docking][pdbqt]") {
+    const auto m = graph("CC(N)Cc1ccccc1");  // amphetamine
+    const auto conf = chem::embed3D(m);
+    const auto lig = docking::writeFlexiblePdbqt(m, conf);
+    const auto rigid = docking::writeRigidPdbqt(m, conf);
+
+    REQUIRE(lig.atomCount > 0);
+    REQUIRE(lig.atomCount == lig.heavyCount + lig.polarH);
+    REQUIRE(lig.atomCount == rigid.atomCount);                       // same atoms, different tree
+    REQUIRE(static_cast<int>(lig.serialToConf.size()) == lig.atomCount);
+    REQUIRE(lig.text.find("ROOT") != std::string::npos);
+    REQUIRE(lig.text.find("ENDROOT") != std::string::npos);
+
+    // Amphetamine has exactly two acyclic rotatable bonds (Calpha-CH2, CH2-aryl);
+    // the aromatic ring and the terminal methyl/amine bonds are not torsions.
+    REQUIRE(lig.torsions == 2);
+    REQUIRE(lig.text.find("TORSDOF 2") != std::string::npos);
+
+    auto count = [](const std::string& s, const std::string& sub) {
+        size_t n = 0, p = 0;
+        while ((p = s.find(sub, p)) != std::string::npos) { ++n; p += sub.size(); }
+        return n;
+    };
+    // Every BRANCH is matched by an ENDBRANCH, one pair per active torsion.
+    REQUIRE(count(lig.text, "\nBRANCH ") == 2);
+    REQUIRE(count(lig.text, "\nENDBRANCH ") == 2);
+    REQUIRE(lig.text.find("nan") == std::string::npos);
+    REQUIRE(lig.text.find("inf") == std::string::npos);
+
+    // Round-trip: the engine preserves atom order in its output, so a pose parsed
+    // with serialToConf must scatter coordinates back onto the ORIGINAL topology
+    // (tree order != conformer order). Wrap the written ATOM block as one MODEL.
+    const std::string out =
+        "MODEL 1\nREMARK VINA RESULT:    -7.00      0.000      0.000\n" + lig.text + "ENDMDL\n";
+    const auto poses = docking::parseVinaPdbqt(out, conf, &lig.serialToConf);
+    REQUIRE(poses.size() == 1);
+    const auto& pose = poses[0].ligand;
+    REQUIRE(pose.heavyCount == conf.heavyCount);          // full topology from the reference
+    REQUIRE(pose.z.size() == conf.z.size());
+    for (int k = 0; k < lig.atomCount; ++k) {
+        const int idx = lig.serialToConf[k];
+        REQUIRE(idx >= 0);
+        REQUIRE(idx < static_cast<int>(pose.pos.size()));
+        REQUIRE_THAT(pose.pos[idx].x, WithinAbs(conf.pos[idx].x, 1e-2));
+        REQUIRE_THAT(pose.pos[idx].y, WithinAbs(conf.pos[idx].y, 1e-2));
+        REQUIRE_THAT(pose.pos[idx].z, WithinAbs(conf.pos[idx].z, 1e-2));
+    }
+}
+
 TEST_CASE("Vina output parser ranks poses with conformers", "[docking][parser]") {
     const auto m = graph("CC(N)Cc1ccccc1");
     const auto conf = chem::embed3D(m);
@@ -227,6 +276,39 @@ TEST_CASE("Built-in receptor prep strips solvent and types a rigid receptor", "[
     REQUIRE(std::isfinite(rec.cz));
     REQUIRE(rec.cx > 10.0);
     REQUIRE(rec.cx < 20.0);
+}
+
+TEST_CASE("Modified residues (MSE) are kept as protein, not stripped", "[docking][receptor]") {
+    // MSE (selenomethionine) is recorded as HETATM but is covalently part of the
+    // chain - a large fraction of crystal structures use it. Stripping it would tear
+    // a gap in the backbone and disconnect a pocket residue. It must survive cleanup,
+    // be retyped as MET, and its Se-delta must dock as the thioether sulfur (S).
+    std::string pdb;
+    pdb += pdbAtom("ATOM",   1, "N",  "ALA", 'A', 1,  0.000, 0.000, 0.000, "N");
+    pdb += pdbAtom("ATOM",   2, "CA", "ALA", 'A', 1,  1.458, 0.000, 0.000, "C");
+    pdb += pdbAtom("HETATM", 3, "N",  "MSE", 'A', 2,  2.000, 1.400, 0.000, "N");
+    pdb += pdbAtom("HETATM", 4, "CA", "MSE", 'A', 2,  3.400, 1.700, 0.000, "C");
+    pdb += pdbAtom("HETATM", 5, "CB", "MSE", 'A', 2,  3.900, 3.100, 0.000, "C");
+    pdb += pdbAtom("HETATM", 6, "CG", "MSE", 'A', 2,  5.400, 3.300, 0.000, "C");
+    pdb += pdbAtom("HETATM", 7, "SE", "MSE", 'A', 2,  6.100, 5.000, 0.000, "Se");  // selenium
+    pdb += pdbAtom("HETATM", 8, "CE", "MSE", 'A', 2,  7.900, 4.800, 0.000, "C");
+    pdb += pdbAtom("HETATM", 9, "O",  "HOH", 'A', 99, 40.000, 40.000, 40.000, "O");  // still stripped
+    pdb += "END\n";
+
+    const auto rec = docking::pdbToRigidReceptor(pdb);
+
+    // 2 ALA + 6 MSE heavy atoms kept; the water is the only thing dropped.
+    REQUIRE(rec.atomCount == 8);
+    REQUIRE(rec.keptModified == 6);
+    REQUIRE(rec.keptHetero == 0);
+    REQUIRE(rec.droppedHetero == 1);
+
+    // The residue is canonicalised to MET (no MSE label leaks through) and the
+    // selenium is emitted as a sulfur atom type, never the AutoDock default carbon.
+    REQUIRE(rec.text.find("MSE") == std::string::npos);
+    REQUIRE(rec.text.find("MET") != std::string::npos);
+    REQUIRE(rec.text.find(" SD ") != std::string::npos);  // SE renamed to S-delta
+    REQUIRE(rec.text.find("Se") == std::string::npos);    // no stray selenium element
 }
 
 TEST_CASE("Box center is taken from the co-crystal ligand when present", "[docking][receptor]") {

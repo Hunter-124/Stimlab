@@ -11,6 +11,7 @@
 #include <sstream>
 #include <string>
 #include <system_error>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -63,6 +64,25 @@ std::string upper(std::string s) {
 bool isWater(const std::string& res) {
     return res == "HOH" || res == "WAT" || res == "DOD" || res == "H2O" || res == "TIP" ||
            res == "SOL" || res == "TIP3" || res == "TIP4";
+}
+
+// Modified / non-standard amino-acid residues that are covalently part of the
+// polypeptide chain yet recorded as HETATM by the PDB. These are NOT waters,
+// crystallization additives, or the co-crystal ligand: stripping them tears a gap
+// in the backbone and silently deletes pocket residues. MSE (selenomethionine) is
+// by far the most common - a large fraction of crystal structures incorporate it.
+// Returns the standard parent residue name, or "" when `res` is not a known
+// modified amino acid (so it stays subject to the normal HETATM strip).
+std::string aminoAcidParent(const std::string& res) {
+    static const std::unordered_map<std::string, std::string> kParent = {
+        {"MSE", "MET"}, {"FME", "MET"}, {"MHO", "MET"},                  // seleno/formyl/oxidised Met
+        {"SEP", "SER"}, {"TPO", "THR"}, {"PTR", "TYR"},                  // phospho Ser/Thr/Tyr
+        {"CSO", "CYS"}, {"CSD", "CYS"}, {"OCS", "CYS"}, {"CME", "CYS"},  // oxidised/modified Cys
+        {"KCX", "LYS"}, {"MLY", "LYS"}, {"M3L", "LYS"}, {"ALY", "LYS"},  // carbamyl/methyl/acetyl Lys
+        {"HYP", "PRO"}, {"HIC", "HIS"}, {"PCA", "GLN"},                  // hydroxyPro / methylHis / pyroGlu
+    };
+    const auto it = kParent.find(res);
+    return it == kParent.end() ? std::string() : it->second;
 }
 
 // Infer atomic number from the PDB element field (cols 77-78) if present/valid,
@@ -214,12 +234,27 @@ ReceptorPdbqt pdbToRigidReceptor(const std::string& pdbText,
         // Keep a single conformation: blank / 'A' / '1' alternate location only.
         if (!(altLoc == ' ' || altLoc == 'A' || altLoc == '1')) continue;
 
-        // Drop ALL HETATM (waters, cryo/buffer additives, AND the co-crystal ligand
-        // that defined the box) unless explicitly retained as a cofactor. An empty
-        // keep set therefore yields a clean apo-like pocket. An explicit keep wins.
+        // HETATM triage. Waters, cryo/buffer additives, AND the co-crystal ligand
+        // that defined the box are stripped (an empty keep set yields a clean apo-like
+        // pocket). BUT modified amino-acid residues (MSE selenomethionine, phospho-
+        // Ser/Thr/Tyr, oxidised Cys, ...) are covalently part of the chain: dropping
+        // them disconnects pocket residues, so we keep them, typed as their standard
+        // parent. An explicit cofactor keep still wins over everything.
+        std::string typingRes = resName;   // residue name used for aromatic typing + output
+        std::string typingAtom = atomName;
+        bool keptModified = false;
         if (isHet && !keep.count(resName)) {
-            ++out.droppedHetero;
-            continue;
+            const std::string parent = aminoAcidParent(resName);
+            if (isWater(resName) || parent.empty()) {
+                ++out.droppedHetero;       // water / additive / co-crystal ligand
+                continue;
+            }
+            // Canonicalise to the parent residue so atom typing and any template-based
+            // viewer treat it as the standard amino acid; MSE's selenium (Se-delta)
+            // becomes the methionine S-delta it stands in for.
+            typingRes = parent;
+            if (resName == "MSE" && atomName == "SE") typingAtom = "SD";
+            keptModified = true;
         }
 
         const double x = parseCol(line, 30, 8);
@@ -228,10 +263,11 @@ ReceptorPdbqt pdbToRigidReceptor(const std::string& pdbText,
         if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) continue;
 
         const std::string elemField = line.size() > 76 ? line.substr(76, 2) : std::string();
-        const int zNum = inferElement(elemField, atomName);
-        if (zNum == 1) continue;  // drop hydrogens (built-in path is heavy-atom)
+        int zNum = inferElement(elemField, typingAtom);
+        if (zNum == 1) continue;   // drop hydrogens (built-in path is heavy-atom)
+        if (zNum == 34) zNum = 16; // AutoDock4 has no Se type; MSE's Se docks as the thioether S
 
-        const bool aromatic = isAromaticRingAtom(resName, atomName);
+        const bool aromatic = isAromaticRingAtom(typingRes, typingAtom);
         const std::string adType = autodockAtomType(zNum, aromatic, /*polarH=*/false);
         const double charge = approxReceptorCharge(zNum, aromatic);
 
@@ -242,14 +278,17 @@ ReceptorPdbqt pdbToRigidReceptor(const std::string& pdbText,
         char buf[128];
         // Fixed-width PDBQT ATOM line: standard PDB columns 1-66 preserved, then the
         // PDBQT trailing partial charge (%10.3f) + right-justified 2-char atom type.
+        // Modified residues are emitted as ATOM under their canonical parent name so a
+        // rebuilt receptor is a continuous, standard-residue chain.
         std::snprintf(buf, sizeof(buf),
                       "ATOM  %5d %-4.4s %-3.3s %c%4d    %8.3f%8.3f%8.3f%6.2f%6.2f%10.3f %-2.2s\n",
-                      serial, atomName.c_str(), resName.c_str(), chain, resNum, x, y, z,
+                      serial, typingAtom.c_str(), typingRes.c_str(), chain, resNum, x, y, z,
                       1.00, 0.00, charge, adType.c_str());
         body += buf;
 
         ++out.atomCount;
-        if (isHet) ++out.keptHetero;
+        if (keptModified) ++out.keptModified;
+        else if (isHet) ++out.keptHetero;
     }
 
     std::string text;
@@ -262,6 +301,9 @@ ReceptorPdbqt pdbToRigidReceptor(const std::string& pdbText,
 
     out.note = "kept " + std::to_string(out.atomCount) + " receptor atoms";
     if (out.keptHetero) out.note += " (incl. " + std::to_string(out.keptHetero) + " cofactor)";
+    if (out.keptModified)
+        out.note += " (incl. " + std::to_string(out.keptModified) +
+                    " modified-residue atoms kept as protein, e.g. MSE)";
     out.note += ", dropped " + std::to_string(out.droppedHetero) + " water/hetero atoms";
 
     // Derive a docking box center in THIS structure's coordinate frame so the box
