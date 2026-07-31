@@ -36,8 +36,8 @@ TEST_CASE("Real library computes properties from structure", "[modules][real]") 
     REQUIRE(amp.hba == 1);
 }
 
-// Golden ADMET facts (plan.md / handoff.md section 9), now derived from REAL
-// structure perception rather than hardcoded.
+// Golden ADMET facts, now derived from real structure perception rather than
+// hardcoded values.
 TEST_CASE("Real ADMET goldens hold (structure-derived)", "[modules][admet][golden]") {
     RealBackend backend;
     Services s = backend.services();

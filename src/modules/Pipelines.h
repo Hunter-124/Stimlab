@@ -9,8 +9,8 @@
 //
 // Each node's run-fn returns a compact JSON status string that is BOTH the payload
 // passed downstream and the cache value, so an unchanged (ligand, target) re-runs as
-// a pure cache hit. The nodes call ONLY analysis services - there is no synthesis,
-// route, or manufacturability content anywhere (handoff.md safety boundary).
+// a pure cache hit. The nodes call only analysis services; they do not implement
+// synthesis, route, or manufacturability workflows.
 #pragma once
 
 #include <string>

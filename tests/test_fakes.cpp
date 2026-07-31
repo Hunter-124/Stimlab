@@ -29,7 +29,7 @@ TEST_CASE("Default library is populated", "[fakes][library]") {
     REQUIRE(s.library->byId("caffeine").has_value());
 }
 
-// Golden ADMET facts carried forward from plan.md / handoff.md section 9.
+// Golden ADMET facts backed by validated reference values.
 TEST_CASE("ADMET goldens hold", "[fakes][admet][golden]") {
     FakeBackend backend;
     Services s = backend.services();

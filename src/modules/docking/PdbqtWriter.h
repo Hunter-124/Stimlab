@@ -3,7 +3,7 @@
 // Serializes a chem::Conformer (+ its chem::Molecule graph, used for atom typing)
 // into a single-ROOT, zero-torsion AutoDock PDBQT string. This deliberately emits
 // a clean rigid ROOT/ENDROOT block (TORSDOF 0) rather than a Meeko-style flexible
-// tree: a flexible PDBQT trips AutoDock Vina's tree.h parser (plan.md sec 9), while
+// tree: a flexible PDBQT trips AutoDock Vina's tree.h parser, while
 // a rigid ROOT always docks. When a real OpenBabel (obabel.exe) is provisioned the
 // caller may instead shell out for a torsionally-flexible ligand; this writer is
 // the always-available fallback and is fully unit-testable from its string output.

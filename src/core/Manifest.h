@@ -5,8 +5,7 @@
 // check. After provisioning, the Provisioner records each component's path + size +
 // content hash into manifest.json. On launch, verify() re-checks every component:
 // a missing or size/hash-mismatched file is reported, and heal() deletes corrupt
-// files so the next provisioning run re-fetches them (the "verify completeness,
-// wipe + reinstall" rule from the legacy CUDA self-heal, plan.md sec 9).
+// files so the next provisioning run re-fetches them.
 //
 // The content hash is a fast non-cryptographic FNV-1a (corruption/truncation
 // detection) - download AUTHENTICITY is handled separately by the pinned SHA-256 in
