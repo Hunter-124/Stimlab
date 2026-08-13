@@ -286,7 +286,8 @@ AbsorptionReport realAbsorption(const Molecule& m) {
     r.metrics = {
         {"Human intestinal absorption", r.hiaPct, "%", band(r.hiaPct, 80, 50),
          "Fraction crossing the gut wall; TPSA / H-bond-donor limited (passive permeability)."},
-        {"Oral bioavailability (F)", r.bioavailabilityPct, "%", band(r.bioavailabilityPct, 70, 40),
+        {"Hepatic availability (F, assumed CLint)", r.bioavailabilityPct, "%",
+         band(r.bioavailabilityPct, 70, 40),
          chem::bioavailabilityRationale(bio)},
         {"Caco-2 permeability", r.caco2LogPapp, "log(cm/s)", band(r.caco2LogPapp, -5.0, -6.0),
          "Higher (less negative) = more permeable."},
@@ -298,9 +299,10 @@ AbsorptionReport realAbsorption(const Molecule& m) {
          r.pgpSubstrate ? Verdict::Warn : Verdict::Good,
          r.pgpSubstrate ? "Efflux may reduce net absorption." : "Not a likely P-gp substrate."},
     };
-    r.summary = "Predicted oral F ~" + chem::fmt0(r.bioavailabilityPct) + "% (HIA ~" +
-                chem::fmt0(r.hiaPct) + "%, first-pass survival ~" +
-                chem::fmt0(bio.firstPassSurvival * 100.0) + "%; " + bio.limitingRoute + "). " +
+    r.summary = "Hepatic availability under the stated assumptions ~" +
+                chem::fmt0(r.bioavailabilityPct) + "% (HIA ~" + chem::fmt0(r.hiaPct) +
+                "%, F_H ~" + chem::fmt0(bio.firstPassSurvival * 100.0) +
+                "% from an ASSUMED fu.CLint; " + bio.limitingRoute + "). " +
                 (r.cnsPenetrant ? "CNS-penetrant." : "Low CNS penetration.");
     return r;
 }
@@ -477,7 +479,7 @@ public:
         auto graph = chem::parseSmiles(m.smiles);
         if (!graph) {
             DockJobResult r;
-            r.engine = "none"; r.real = false; r.targetId = tgt.id;
+            r.engine = "none"; r.provenance = Provenance::Heuristic; r.targetId = tgt.id;
             r.log = "Ligand SMILES could not be parsed.";
             return r;
         }
@@ -486,7 +488,7 @@ public:
         for (const IDockingBackend* b : realEngines()) {
             if (!b->available()) continue;
             DockJobResult r = b->dock(*graph, conf, tgt);
-            if (r.real && !r.poses.empty()) { r.targetId = tgt.id; return r; }
+            if (r.fromEngine() && !r.poses.empty()) { r.targetId = tgt.id; return r; }
         }
         DockJobResult r = estimate_.dock(*graph, conf, tgt);
         r.targetId = tgt.id;
@@ -501,7 +503,7 @@ public:
         for (const auto& p : d.poses) r.poses.push_back({p.rank, p.affinityKcalPerMol, p.rmsdLb});
         r.bestAffinity = d.bestAffinity();
         const std::string aff = std::to_string(r.bestAffinity).substr(0, 6);
-        r.summary = d.real
+        r.summary = d.fromEngine()
             ? ("Best affinity " + aff + " kcal/mol at " + target + " (docked with " + d.engine + ").")
             : ("Estimated affinity " + aff + " kcal/mol at " + target +
                " (" + d.engine + " - structure-descriptor model, not a docked score).");

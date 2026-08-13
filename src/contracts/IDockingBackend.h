@@ -16,6 +16,7 @@
 
 #include "chem/Embed3D.h"
 #include "chem/Molecule.h"
+#include "data/Domain.h"
 
 namespace biocad {
 
@@ -47,11 +48,13 @@ struct DockPose {
     chem::Conformer ligand;            // docked 3D ligand (may be empty)
 };
 
-// The outcome of one docking job. `real` distinguishes a true engine run from the
-// labeled descriptor fallback so the UI can be honest about what produced a score.
+// The outcome of one docking job. `provenance` distinguishes a true engine run
+// (Provenance::Model - a constructed pose, not a measurement) from the labeled
+// descriptor fallback (Provenance::Heuristic - rank ordering only) so the UI can
+// be honest about what produced a score.
 struct DockJobResult {
     std::string engine;          // "AutoDock Vina 1.2.5", "smina", "descriptor-estimate"
-    bool        real = false;    // true iff a real docking engine produced the poses
+    Provenance  provenance = Provenance::NotComputed;
     std::string targetId;        // ReceptorTarget::id used
     std::vector<DockPose> poses; // ranked best (most negative) first
     std::string log;             // status / notes / fallback reason
@@ -65,6 +68,8 @@ struct DockJobResult {
     bool   converged = false;     // best affinity stabilised within tolerance
     int    torsions = 0;          // active rotatable bonds the ligand was docked with
 
+    // True iff a real docking engine (not the descriptor fallback) produced the poses.
+    [[nodiscard]] bool fromEngine() const { return provenance == Provenance::Model; }
     [[nodiscard]] bool empty() const { return poses.empty(); }
     [[nodiscard]] double bestAffinity() const {
         return poses.empty() ? 0.0 : poses.front().affinityKcalPerMol;
@@ -73,7 +78,7 @@ struct DockJobResult {
 
 // A swappable docking engine. Implementations provision/locate their binary and
 // run a single ligand->target job; they must degrade gracefully (return a result
-// with real=false rather than throwing) when their engine is unavailable.
+// with provenance=Heuristic rather than throwing) when their engine is unavailable.
 class IDockingBackend {
 public:
     virtual ~IDockingBackend() = default;

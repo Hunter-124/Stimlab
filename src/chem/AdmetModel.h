@@ -10,13 +10,15 @@
 // The methods are mechanistic, literature-style heuristics:
 //   * Absorption  - Veber/Egan-type passive permeability gated by polar surface
 //                   area, H-bond donors and size.
-//   * Bioavailability - F = f_abs x F_fp, where F_fp is the fraction surviving
-//                   gut + hepatic first pass, modelled as a saturable extraction
-//                   1/(1+L) from a summed presystemic intrinsic-clearance burden
-//                   L (well-stirred-model form). This is what makes catecholamines
-//                   (catechol -> COMT/MAO) read as near-zero F while metabolically
-//                   robust stimulants read high - instead of everything pinning at
-//                   the old 95% ceiling.
+//   * Bioavailability - F = f_abs x F_H, where F_H is the hepatic availability of
+//                   the well-stirred model, F_H = Q_H / (Q_H + fu.CLint). Q_H is
+//                   adult human hepatic blood flow (90 L/h, an assumption stated
+//                   in the UI). fu.CLint is NOT predictable from structure: it is
+//                   an explicit parameter, defaulting to a liability-derived
+//                   ASSUMED value. That default is why catecholamines (catechol
+//                   -> COMT/MAO) read as near-zero F while metabolically robust
+//                   stimulants read high. The resulting score is rank-ordering
+//                   only unless the caller supplies a measured CLint.
 //   * Stability   - degradation-chemistry rules give an actual predicted pH window
 //                   and temperature ceiling rather than a vague "narrow/broad".
 //
@@ -54,10 +56,25 @@ inline std::string fmt0(double v) { char b[32]; std::snprintf(b, sizeof b, "%.0f
 // ---------------------------------------------------------------------------
 // Absorption + oral bioavailability
 // ---------------------------------------------------------------------------
+// Hepatic disposition assumptions. Nothing here is derivable from a structure, so
+// each field is either a stated assumption or a measurement supplied by the user.
+struct HepaticAssumptions {
+    // Q_H: adult human hepatic blood flow, L/h. A population average, not a patient.
+    double hepaticBloodFlowLPerH = 90.0;
+    // fu.CLint, L/h: unbound fraction x intrinsic clearance. Negative means
+    // "derive an assumed value from the perceived structural liabilities".
+    double unboundIntrinsicClearanceLPerH = -1.0;
+    // True only when unboundIntrinsicClearanceLPerH came from an experiment.
+    bool clIntMeasured = false;
+};
+
 struct BioavailabilityPrediction {
     double hiaPct = 0;             // fraction absorbed across the gut wall, %
-    double firstPassSurvival = 0;  // 0..1, fraction escaping gut + hepatic first pass
-    double bioavailabilityPct = 0; // oral F, % = hiaPct * firstPassSurvival
+    double firstPassSurvival = 0;  // F_H, 0..1, hepatic availability (well-stirred model)
+    double bioavailabilityPct = 0; // oral F, % = hiaPct * F_H
+    double unboundIntrinsicClearanceLPerH = 0;  // fu.CLint actually used, L/h
+    double hepaticClearanceLPerH = 0;           // CL_H = Q_H.fu.CLint / (Q_H + fu.CLint)
+    bool   clIntMeasured = false;  // false => the whole result is rank-ordering only
     std::string limitingRoute;     // dominant first-pass route (for the rationale)
 };
 
@@ -73,45 +90,128 @@ inline double absorbedFractionPct(double tpsa, int hbd, double logP, double mw) 
     return admetClamp(hia, 5.0, 99.0);
 }
 
+// fu.CLint (L/h) assumed from perceived structural liabilities. These coefficients
+// are ordinal, not measured: they exist to rank a catechol below an amide, and they
+// are expressed as a multiple of hepatic blood flow so the well-stirred model stays
+// dimensionally honest. Any result built on them is Heuristic.
+inline double assumedUnboundIntrinsicClearance(double logP, const PkLiabilities& L,
+                                               double hepaticBloodFlowLPerH,
+                                               std::string& limitingRoute) {
+    double relative = 0.05;  // baseline: every drug loses a little to first pass
+    limitingRoute = "minimal first-pass metabolism";
+    if (L.catechol) {
+        relative += 15.0;  // COMT O-methylation + MAO deamination, gut and liver
+        limitingRoute = "catechol COMT/MAO first-pass metabolism";
+    } else if (L.phenol) {
+        relative += 0.30;  // intestinal/hepatic glucuronidation + sulfation
+        limitingRoute = "phenol phase-II conjugation";
+    }
+    if (L.ester) {
+        relative += 2.20;  // carboxylesterase hydrolysis in gut wall / liver / plasma
+        if (!L.catechol) limitingRoute = "ester presystemic hydrolysis";
+    }
+    if (L.arylKetone) {
+        relative += 0.90;  // carbonyl reduction / oxidative metabolism
+        if (!L.catechol && !L.ester) limitingRoute = "carbonyl reductive metabolism";
+    }
+    if (L.maoLabileAmine) {
+        relative += 2.50;  // monoamine oxidase deamination of the primary/secondary amine
+        if (!L.catechol && !L.ester) limitingRoute = "MAO presystemic deamination";
+    }
+    relative += 0.08 * std::max(0.0, logP - 2.0);  // lipophilicity-driven CYP oxidation
+    return relative * hepaticBloodFlowLPerH;
+}
+
+// Oral availability under the well-stirred hepatic model:
+//   F_H  = Q_H / (Q_H + fu.CLint)
+//   CL_H = Q_H . fu.CLint / (Q_H + fu.CLint)
+// With the assumed fu.CLint above this is algebraically identical to the old
+// 1/(1+burden) form - the difference is that the assumption is now named, carries
+// units, and can be replaced by a measurement.
 inline BioavailabilityPrediction predictBioavailability(
-        double mw, double logP, double tpsa, int hbd, const PkLiabilities& L) {
+        double mw, double logP, double tpsa, int hbd, const PkLiabilities& L,
+        const HepaticAssumptions& assume = {}) {
     BioavailabilityPrediction p;
     p.hiaPct = absorbedFractionPct(tpsa, hbd, logP, mw);
 
-    // Summed presystemic intrinsic-clearance burden (dimensionless, additive on a
-    // log-clearance scale). Larger burden -> larger first-pass extraction.
-    double burden = 0.05;  // baseline: every drug loses a little to first pass
-    p.limitingRoute = "minimal first-pass metabolism";
-    if (L.catechol) {
-        burden += 15.0;  // COMT O-methylation + MAO deamination, gut and liver
-        p.limitingRoute = "catechol COMT/MAO first-pass metabolism";
-    } else if (L.phenol) {
-        burden += 0.30;  // intestinal/hepatic glucuronidation + sulfation
-        p.limitingRoute = "phenol phase-II conjugation";
+    const double qH = assume.hepaticBloodFlowLPerH;
+    if (assume.unboundIntrinsicClearanceLPerH >= 0.0) {
+        p.unboundIntrinsicClearanceLPerH = assume.unboundIntrinsicClearanceLPerH;
+        p.clIntMeasured = assume.clIntMeasured;
+        p.limitingRoute = assume.clIntMeasured ? "measured unbound intrinsic clearance"
+                                               : "supplied unbound intrinsic clearance";
+    } else {
+        p.unboundIntrinsicClearanceLPerH =
+            assumedUnboundIntrinsicClearance(logP, L, qH, p.limitingRoute);
+        p.clIntMeasured = false;
     }
-    if (L.ester) {
-        burden += 2.20;  // carboxylesterase hydrolysis in gut wall / liver / plasma
-        if (!L.catechol) p.limitingRoute = "ester presystemic hydrolysis";
-    }
-    if (L.arylKetone) {
-        burden += 0.90;  // carbonyl reduction / oxidative metabolism
-        if (!L.catechol && !L.ester) p.limitingRoute = "carbonyl reductive metabolism";
-    }
-    if (L.maoLabileAmine) {
-        burden += 2.50;  // monoamine oxidase deamination of the primary/secondary amine
-        if (!L.catechol && !L.ester) p.limitingRoute = "MAO presystemic deamination";
-    }
-    burden += 0.08 * std::max(0.0, logP - 2.0);  // lipophilicity-driven CYP oxidation
 
-    p.firstPassSurvival = 1.0 / (1.0 + burden);
+    const double fuClint = p.unboundIntrinsicClearanceLPerH;
+    p.firstPassSurvival = qH / (qH + fuClint);
+    p.hepaticClearanceLPerH = qH * fuClint / (qH + fuClint);
     p.bioavailabilityPct = admetClamp(p.hiaPct * p.firstPassSurvival, 1.0, 99.0);
     return p;
 }
 
 inline std::string bioavailabilityRationale(const BioavailabilityPrediction& p) {
-    return "Oral F = absorbed fraction (" + fmt0(p.hiaPct) + "%) x first-pass survival (" +
-           fmt0(p.firstPassSurvival * 100.0) + "%); limited by " + p.limitingRoute + ".";
+    std::string s = "Hepatic availability under the stated assumptions: absorbed fraction (" +
+                    fmt0(p.hiaPct) + "%) x F_H (" + fmt0(p.firstPassSurvival * 100.0) +
+                    "%), well-stirred model with Q_H = 90 L/h and fu.CLint = " +
+                    fmt1(p.unboundIntrinsicClearanceLPerH) + " L/h";
+    s += p.clIntMeasured ? " (measured)." : " (ASSUMED from structural liabilities - "
+                                            "rank ordering only, not a percentage to quote).";
+    s += " Limited by " + p.limitingRoute + ".";
+    return s;
 }
+
+// ---------------------------------------------------------------------------
+// Binding thermodynamics and ligand efficiency
+//
+// DELIBERATELY NOT WIRED TO DOCKING SCORES. AutoDock Vina's reported standard
+// error is 2.85 kcal/mol (Trott & Olson 2010, PMC3041641), which is a factor of
+// ~123 in Kd: converting a docked score to a nanomolar affinity manufactures
+// precision that does not exist. These take a MEASURED dG or pActivity.
+// ---------------------------------------------------------------------------
+
+// R in kcal/(mol.K) (CODATA gas constant expressed in kcal).
+inline constexpr double kGasConstantKcal = 1.987204259e-3;
+
+// Kd = exp(dG / RT), Kd in mol/L, dG in kcal/mol.
+inline double kdFromDeltaG(double deltaGKcalPerMol, double temperatureK = 298.15) {
+    return std::exp(deltaGKcalPerMol / (kGasConstantKcal * temperatureK));
+}
+
+// dG = RT.ln(Kd), Kd in mol/L, dG in kcal/mol.
+inline double deltaGFromKd(double kdMolar, double temperatureK = 298.15) {
+    return kGasConstantKcal * temperatureK * std::log(kdMolar);
+}
+
+// LE = -dG / HAC, kcal/mol per heavy atom. Returns 0 for a degenerate heavy-atom count.
+inline double ligandEfficiency(double deltaGKcalPerMol, int heavyAtoms) {
+    return heavyAtoms > 0 ? -deltaGKcalPerMol / static_cast<double>(heavyAtoms) : 0.0;
+}
+
+// LLE = pActivity - logP (lipophilic ligand efficiency).
+inline double lipophilicEfficiency(double pActivity, double logP) { return pActivity - logP; }
+
+// LELP = logP / LE (the lipophilicity price of the efficiency).
+inline double leLipophilicityPrice(double le, double logP) { return le != 0.0 ? logP / le : 0.0; }
+
+// BEI = pActivity / (MW / 1000).
+inline double bindingEfficiencyIndex(double pActivity, double molecularWeight) {
+    return molecularWeight > 0.0 ? pActivity / (molecularWeight / 1000.0) : 0.0;
+}
+
+// SEI = pActivity / (TPSA / 100).
+inline double surfaceEfficiencyIndex(double pActivity, double tpsa) {
+    return tpsa > 0.0 ? pActivity / (tpsa / 100.0) : 0.0;
+}
+
+// 1.37 kcal/mol is RT.ln(10) at 300 K, the conversion between a pActivity unit and
+// a binding free energy (Murray et al. 2014, PMC4060940). Use it to turn a measured
+// pIC50/pKi into dG, never to turn a docking score into a pActivity.
+inline constexpr double kRtLn10At300K = 1.37;
+inline double deltaGFromPActivity(double pActivity) { return -kRtLn10At300K * pActivity; }
 
 // ---------------------------------------------------------------------------
 // pH stability window

@@ -74,7 +74,7 @@ Dag buildDockingPipeline(const std::string& ligandSmiles, const std::string& tar
         const DockJobResult d = svc.docking->dockDetailed(m, targetId);
         if (d.poses.empty()) return NodeResult::failure("docking produced no poses");
         return NodeResult::success(std::string("{\"engine\":\"") + d.engine + "\",\"real\":" +
-                                   (d.real ? "true" : "false") + ",\"best\":" + f2(d.bestAffinity()) +
+                                   (d.fromEngine() ? "true" : "false") + ",\"best\":" + f2(d.bestAffinity()) +
                                    ",\"poses\":" + std::to_string(d.poses.size()) + "}");
     };
     dag.add(std::move(dock));

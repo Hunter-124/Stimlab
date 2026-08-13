@@ -257,7 +257,8 @@ AbsorptionReport computeAbsorption(const Molecule& m) {
     r.metrics = {
         {"Human intestinal absorption", r.hiaPct, "%", band(r.hiaPct, 80, 50),
          "Fraction crossing the gut wall; TPSA / H-bond-donor limited (passive permeability)."},
-        {"Oral bioavailability (F)", r.bioavailabilityPct, "%", band(r.bioavailabilityPct, 70, 40),
+        {"Hepatic availability (F, assumed CLint)", r.bioavailabilityPct, "%",
+         band(r.bioavailabilityPct, 70, 40),
          chem::bioavailabilityRationale(bio)},
         {"Caco-2 permeability", r.caco2LogPapp, "log(cm/s)", band(r.caco2LogPapp, -5.0, -6.0),
          "Higher (less negative) = more permeable monolayer flux."},
@@ -272,9 +273,10 @@ AbsorptionReport computeAbsorption(const Molecule& m) {
                         : "Not a likely P-gp substrate."},
     };
 
-    r.summary = "Predicted oral F ~" + chem::fmt0(r.bioavailabilityPct) + "% (HIA ~" +
-                chem::fmt0(r.hiaPct) + "%, first-pass survival ~" +
-                chem::fmt0(bio.firstPassSurvival * 100.0) + "%; " + bio.limitingRoute + "). " +
+    r.summary = "Hepatic availability under the stated assumptions ~" +
+                chem::fmt0(r.bioavailabilityPct) + "% (HIA ~" + chem::fmt0(r.hiaPct) +
+                "%, F_H ~" + chem::fmt0(bio.firstPassSurvival * 100.0) +
+                "% from an ASSUMED fu.CLint; " + bio.limitingRoute + "). " +
                 (r.cnsPenetrant ? "CNS-penetrant." : "Low CNS penetration.");
     return r;
 }

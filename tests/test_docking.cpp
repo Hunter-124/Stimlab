@@ -207,7 +207,7 @@ TEST_CASE("Docking degrades gracefully to a labeled estimate", "[docking][fallba
     ReceptorTarget tgt;
     tgt.id = "DAT";
     const auto e = est.dock(m, conf, tgt);
-    REQUIRE_FALSE(e.real);
+    REQUIRE_FALSE(e.fromEngine());
     REQUIRE(e.poses.size() == 6);
     for (const auto& p : e.poses) {
         REQUIRE(std::isfinite(p.affinityKcalPerMol));
@@ -233,7 +233,7 @@ TEST_CASE("RealDocking wires backends and keeps both views consistent", "[dockin
     const auto detail = s.docking->dockDetailed(*mol, target);
     REQUIRE_FALSE(detail.poses.empty());
     REQUIRE(std::isfinite(detail.bestAffinity()));
-    REQUIRE_FALSE(detail.real);                        // no receptor -> labeled estimate
+    REQUIRE_FALSE(detail.fromEngine());                        // no receptor -> labeled estimate
     REQUIRE(detail.engine == "descriptor-estimate");
 
     const auto legacy = s.docking->dock(*mol, target);
@@ -400,7 +400,7 @@ TEST_CASE("Vina-GPU backend locates, labels, and degrades honestly", "[docking][
     tgt.id = "DAT";
     tgt.name = "DAT";  // receptorPath intentionally empty -> early, hermetic real=false
     const auto d = gpu.dock(m, conf, tgt);
-    REQUIRE_FALSE(d.real);
+    REQUIRE_FALSE(d.fromEngine());
     REQUIRE_FALSE(d.log.empty());
 }
 

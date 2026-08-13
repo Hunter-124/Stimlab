@@ -3,6 +3,8 @@
 
 #include <imgui.h>
 
+#include "data/Domain.h"
+
 namespace biocad::theme {
 
 // ---- Palette ---------------------------------------------------------------
@@ -53,6 +55,9 @@ void popFont();          // ImGui::PopFont()
 void apply();
 
 ImVec4 verdictColor(int verdict);  // 0=Info 1=Good 2=Warn 3=Danger
+
+// Colour for a number's provenance tier (green/blue/purple/amber/grey).
+ImVec4 provenanceColor(Provenance p);
 
 // ---- Shared widgets --------------------------------------------------------
 

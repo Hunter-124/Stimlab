@@ -30,6 +30,59 @@ NLOHMANN_JSON_SERIALIZE_ENUM(Verdict, {
 const char* verdictLabel(Verdict v);
 
 // ---------------------------------------------------------------------------
+// Provenance - why a number may be trusted. This is the single most important
+// rule in the domain: no derived number is rendered without one.
+// The enumerators are ordered strongest-first, so the *weakest* of a set of
+// inputs (which is what a derived quantity inherits) is std::max, not std::min;
+// use weakest() rather than open-coding the comparison.
+// ---------------------------------------------------------------------------
+enum class Provenance {
+    Measured,     // exact geometry/statistics, or an experimental value retrieved with a citation
+    Predicted,    // a published model actually ran; physical units; benchmark error is mandatory
+    Model,        // a constructed artefact (built structure, docked pose) with no energy claim
+    Heuristic,    // rank-ordering only; arbitrary units; physical units are forbidden
+    NotComputed   // a prerequisite was missing
+};
+
+NLOHMANN_JSON_SERIALIZE_ENUM(Provenance, {
+    {Provenance::Measured,    "measured"},
+    {Provenance::Predicted,   "predicted"},
+    {Provenance::Model,       "model"},
+    {Provenance::Heuristic,   "heuristic"},
+    {Provenance::NotComputed, "not computed"},
+})
+
+// "measured" | "predicted" | "model" | "heuristic" | "not computed"
+const char* provenanceLabel(Provenance p);
+
+// The weaker (less trustworthy) of two tiers. A derived quantity is never more
+// trustworthy than its worst input.
+constexpr Provenance weakest(Provenance a, Provenance b) {
+    return static_cast<int>(a) >= static_cast<int>(b) ? a : b;
+}
+
+// A number that knows how well it is known. `unit` MUST be empty when
+// provenance == Heuristic: a rank-ordering score has no physical units, and
+// makeQuantity() enforces that rather than merely documenting it.
+struct Quantity {
+    double      value = 0.0;
+    std::string unit;          // empty string is REQUIRED when provenance == Heuristic
+    double      error = 0.0;   // 0 means "no error bar available"
+    Provenance  provenance = Provenance::NotComputed;
+    std::string source;        // citation, engine name, or model+benchmark
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Quantity, value, unit, error, provenance, source)
+
+// The only sanctioned way to build a Quantity. Throws std::invalid_argument when
+// a Heuristic carries a unit - that combination is a programming error, and making
+// it unrepresentable is the point of this type.
+Quantity makeQuantity(double value, std::string unit, double error, Provenance p,
+                      std::string source);
+
+// A quantity whose prerequisite was missing. `source` names what is missing.
+Quantity notComputed(std::string missingPrerequisite);
+
+// ---------------------------------------------------------------------------
 // Molecule - the central identity + computed-property record.
 // ---------------------------------------------------------------------------
 struct Molecule {

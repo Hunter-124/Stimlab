@@ -131,6 +131,20 @@ ImVec4 verdictColor(int verdict) {
     }
 }
 
+// Provenance colours: green measured / blue predicted / purple model /
+// amber heuristic / grey not-computed. Deliberately distinct from the verdict
+// scale: provenance says how a number was obtained, not whether it is good news.
+ImVec4 provenanceColor(Provenance p) {
+    switch (p) {
+        case Provenance::Measured:    return rgba(52,  211, 153);
+        case Provenance::Predicted:   return rgba(96,  165, 250);
+        case Provenance::Model:       return rgba(192, 132, 252);
+        case Provenance::Heuristic:   return rgba(251, 191, 36);
+        case Provenance::NotComputed: return rgba(138, 149, 167);
+    }
+    return rgba(138, 149, 167);
+}
+
 // ---- Widgets ---------------------------------------------------------------
 
 void sectionHeader(const char* label) {

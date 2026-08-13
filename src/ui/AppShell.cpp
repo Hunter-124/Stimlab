@@ -618,8 +618,9 @@ void AppShell::registerAgentServiceTools() {
         registry_->add(std::make_unique<FunctionTool>(
             "dock_compound",
             "Dock a compound into a CNS target's binding site and return the predicted binding "
-            "affinity (kcal/mol, more negative = stronger), pose count, and whether a real docking "
-            "engine produced it or it is the labeled descriptor estimate. Binding affinity is a "
+            "affinity (kcal/mol, more negative = stronger), pose count, and the provenance of the "
+            "number: 'model' means a real docking engine produced it, 'heuristic' means it is the "
+            "labeled descriptor estimate and is rank-ordering only. Binding affinity is a "
             "target-engagement (pharmacology) signal, never a make-it signal.",
             schema, [this](const json& args) -> ToolResult {
                 if (!svc_.docking) return {"Docking service unavailable.", true};
@@ -630,7 +631,8 @@ void AppShell::registerAgentServiceTools() {
                 const auto d = svc_.docking->dockDetailed(*mo, target);
                 if (d.poses.empty()) return {"Docking produced no poses (" + d.log + ").", true};
                 return {json{{"compound", mo->name}, {"target", target}, {"engine", d.engine},
-                             {"real", d.real}, {"bestAffinityKcalPerMol", d.bestAffinity()},
+                             {"provenance", provenanceLabel(d.provenance)},
+                             {"bestAffinityKcalPerMol", d.bestAffinity()},
                              {"poses", d.poses.size()}}.dump(),
                         false};
             }));

@@ -84,7 +84,7 @@ DockJobResult runVinaSearch(const std::string& engineName, const fs::path& bin,
                             const ReceptorTarget& target) {
     DockJobResult r;
     r.engine = engineName;
-    r.real = false;
+    r.provenance = Provenance::Heuristic;
     r.targetId = target.id;
 
     const PdbqtLigand flex = writeFlexiblePdbqt(graph, ligand3d);
@@ -183,7 +183,7 @@ DockJobResult runVinaSearch(const std::string& engineName, const fs::path& bin,
     double mn = runBests.front(), mx = runBests.front();
     for (double v : runBests) { mn = std::min(mn, v); mx = std::max(mx, v); }
     r.poses = std::move(best);
-    r.real = true;
+    r.provenance = Provenance::Model;
     r.searchRuns = static_cast<int>(runBests.size());
     r.affinitySpread = mx - mn;
     r.converged = converged;
@@ -205,7 +205,7 @@ DockJobResult EstimateBackend::dock(const chem::Molecule& graph, const chem::Con
                                     const ReceptorTarget& target) const {
     DockJobResult r;
     r.engine = "descriptor-estimate";
-    r.real = false;
+    r.provenance = Provenance::Heuristic;
     r.targetId = target.id;
 
     // Same descriptor relationship the Phase-C estimate used (logP + size), now
@@ -239,7 +239,7 @@ DockJobResult VinaBackend::dock(const chem::Molecule& graph, const chem::Conform
                                 const ReceptorTarget& target) const {
     DockJobResult r;
     r.engine = displayName();
-    r.real = false;
+    r.provenance = Provenance::Heuristic;
     r.targetId = target.id;
 
     const auto bin = locateEngine(engine_);
@@ -272,7 +272,7 @@ DockJobResult VinaGpuBackend::dock(const chem::Molecule& graph, const chem::Conf
                                    const ReceptorTarget& target) const {
     DockJobResult r;
     r.engine = displayName();
-    r.real = false;
+    r.provenance = Provenance::Heuristic;
     r.targetId = target.id;
 
     const auto bin = locateEngine(Engine::VinaGpu);

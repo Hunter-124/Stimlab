@@ -119,7 +119,7 @@ DockJobResult CudaBackend::dock(const chem::Molecule& graph, const chem::Conform
                                 const ReceptorTarget& target) const {
     DockJobResult res;
     res.engine = "CUDA GPU (rigid, Vina scoring)";
-    res.real = false;
+    res.provenance = Provenance::Heuristic;
     res.targetId = target.id;
 
     if (!cudaDockAvailable()) { res.log = "No CUDA device available."; return res; }
@@ -237,7 +237,7 @@ DockJobResult CudaBackend::dock(const chem::Molecule& graph, const chem::Conform
         res.poses.push_back(std::move(pose));
     }
 
-    res.real = true;
+    res.provenance = Provenance::Model;
     res.log = "Docked on GPU: " + std::to_string(nPoses) + " rigid poses scored (Vina function), " +
               std::to_string(rec.count) + " receptor atoms.";
     (void)graph;

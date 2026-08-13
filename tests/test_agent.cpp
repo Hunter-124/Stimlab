@@ -145,13 +145,13 @@ TEST_CASE("AppShell binds service-action tools the agent can invoke", "[agent][t
     REQUIRE_FALSE(ad.isError);
     REQUIRE(json::parse(ad.content).value("overall", "").find("Warn") != std::string::npos);
 
-    // dock into a target with no prepared receptor -> labeled estimate (real=false),
+    // dock into a target with no prepared receptor -> labeled descriptor estimate
     // finite affinity, no engine subprocess (hermetic).
     const auto dk =
         reg->dispatch("dock_compound", {{"compound", "amphetamine"}, {"target", "__unprepared_wf__"}});
     REQUIRE_FALSE(dk.isError);
     const auto jdk = json::parse(dk.content);
-    REQUIRE(jdk.value("real", true) == false);
+    REQUIRE(jdk.value("provenance", "") == "heuristic");
     REQUIRE(jdk.contains("bestAffinityKcalPerMol"));
 
     // dock_compound requires a target.

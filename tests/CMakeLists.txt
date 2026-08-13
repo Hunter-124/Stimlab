@@ -14,6 +14,7 @@ add_executable(biocad_tests
   test_workflow.cpp
   test_pipelines.cpp
   test_manifest.cpp
+  test_provenance.cpp
 )
 
 target_link_libraries(biocad_tests PRIVATE

@@ -2,11 +2,18 @@
 // Each takes the AppShell (for Services, UiState and the highlight bridge).
 #pragma once
 
+#include "data/Domain.h"
+
 namespace biocad {
 
 class AppShell;
 
 namespace panels {
+
+// Renders "label  value +/- error unit   (tier - source)" in the provenance
+// colour. The error bar and the tier are part of the value, never a tooltip:
+// a number whose provenance is hidden is a number that lies.
+void drawQuantity(const char* label, const Quantity& q);
 
 void dashboard(AppShell& shell);
 void structureWorkbench(AppShell& shell);

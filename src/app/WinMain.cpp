@@ -115,7 +115,7 @@ int runHeadlessDock(const std::string& smiles, const std::string& target, const 
 
     const DockJobResult d = s.docking->dockDetailed(lig, target);
     emit("engine    : " + d.engine);
-    emit(std::string("REAL dock : ") + (d.real ? "YES (engine dock)" : "no (descriptor estimate)"));
+    emit(std::string("REAL dock : ") + (d.fromEngine() ? "YES (engine dock)" : "no (descriptor estimate)"));
     emit("poses     : " + std::to_string(d.poses.size()));
     if (!d.poses.empty()) {
         char b[64];
@@ -123,7 +123,7 @@ int runHeadlessDock(const std::string& smiles, const std::string& target, const 
         emit(std::string("best aff  : ") + b + " kcal/mol");
     }
     emit("log       : " + d.log);
-    emit(d.real ? "RESULT    : PASS - real ranked poses produced."
+    emit(d.fromEngine() ? "RESULT    : PASS - real ranked poses produced."
                 : "RESULT    : fell back to labeled estimate (see log).");
 
     {
@@ -133,7 +133,7 @@ int runHeadlessDock(const std::string& smiles, const std::string& target, const 
     if (fp) std::fclose(fp);
     if (con) FreeConsole();
     log::shutdown();
-    return d.real ? 0 : 2;
+    return d.fromEngine() ? 0 : 2;
 }
 }  // namespace
 

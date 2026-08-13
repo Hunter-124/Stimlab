@@ -38,6 +38,32 @@ void verdictText(Verdict v) {
     ImGui::TextColored(theme::verdictColor(static_cast<int>(v)), "%s", verdictLabel(v));
 }
 
+}  // namespace
+
+void drawQuantity(const char* label, const Quantity& q) {
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
+    ImGui::TextUnformatted(label);
+    ImGui::PopStyleColor();
+    ImGui::SameLine();
+
+    const ImVec4 col = theme::provenanceColor(q.provenance);
+    if (q.provenance == Provenance::NotComputed) {
+        ImGui::TextColored(col, "not computed%s%s", q.source.empty() ? "" : " - needs ",
+                           q.source.c_str());
+        return;
+    }
+
+    std::string text = f2(q.value);
+    if (q.error > 0.0) text += " +/- " + f2(q.error);
+    if (!q.unit.empty()) text += " " + q.unit;
+    text += "   (" + std::string(provenanceLabel(q.provenance));
+    if (!q.source.empty()) text += " - " + q.source;
+    text += ")";
+    ImGui::TextColored(col, "%s", text.c_str());
+}
+
+namespace {
+
 void statCard(const char* title, const std::string& value, const char* sub, float w = 168.0f,
               float h = 84.0f, float valueScale = 1.6f) {
     // valueScale parameter kept for call-site compat; ignored — theme fonts govern size.
@@ -751,13 +777,24 @@ void absorption(AppShell& shell) {
     if (!shell.services().absorption) return;
     const auto r = shell.services().absorption->predict(m);
 
-    statCard("ORAL F", f0(r.bioavailabilityPct) + "%", "predicted bioavailability", 190.0f);
+    statCard("ORAL F", f0(r.bioavailabilityPct) + "%", "assumed-CLint, rank order", 190.0f);
     ImGui::SameLine();
     statCard("HIA", f0(r.hiaPct) + "%", "intestinal absorption", 170.0f);
     ImGui::SameLine();
     statCard("logBB", f2(r.logBB), r.cnsPenetrant ? "CNS-penetrant" : "peripheral", 150.0f);
     ImGui::SameLine();
     statCard("P-gp", r.pgpSubstrate ? "substrate" : "no", "efflux", 150.0f);
+    ImGui::Spacing();
+
+    // Hepatic availability rests on an ASSUMED fu.CLint, so it is a rank-ordering
+    // score with no unit - saying "%" here would be the exact dishonesty the
+    // provenance rule exists to prevent.
+    drawQuantity("Hepatic availability (rank order)",
+                 makeQuantity(r.bioavailabilityPct / 100.0, "", 0.0, Provenance::Heuristic,
+                              "well-stirred model, Q_H = 90 L/h, assumed fu.CLint"));
+    drawQuantity("Absorbed fraction (rank order)",
+                 makeQuantity(r.hiaPct / 100.0, "", 0.0, Provenance::Heuristic,
+                              "Veber/Egan descriptor model"));
     ImGui::Spacing();
 
     // Percent-scale metrics charted together (F and HIA), others in the table.
@@ -989,7 +1026,7 @@ void docking(AppShell& shell) {
     else poseSel = 0;
 
     const std::string summary =
-        d.real ? ("Best affinity " + f2(d.bestAffinity()) + " kcal/mol at " + st.dockTarget +
+        d.fromEngine() ? ("Best affinity " + f2(d.bestAffinity()) + " kcal/mol at " + st.dockTarget +
                   " (docked with " + d.engine + ").")
                : ("Estimated affinity " + f2(d.bestAffinity()) + " kcal/mol at " + st.dockTarget +
                   " (" + d.engine + " - structure-descriptor model, not a docked score).");
@@ -1004,12 +1041,24 @@ void docking(AppShell& shell) {
     statCard("POSES", hasResult ? std::to_string(d.poses.size()) : "--",
              "ranked binding modes", 150.0f, 120.0f, 2.0f);
     ImGui::SameLine();
-    statCard("ENGINE", hasResult ? (d.real ? "REAL" : "ESTIMATE") : "--",
-             d.real ? "docked score" : "descriptor model", 160.0f, 120.0f, 1.6f);
-    if (hasResult && d.real) {
+    statCard("ENGINE", hasResult ? (d.fromEngine() ? "REAL" : "ESTIMATE") : "--",
+             d.fromEngine() ? "docked score" : "descriptor model", 160.0f, 120.0f, 1.6f);
+    if (hasResult && d.fromEngine()) {
         ImGui::SameLine();
         statCard("CONFIDENCE", d.converged ? "HIGH" : "MODERATE",
                  d.converged ? "search converged" : "budget reached", 175.0f, 120.0f, 1.6f);
+    }
+
+    if (hasResult) {
+        // The tier and the engine travel with the number itself, not in a tooltip.
+        // A real dock is Provenance::Model (a constructed pose, not a measurement);
+        // the descriptor fallback is Heuristic and therefore carries no unit.
+        drawQuantity("Best affinity",
+                     d.fromEngine()
+                         ? makeQuantity(d.bestAffinity(), "kcal/mol", d.affinitySpread,
+                                        Provenance::Model, d.engine)
+                         : makeQuantity(d.bestAffinity(), "", 0.0, Provenance::Heuristic,
+                                        "descriptor estimate - rank ordering only"));
     }
 
     ImGui::Spacing();
@@ -1038,7 +1087,7 @@ void docking(AppShell& shell) {
                 ImGui::TableSetColumnIndex(1); ImGui::TextUnformatted(v.c_str());
             };
             row("Engine", d.engine);
-            row("Result type", d.real ? "real engine dock" : "descriptor estimate (not a docked score)");
+            row("Result type", d.fromEngine() ? "real engine dock" : "descriptor estimate (not a docked score)");
             row("Target", st.dockTarget);
             if (const ReceptorTarget* preset = docking::findPreset(st.dockTarget)) {
                 row("Receptor PDB", preset->pdb.empty() ? "(box only)" : preset->pdb);
@@ -1048,7 +1097,7 @@ void docking(AppShell& shell) {
                               preset->box.cx, preset->box.cy, preset->box.cz);
                 row("Search box", box);
             }
-            if (d.real) {
+            if (d.fromEngine()) {
                 row("Independent runs", std::to_string(d.searchRuns));
                 row("Convergence", d.converged ? "converged within tolerance"
                                                : "stopped at budget / run limit");
@@ -1132,7 +1181,7 @@ void docking(AppShell& shell) {
         ImGui::SliderInt("Pose##dock", &poseSel, 0, static_cast<int>(d.poses.size()) - 1);
         ImGui::SameLine();
         ImGui::TextDisabled("engine: %s%s", d.engine.c_str(),
-                            d.real ? "" : "  (descriptor estimate, not a docked score)");
+                            d.fromEngine() ? "" : "  (descriptor estimate, not a docked score)");
     }
     static std::string dockKey;
     static chem::Conformer dockConf;
@@ -1142,7 +1191,7 @@ void docking(AppShell& shell) {
     // to the viewer below does NOT - so flipping between poses re-renders the new pose
     // without snapping the camera back to a re-fit (the poses share a coordinate frame).
     const std::string dataKey = m.id + "|" + st.dockTarget + "|" + std::to_string(poseSel) +
-                                (hasResult ? "|r" : "|p") + (d.real ? "|e" : "");
+                                (hasResult ? "|r" : "|p") + (d.fromEngine() ? "|e" : "");
     if (dataKey != dockKey) {
         dockKey = dataKey;
         dockConf = chem::Conformer{};
@@ -1153,7 +1202,7 @@ void docking(AppShell& shell) {
             dockConf = chem::embed3D(*parsed);
         // Overlay the receptor pocket only for a REAL dock (the pose shares the
         // receptor's coordinate frame); the descriptor estimate is not receptor-aligned.
-        if (d.real && !dockConf.empty()) {
+        if (d.fromEngine() && !dockConf.empty()) {
             if (const ReceptorTarget* preset = docking::findPreset(st.dockTarget)) {
                 const auto rp = docking::locatePreparedReceptor(preset->id);
                 if (rp.ready) dockPocket = loadReceptorPocket(rp.path, dockConf, 5.5);
@@ -1161,7 +1210,7 @@ void docking(AppShell& shell) {
         }
     }
     // Camera-fit key: stable across pose changes (molecule + target + render mode only).
-    const std::string camKey = m.id + "|" + st.dockTarget + (d.real ? "|e" : "|p");
+    const std::string camKey = m.id + "|" + st.dockTarget + (d.fromEngine() ? "|e" : "|p");
     molViewer3D(shell, dockConf, camKey, dockViewUi, 280.0f,
                 dockPocket.empty() ? nullptr : &dockPocket);
     if (!dockPocket.empty())
