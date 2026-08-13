@@ -23,10 +23,11 @@ env:
 jobs:
   build-test:
     name: build + ctest (windows)
-    # Private CloudCastle runner. If no runner picks this job up within ~10 minutes,
-    # change this single line to `runs-on: windows-latest` - everything else in this
-    # job is runner-agnostic.
-    runs-on: [self-hosted, Windows, X64, cloudcastle-ci]
+    # GitHub-hosted, so this workflow runs for anyone who forks the repository
+    # without a self-hosted runner having to exist. The job is runner-agnostic: it
+    # pins its own vcpkg rather than relying on the image's, so pointing this line
+    # at a private label is a one-line change if a faster machine is available.
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -122,7 +123,7 @@ jobs:
   docs-media:
     name: capture panel screenshots
     needs: build-test
-    runs-on: [self-hosted, Windows, X64, cloudcastle-ci]
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 

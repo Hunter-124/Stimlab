@@ -11,6 +11,8 @@ add_library(biocad_modules STATIC
   SimulationModule.cpp
   BiologicsModule.cpp
   PopulationPkModule.cpp
+  MechanismModule.cpp
+  VariantModule.cpp
   docking/Presets.cpp
   docking/PdbqtWriter.cpp
   docking/VinaParser.cpp
@@ -36,6 +38,10 @@ target_link_libraries(biocad_modules PUBLIC
   biocad_sim
   biocad_storage
   biocad_workflow
+  # The mechanism module queries public REST APIs (ChEMBL, Reactome) through the ONE
+  # HTTP client the assistant's web tools already own (agent::apiGet), so there is a
+  # single rate limiter, cache and User-Agent rather than two.
+  biocad_agent
 )
 
 target_compile_features(biocad_modules PUBLIC cxx_std_20)

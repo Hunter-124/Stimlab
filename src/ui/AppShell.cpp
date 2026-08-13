@@ -108,6 +108,8 @@ AppShell::AppShell(Services services) : svc_(services) {
          "Pairwise protein sequence alignment (global or local) with identity, similarity and an E-value.", "Discover"},
         {"Structure3D", "Protein Structure",
          "Load a local PDB / mmCIF structure: chains, per-chain sequence, SASA and parse warnings.", "Workspace"},
+        {"Variants", "Variant Analysis",
+         "Conservation profiling over a homolog set you supply, SIFT- and PROVEAN-style substitution scores with their published thresholds, and point-mutation side-chain rebuilds by dead-end elimination. Below the homolog minimum no score is produced, and a rebuilt side chain carries no energy claim.", "Discover"},
         {"NucleicAcid", "DNA / RNA Workbench",
          "Sequence features, restriction map and gel, six-frame translation, ORFs, oligo thermodynamics, primer design, codon metrics and CRISPR guides. Every off-target count is reported with the reference and the number of bases actually searched.", "Workspace"},
         {"Antibody", "Antibody Workbench",
@@ -118,6 +120,10 @@ AppShell::AppShell(Services services) : svc_(services) {
          "Constraint-based flux over the loaded network. Mass and charge balance must pass before an objective is optimised, and every flux is shown beside the bounds that allowed it.", "Predict"},
         {"Enrichment", "Pathway Enrichment",
          "Hypergeometric over-representation with Benjamini-Hochberg q-values against a background you supply, plus degree, components, Brandes betweenness and Louvain communities over the loaded network.", "Discover"},
+        {"Mechanism", "Mechanism of Action",
+         "Retrieved mechanism-of-action records with their references and action types. A mechanism is never inferred from a docking pose or a fingerprint, and an empty result is a statement about the query and the source, not about the compound.", "Discover"},
+        {"PanelScreen", "Off-Target Panel",
+         "Panel coverage over a target-list pack, led by the count of targets NOT screened. No composite safety score and no cross-target comparison: preparations and boxes differ per row. A hERG margin appears only from a measured IC50 you supply.", "Discover"},
         {"Analog", "Analog Explorer",
          "Model or draw a candidate derivative, preview its structure, and screen it against existing samples.", "Discover"},
         {"Compare", "Compare",
@@ -130,6 +136,10 @@ AppShell::AppShell(Services services) : svc_(services) {
          "Re-runnable prep to dock pipeline you can watch run live.", "Discover"},
         {"Legal", "Legal Analog",
          "Illustrative only, not legal advice: substantial-similarity scorecard vs controlled references.", "Reference"},
+        {"Pathways", "Pathway Context",
+         "Reactome pathway membership and event ancestors for a UniProt accession. Membership only: there is no pathway impact score, because no database supports propagating a docking score through a pathway graph.", "Reference"},
+        {"StackCheck", "Stack Checker",
+         "Interaction flags across the drugs, supplements and foods you enter, each a mechanism with a citation rather than a severity score, plus conditional CPIC pharmacogenomic notes. Unknown members are listed, never silently ignored.", "Reference"},
         {"Runs", "Runs",
          "History of analyses with status and summaries.", "Reference"},
         {"Presets", "Presets / Targets",
@@ -2275,6 +2285,121 @@ void AppShell::registerAgentServiceTools() {
                 }));
         }
     }
+    // ------------------------------------------------ Phase 9: variant analysis
+    // Every one of these tools can refuse, and the refusal is the useful answer:
+    // below the homolog minimum there is no score, and there is never a ddG.
+    {
+        json homologsProp = {
+            {"type", "array"},
+            {"items", {{"type", "string"}}},
+            {"description", "Homologous protein sequences, one-letter, unaligned. At least 15 "
+                            "are required before any conservation score is produced."}};
+        {
+            json schema = {{"type", "object"},
+                           {"properties",
+                            {{"query", {{"type", "string"}}}, {"homologs", homologsProp}}},
+                           {"required", json::array({"query", "homologs"})}};
+            registry_->add(std::make_unique<FunctionTool>(
+                "conservation_profile",
+                "Build a per-column conservation profile of a query protein against homologs the "
+                "USER supplied: Shannon entropy in bits, gap fraction, weighted frequencies and a "
+                "log-odds PSSM against a named background. `usable` is false below 15 homologs "
+                "and then there are no columns at all - report that shortfall, do not reason "
+                "around it. Always quote `homologs.sequenceCount` and `medianIdentityPct` "
+                "alongside any conservation statement: the profile describes THAT set, not the "
+                "protein family.",
+                schema, [this](const json& args) -> ToolResult {
+                    if (!svc_.variants) return {"Variant service unavailable.", true};
+                    std::vector<std::string> homologs;
+                    for (const auto& h : args.value("homologs", json::array()))
+                        homologs.push_back(h.get<std::string>());
+                    const ConservationProfile p =
+                        svc_.variants->conservation(args.value("query", ""), homologs);
+                    json j = p;
+                    // The columns are large and the model does not need all of them
+                    // to answer a question about the set; the summary always travels.
+                    if (p.columns.size() > 60) {
+                        j["columns"] = json::array();
+                        j["columnsOmitted"] = p.columns.size();
+                    }
+                    return {j.dump(), false};
+                }));
+        }
+        {
+            json schema = {
+                {"type", "object"},
+                {"properties",
+                 {{"query", {{"type", "string"}}},
+                  {"homologs", homologsProp},
+                  {"position", {{"type", "integer"},
+                                {"description", "1-based position in the QUERY numbering"}}},
+                  {"mutant", {{"type", "string"},
+                              {"description", "one-letter mutant residue"}}}}},
+                {"required", json::array({"query", "homologs", "position", "mutant"})}};
+            registry_->add(std::make_unique<FunctionTool>(
+                "score_variant",
+                "Score one substitution against a user-supplied homolog set: the exact BLOSUM62 "
+                "delta, a SIFT-style tolerance index (deleterious below 0.05) and a PROVEAN-style "
+                "delta (deleterious below -2.282, 79.05% balanced accuracy on its 58,684-variant "
+                "human validation set), each with the alignment it came from. These are NOT a "
+                "pathogenicity call, NOT a clinical interpretation and NOT advice about any "
+                "person; a score on either side of a threshold is a ranking, and you must say so. "
+                "With fewer than 15 homologs every conservation quantity comes back NotComputed "
+                "naming the shortfall and only the BLOSUM62 lookup survives - report exactly "
+                "that.",
+                schema, [this](const json& args) -> ToolResult {
+                    if (!svc_.variants) return {"Variant service unavailable.", true};
+                    std::vector<std::string> homologs;
+                    for (const auto& h : args.value("homologs", json::array()))
+                        homologs.push_back(h.get<std::string>());
+                    const std::string mut = args.value("mutant", "");
+                    if (mut.empty()) return {"A mutant residue is required.", true};
+                    const ConservationProfile p =
+                        svc_.variants->conservation(args.value("query", ""), homologs);
+                    const VariantScore v =
+                        svc_.variants->score(p, args.value("position", 0), mut[0]);
+                    return {json(v).dump(), false};
+                }));
+        }
+        {
+            json schema = {
+                {"type", "object"},
+                {"properties",
+                 {{"path", {{"type", "string"},
+                            {"description", "Path to a LOCAL .pdb / .cif file. Nothing is "
+                                            "fetched."}}},
+                  {"chain", {{"type", "string"}}},
+                  {"residue", {{"type", "integer"},
+                               {"description", "author numbering (auth_seq_id)"}}},
+                  {"mutant", {{"type", "string"}}}}},
+                {"required", json::array({"path", "chain", "residue", "mutant"})}};
+            registry_->add(std::make_unique<FunctionTool>(
+                "rebuild_side_chain",
+                "Model a point mutation on a local structure: pick a rotamer from the shipped "
+                "backbone-dependent library and repack the neighbourhood by Goldstein dead-end "
+                "elimination over heavy-atom clash counts and library probability. The result is "
+                "Provenance::Model - a CONSTRUCTED side chain with NO energy attached. There is "
+                "no ddG, no stability change, no affinity change and no force field here, and you "
+                "must not supply one; `clashCount` is a count of steric overlaps, not an energy. "
+                "Proline is refused outright because it constrains the backbone. Always report "
+                "`rotamerLibrarySource` and the assumptions with the angles.",
+                schema, [this](const json& args) -> ToolResult {
+                    if (!svc_.variants || !svc_.structure)
+                        return {"Variant or structure service unavailable.", true};
+                    const auto st =
+                        svc_.structure->load(std::filesystem::path(args.value("path", "")));
+                    if (!st) return {"Could not read that structure file.", true};
+                    const std::string mut = args.value("mutant", "");
+                    if (mut.empty()) return {"A mutant residue is required.", true};
+                    const RotamerRebuild r = svc_.variants->rebuild(
+                        *st, args.value("chain", ""), args.value("residue", 0), mut[0]);
+                    json j = r;
+                    j["stabilityPrediction"] =
+                        "not computed - this build ships no ddG model weights";
+                    return {j.dump(), false};
+                }));
+        }
+    }
     // ------------------------------------------------ Phase 14: reaction networks
     // The network is passed in full rather than named: the model is not allowed to
     // reach into a workspace it cannot see, and a mechanism it wrote down is visible
@@ -2542,6 +2667,142 @@ void AppShell::registerAgentServiceTools() {
                 // sent; its SIZE is the part that matters for reading the q-values.
                 j.erase("background");
                 j["backgroundSize"] = background.size();
+                return {j.dump(), false};
+            }));
+    }
+
+    // ------------------------------------- Phase 7: retrieved mechanism and coverage
+    // Every one of these five states its boundary in the description AND enforces it
+    // in the handler: a description the handler does not back is decoration.
+    {
+        json schema = {{"type", "object"}, {"properties", compoundProp()}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "retrieve_mechanisms",
+            "Retrieve curated mechanism-of-action records (ChEMBL, CC BY-SA 3.0) for a compound: "
+            "target, accession, the source's own action_type, its free-text mechanism VERBATIM, "
+            "and the references. BOUNDARY: this tool only retrieves. It cannot infer a mechanism "
+            "from a structure, a fingerprint or a docking score, and an empty result is a "
+            "statement about the query and the database's curation, NOT evidence that the "
+            "compound has no mechanism - say so in those words rather than concluding anything. "
+            "In a build without networking it returns networkAvailable=false and retrieves "
+            "nothing; do not fill the gap from memory.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.mechanism) return {"Mechanism service unavailable.", true};
+                const auto mo = resolveAgentCompound(args.value("compound", ""));
+                if (!mo) return {"Could not resolve a compound from that argument.", true};
+                const MechanismReport r = svc_.mechanism->mechanisms(mo->id);
+                json j = r;
+                // Enforced, not merely described: the boundary travels with the payload.
+                j["boundary"] = "retrieved records only; an empty list is a statement about the "
+                                "query and the source, never about the compound";
+                return {j.dump(), false};
+            }));
+    }
+    {
+        json props = compoundProp();
+        props["panel"] = {{"type", "string"},
+                          {"description", "panel pack id: safetyscreen44, safetyscreen87 or "
+                                          "cipa-currents"}};
+        json schema = {{"type", "object"}, {"properties", props},
+                       {"required", json::array({"panel"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "screen_offtarget_panel",
+            "Run the docking module over every target in a panel pack and return COVERAGE. The "
+            "headline is `unscreened`: report it FIRST and report it as the dominant unknown it "
+            "usually is. BOUNDARY: there is no composite safety score and no cross-target "
+            "ranking - receptor preparations, box volumes and rotatable-bond penalties differ per "
+            "row, so the per-target scores are not on a common scale and MUST NOT be compared or "
+            "summed. A hERG margin appears only when the user supplied a MEASURED IC50 and free "
+            "Cmax; never predict a hERG IC50 and never derive QT or torsade risk.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.mechanism) return {"Mechanism service unavailable.", true};
+                const auto mo = resolveAgentCompound(args.value("compound", ""));
+                if (!mo) return {"Could not resolve a compound from that argument.", true};
+                const std::string panel = args.value("panel", "");
+                if (panel.empty()) return {"A panel id is required.", true};
+                const PanelScreenReport r = svc_.mechanism->screenPanel(*mo, panel);
+                json j = r;
+                // Ordering is part of the answer: the unknown count leads the payload.
+                json out = json::object();
+                out["unscreened"] = r.unscreened;
+                out["screened"] = r.screened;
+                out["panelSize"] = r.panelSize;
+                out["coverageStatement"] = r.coverageStatement;
+                out["boundary"] = "no composite score and no cross-target comparison; each row "
+                                  "carries its own receptor preparation and box";
+                out["detail"] = j;
+                return {out.dump(), false};
+            }));
+    }
+    {
+        json schema = {{"type", "object"},
+                       {"properties",
+                        {{"accession", {{"type", "string"},
+                                        {"description", "UniProt accession, e.g. P29274"}}}}},
+                       {"required", json::array({"accession"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "pathway_context",
+            "Retrieve Reactome (CC0) pathway membership and event ancestors for one UniProt "
+            "accession. BOUNDARY: membership only. There is no pathway impact score and you must "
+            "not invent one: no database supports propagating a docking score, an affinity or an "
+            "expression value through a pathway graph, and such a number would be fabrication "
+            "with a scientific veneer. KEGG is not queried (its API is academic-use only); a "
+            "kegg.jp pathway page may be linked, never fetched.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.mechanism) return {"Mechanism service unavailable.", true};
+                const std::string acc = args.value("accession", "");
+                if (acc.empty()) return {"A UniProt accession is required.", true};
+                json j = svc_.mechanism->pathways(acc);
+                j["boundary"] = "pathway membership only; no impact score exists and none may be "
+                                "derived";
+                return {j.dump(), false};
+            }));
+    }
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"members", {{"type", "array"}, {"items", {{"type", "string"}}},
+                           {"description", "every drug, supplement, food or habit in the stack"}}}}},
+            {"required", json::array({"members"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "check_stack",
+            "Flag documented interaction mechanisms across an entered set of drugs, supplements "
+            "and foods, using the FDA CYP substrate/inhibitor/inducer tables (public domain) plus "
+            "hand-curated, individually cited supplement entries. Each flag is a MECHANISM WITH A "
+            "CITATION. BOUNDARY: there is no severity, no numeric risk and no recommendation - do "
+            "not rank the flags, do not tell anyone what to take, stop or separate in time, and "
+            "repeat each flag's boundaryNote. Members not in the pack come back in "
+            "unknownMembers and were NOT screened; say that explicitly instead of implying the "
+            "stack was cleared.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.mechanism) return {"Mechanism service unavailable.", true};
+                std::vector<std::string> ids;
+                for (const auto& v : args["members"])
+                    if (v.is_string()) ids.push_back(v.get<std::string>());
+                if (ids.empty()) return {"At least one member is required.", true};
+                json j = svc_.mechanism->checkStack(ids);
+                j["boundary"] = "mechanism flags with citations; no severity, no risk number and "
+                                "no recommendation";
+                return {j.dump(), false};
+            }));
+    }
+    {
+        json schema = {{"type", "object"}, {"properties", compoundProp()}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "pharmacogenomic_notes",
+            "Return CONDITIONAL pharmacogenomic notes for a compound from the bundled CPIC (CC0) "
+            "pack, using the standardised phenotype vocabulary UM/RM/NM/IM/PM with the CYP2D6 "
+            "activity-score bands. BOUNDARY: 'extensive metabolizer' is deprecated and must never "
+            "be used. Do not interpret a genotype, do not assign anyone a phenotype, and do not "
+            "emit a dose or a dose adjustment - these notes say what a phenotype WOULD imply, and "
+            "the user must take anything actionable to the CPIC guideline and a clinician.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.mechanism) return {"Mechanism service unavailable.", true};
+                const auto mo = resolveAgentCompound(args.value("compound", ""));
+                if (!mo) return {"Could not resolve a compound from that argument.", true};
+                json j = svc_.mechanism->pharmacogenomics(mo->id);
+                j["boundary"] = "conditional notes only; no genotype interpretation and no dose";
                 return {j.dump(), false};
             }));
     }
@@ -3031,11 +3292,16 @@ void AppShell::drawContent() {
         else if (panel == "AssayDesign") panels::assayDesign(*this);
         else if (panel == "Sequence")    panels::sequenceCompare(*this);
         else if (panel == "Structure3D") panels::proteinStructure(*this);
+        else if (panel == "Variants") panels::variants(*this);
         else if (panel == "NucleicAcid") panels::nucleicAcid(*this);
         else if (panel == "Antibody") panels::antibody(*this);
         else if (panel == "Networks")    panels::networks(*this);
         else if (panel == "Flux")        panels::flux(*this);
         else if (panel == "Enrichment")  panels::enrichment(*this);
+        else if (panel == "Mechanism")   panels::mechanism(*this);
+        else if (panel == "PanelScreen") panels::offTargetPanel(*this);
+        else if (panel == "Pathways")    panels::pathwayContext(*this);
+        else if (panel == "StackCheck")  panels::stackCheck(*this);
         else if (panel == "Similarity")  panels::similarity(*this);
         else if (panel == "Legal")       panels::legal(*this);
         else if (panel == "Docking")     panels::docking(*this);

@@ -310,6 +310,49 @@ float4 PSMain(VSOut i) : SV_Target {
 }
 )hlsl";
 
+// Generic indexed mesh (the protein cartoon). Vertices are already world-space, so the vertex
+// shader is only the view-projection; the pixel shader flips the normal towards the viewer so a
+// ribbon seen from its back face is lit rather than black (the rasterizer state for this pass
+// disables culling, see rasterNoCull_).
+const char* kMeshShader = R"hlsl(
+cbuffer CB : register(b0) {
+    row_major float4x4 gViewProj;
+    float4 gLightDir;
+    float4 gCamPos;
+};
+struct VSIn {
+    float3 pos : POSITION;
+    float3 nrm : NORMAL;
+    float4 col : COLOR0;
+};
+struct VSOut {
+    float4 pos : SV_POSITION;
+    float3 nrm : NORMAL;
+    float3 wpos: TEXCOORD0;
+    float4 col : COLOR0;
+};
+VSOut VSMain(VSIn i) {
+    VSOut o;
+    o.pos  = mul(float4(i.pos, 1.0), gViewProj);
+    o.nrm  = i.nrm;
+    o.wpos = i.pos;
+    o.col  = i.col;
+    return o;
+}
+float4 PSMain(VSOut i) : SV_Target {
+    float3 N = normalize(i.nrm);
+    float3 Vd = normalize(gCamPos.xyz - i.wpos);
+    if (dot(N, Vd) < 0.0) N = -N;      // two-sided: a back face is shaded, not black
+    float3 L = normalize(-gLightDir.xyz);
+    float diff = saturate(dot(N, L));
+    float3 H = normalize(L + Vd);
+    float spec = pow(saturate(dot(N, H)), 24.0) * 0.25;
+    float amb = 0.32;
+    float3 c = i.col.rgb * (amb + diff * 0.85) + spec.xxx;
+    return float4(saturate(c), 1.0);
+}
+)hlsl";
+
 ID3DBlob* compile(const char* src, const char* entry, const char* target) {
     ID3DBlob* blob = nullptr;
     ID3DBlob* err = nullptr;
@@ -447,6 +490,38 @@ MolScene buildMolScene(const chem::Conformer& conf, bool spacefill, bool showH) 
     return scene;
 }
 
+void computeSceneBounds(MolScene& scene) {
+    double cx = 0, cy = 0, cz = 0;
+    std::size_t cnt = 0;
+    for (const AtomInst& a : scene.atoms) {
+        cx += a.x; cy += a.y; cz += a.z;
+        ++cnt;
+    }
+    for (const MeshVertexRgba& v : scene.mesh.vertices) {
+        cx += v.px; cy += v.py; cz += v.pz;
+        ++cnt;
+    }
+    if (cnt == 0) {
+        scene.center = {0, 0, 0};
+        scene.radius = 1.0f;
+        return;
+    }
+    cx /= static_cast<double>(cnt);
+    cy /= static_cast<double>(cnt);
+    cz /= static_cast<double>(cnt);
+    scene.center = {cx, cy, cz};
+    double maxR = 0.0;
+    for (const AtomInst& a : scene.atoms) {
+        const double dx = a.x - cx, dy = a.y - cy, dz = a.z - cz;
+        maxR = std::max(maxR, std::sqrt(dx * dx + dy * dy + dz * dz) + a.r);
+    }
+    for (const MeshVertexRgba& v : scene.mesh.vertices) {
+        const double dx = v.px - cx, dy = v.py - cy, dz = v.pz - cz;
+        maxR = std::max(maxR, std::sqrt(dx * dx + dy * dy + dz * dz));
+    }
+    scene.radius = std::max(static_cast<float>(maxR), 1.0f);
+}
+
 // ---------------------------------------------------------------------------
 // MolViewport.
 // ---------------------------------------------------------------------------
@@ -507,7 +582,9 @@ bool MolViewport::createDeviceResources() {
     ID3DBlob* aps = compile(kAtomShader, "PSMain", "ps_5_0");
     ID3DBlob* bvs = compile(kBondShader, "VSMain", "vs_5_0");
     ID3DBlob* bps = compile(kBondShader, "PSMain", "ps_5_0");
-    bool ok = avs && aps && bvs && bps;
+    ID3DBlob* mvs = compile(kMeshShader, "VSMain", "vs_5_0");
+    ID3DBlob* mps = compile(kMeshShader, "PSMain", "ps_5_0");
+    bool ok = avs && aps && bvs && bps && mvs && mps;
     if (ok) {
         ok = SUCCEEDED(dev_->CreateVertexShader(avs->GetBufferPointer(), avs->GetBufferSize(),
                                                 nullptr, &atomVS_)) &&
@@ -516,7 +593,11 @@ bool MolViewport::createDeviceResources() {
              SUCCEEDED(dev_->CreateVertexShader(bvs->GetBufferPointer(), bvs->GetBufferSize(),
                                                 nullptr, &bondVS_)) &&
              SUCCEEDED(dev_->CreatePixelShader(bps->GetBufferPointer(), bps->GetBufferSize(),
-                                               nullptr, &bondPS_));
+                                               nullptr, &bondPS_)) &&
+             SUCCEEDED(dev_->CreateVertexShader(mvs->GetBufferPointer(), mvs->GetBufferSize(),
+                                                nullptr, &meshVS_)) &&
+             SUCCEEDED(dev_->CreatePixelShader(mps->GetBufferPointer(), mps->GetBufferSize(),
+                                               nullptr, &meshPS_));
     }
 
     if (ok) {
@@ -545,8 +626,20 @@ bool MolViewport::createDeviceResources() {
         ok = SUCCEEDED(dev_->CreateInputLayout(bondElems, 9, bvs->GetBufferPointer(),
                                                bvs->GetBufferSize(), &bondLayout_));
     }
+    if (ok) {
+        // One vertex buffer, no instance stream: MeshVertexRgba is 28 bytes (3+3 floats then a
+        // packed BGRA byte quad, read back as float4 by R8G8B8A8_UNORM).
+        const D3D11_INPUT_ELEMENT_DESC meshElems[] = {
+            {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        };
+        ok = SUCCEEDED(dev_->CreateInputLayout(meshElems, 3, mvs->GetBufferPointer(),
+                                               mvs->GetBufferSize(), &meshLayout_));
+    }
 
     safeRelease(avs); safeRelease(aps); safeRelease(bvs); safeRelease(bps);
+    safeRelease(mvs); safeRelease(mps);
     if (!ok) return false;
 
     // --- Render states ---
@@ -557,6 +650,15 @@ bool MolViewport::createDeviceResources() {
         rd.FrontCounterClockwise = FALSE;
         rd.DepthClipEnable = TRUE;
         if (FAILED(dev_->CreateRasterizerState(&rd, &raster_))) return false;
+    }
+    {
+        // Same as raster_ but with culling off, for the ribbon pass. See rasterNoCull_.
+        D3D11_RASTERIZER_DESC rd{};
+        rd.FillMode = D3D11_FILL_SOLID;
+        rd.CullMode = D3D11_CULL_NONE;
+        rd.FrontCounterClockwise = FALSE;
+        rd.DepthClipEnable = TRUE;
+        if (FAILED(dev_->CreateRasterizerState(&rd, &rasterNoCull_))) return false;
     }
     {
         D3D11_DEPTH_STENCIL_DESC dd{};
@@ -624,6 +726,36 @@ bool MolViewport::ensureBondInstCapacity(unsigned count) {
     bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     if (FAILED(dev_->CreateBuffer(&bd, nullptr, &bondInstVB_))) { bondInstCap_ = 0; return false; }
     bondInstCap_ = cap;
+    return true;
+}
+
+// The ribbon's two buffers grow independently by doubling, exactly like the instance buffers:
+// a cartoon for a 300-residue chain is ~62k vertices and ~230k indices, so reallocating on every
+// frame would be the one real allocation in the draw path.
+bool MolViewport::ensureMeshCapacity(unsigned vertexCount, unsigned indexCount) {
+    if (vertexCount == 0 || indexCount == 0) return true;
+    if (!meshVB_ || vertexCount > meshVBCap_) {
+        safeRelease(meshVB_);
+        const unsigned cap = std::max<unsigned>(vertexCount, meshVBCap_ ? meshVBCap_ * 2 : 4096);
+        D3D11_BUFFER_DESC bd{};
+        bd.ByteWidth = cap * sizeof(MeshVertexRgba);
+        bd.Usage = D3D11_USAGE_DYNAMIC;
+        bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+        bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        if (FAILED(dev_->CreateBuffer(&bd, nullptr, &meshVB_))) { meshVBCap_ = 0; return false; }
+        meshVBCap_ = cap;
+    }
+    if (!meshIB_ || indexCount > meshIBCap_) {
+        safeRelease(meshIB_);
+        const unsigned cap = std::max<unsigned>(indexCount, meshIBCap_ ? meshIBCap_ * 2 : 16384);
+        D3D11_BUFFER_DESC bd{};
+        bd.ByteWidth = cap * static_cast<UINT>(sizeof(std::uint32_t));
+        bd.Usage = D3D11_USAGE_DYNAMIC;
+        bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+        bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        if (FAILED(dev_->CreateBuffer(&bd, nullptr, &meshIB_))) { meshIBCap_ = 0; return false; }
+        meshIBCap_ = cap;
+    }
     return true;
 }
 
@@ -746,6 +878,28 @@ void* MolViewport::draw(const MolScene& scene, int width, int height) {
         }
     }
 
+    // --- Upload the generic indexed mesh (protein cartoon) ---
+    const unsigned meshVertexCount = static_cast<unsigned>(scene.mesh.vertices.size());
+    const unsigned meshIndexCount = static_cast<unsigned>(scene.mesh.indices.size());
+    const bool haveMesh = meshVertexCount > 0 && meshIndexCount > 0;
+    if (haveMesh) {
+        if (!ensureMeshCapacity(meshVertexCount, meshIndexCount)) return nullptr;
+        D3D11_MAPPED_SUBRESOURCE ms{};
+        if (meshVB_ && SUCCEEDED(ctx_->Map(meshVB_, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms))) {
+            // MeshVertexRgba is already the GPU layout (see the meshElems input layout), so this
+            // is one memcpy rather than a per-vertex conversion like the instance paths above.
+            std::memcpy(ms.pData, scene.mesh.vertices.data(),
+                        meshVertexCount * sizeof(MeshVertexRgba));
+            ctx_->Unmap(meshVB_, 0);
+        }
+        D3D11_MAPPED_SUBRESOURCE is{};
+        if (meshIB_ && SUCCEEDED(ctx_->Map(meshIB_, 0, D3D11_MAP_WRITE_DISCARD, 0, &is))) {
+            std::memcpy(is.pData, scene.mesh.indices.data(),
+                        meshIndexCount * sizeof(std::uint32_t));
+            ctx_->Unmap(meshIB_, 0);
+        }
+    }
+
     // --- Render to off-screen target ---
     ID3D11RenderTargetView* prevRtv = nullptr;
     ID3D11DepthStencilView* prevDsv = nullptr;
@@ -800,6 +954,21 @@ void* MolViewport::draw(const MolScene& scene, int width, int height) {
         ctx_->DrawIndexedInstanced(cylIndexCount_, bondCount, 0, 0, 0);
     }
 
+    // Cartoon ribbon. Drawn last, with culling disabled and restored afterwards so the sphere
+    // and cylinder passes of the NEXT frame still get back-face culling.
+    if (haveMesh && meshVB_ && meshIB_) {
+        const UINT ribbonStride = sizeof(MeshVertexRgba);
+        const UINT ribbonOffset = 0;
+        ctx_->RSSetState(rasterNoCull_);
+        ctx_->IASetInputLayout(meshLayout_);
+        ctx_->IASetVertexBuffers(0, 1, &meshVB_, &ribbonStride, &ribbonOffset);
+        ctx_->IASetIndexBuffer(meshIB_, DXGI_FORMAT_R32_UINT, 0);
+        ctx_->VSSetShader(meshVS_, nullptr, 0);
+        ctx_->PSSetShader(meshPS_, nullptr, 0);
+        ctx_->DrawIndexed(meshIndexCount, 0, 0);
+        ctx_->RSSetState(raster_);
+    }
+
     // Restore whatever render target was bound before (the swapchain backbuffer).
     ctx_->OMSetRenderTargets(1, &prevRtv, prevDsv);
     safeRelease(prevRtv);
@@ -822,12 +991,15 @@ void MolViewport::releaseAll() {
     safeRelease(sphereVB_); safeRelease(sphereIB_);
     safeRelease(cylVB_); safeRelease(cylIB_);
     safeRelease(atomInstVB_); safeRelease(bondInstVB_);
+    safeRelease(meshVB_); safeRelease(meshIB_);
     safeRelease(cbuf_);
-    safeRelease(atomLayout_); safeRelease(bondLayout_);
+    safeRelease(atomLayout_); safeRelease(bondLayout_); safeRelease(meshLayout_);
     safeRelease(atomVS_); safeRelease(atomPS_);
     safeRelease(bondVS_); safeRelease(bondPS_);
-    safeRelease(raster_); safeRelease(depthState_);
+    safeRelease(meshVS_); safeRelease(meshPS_);
+    safeRelease(raster_); safeRelease(rasterNoCull_); safeRelease(depthState_);
     atomInstCap_ = bondInstCap_ = 0;
+    meshVBCap_ = meshIBCap_ = 0;
     ready_ = false;
 }
 

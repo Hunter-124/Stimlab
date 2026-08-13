@@ -65,6 +65,24 @@ WebFetchResult webFetch(const std::string& url, std::size_t maxChars = 8000, boo
 // BIOCAD_ENABLE_WEBVIEW2; otherwise a stub returns nullopt.
 std::optional<std::string> webFetchRenderedHtml(const std::string& url, int timeoutMs = 20000);
 
+// ---- raw JSON/text GET, for modules that consume a public REST API ----------
+// The assistant's web tools and every module that queries a public database share
+// ONE HTTP client: adding a second would mean a second rate limiter, a second cache
+// and a second User-Agent to keep honest. `apiGet` is that client's raw entry point -
+// no HTML stripping, no truncation - with the same politeness spacing and an on-disk
+// cache under %APPDATA%/BioCAD/cache/api keyed by the URL.
+//
+// ok == false with a populated `error` when this build has no networking, so a caller
+// can report "not retrieved, and here is why" instead of failing to compile.
+struct ApiGetResult {
+    bool        ok = false;
+    long        status = 0;      // HTTP status, 0 when the request never went out
+    std::string body;
+    std::string error;
+    bool        fromCache = false;
+};
+ApiGetResult apiGet(const std::string& url, int cacheTtlHours = 24);
+
 // ---- pure, network-free helpers (unit-testable from fixtures) ----------------
 // Parse a DuckDuckGo HTML results page into structured hits (real URLs un-wrapped
 // from DDG's /l/?uddg= redirect, titles/snippets HTML-stripped).

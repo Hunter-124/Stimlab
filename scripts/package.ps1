@@ -46,7 +46,10 @@ $packSrc = Join-Path $root "assets\packs"
 if (-not (Test-Path $packSrc)) { throw "assets\packs not found at $packSrc - the release would ship with no catalog." }
 $packDst = Join-Path $stage "assets\packs"
 New-Item -ItemType Directory -Force -Path $packDst | Out-Null
-Copy-Item (Join-Path $packSrc "*.json") $packDst
+# Recursive: the packs directory has subdirectories that are just as load-bearing as
+# the top-level catalog (matrices\blosum62.json is every alignment, rotamers\*.json is
+# every side-chain rebuild), and a flat *.json copy silently shipped without them.
+Copy-Item (Join-Path $packSrc "*") $packDst -Recurse -Force
 
 # The science presets statically bundle libcurl, so the live Anthropic provider + web
 # tools ship inside this exe; the plain presets are curl-free (offline assistant only).

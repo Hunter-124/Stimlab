@@ -1,0 +1,40 @@
+REMARK   1 SYNTHETIC FIXTURE - HAND BUILT FOR THE CONNECTIVITY TESTS, NOT A REAL PDB ENTRY.
+REMARK   1 CHAIN A IS CYS-ALA-GLY WITH IDEAL PEPTIDE BONDS, THEN A DELIBERATE CHAIN BREAK:
+REMARK   1 CYS 11 FOLLOWS GLY 3 IN THE FILE BUT ITS N IS 12.2 A FROM GLY 3's C, SO NO
+REMARK   1 PEPTIDE BOND MAY BE MADE AND THE GAP MUST BE REPORTED. THE TWO CYS SG ATOMS ARE
+REMARK   1 2.03 A APART, WHICH IS A DISULFIDE, AND NO SSBOND RECORD IS PRESENT ON PURPOSE -
+REMARK   1 SSBOND IS OPTIONAL IN THE FORMAT, SO THE GEOMETRY HAS TO BE THE SOURCE.
+REMARK   1 CHAIN B CARRIES A FOUR-ATOM LIGAND 'LIG' WITH NO TEMPLATE (IT MUST BE REPORTED
+REMARK   1 BY NAME AND LEFT UNBONDED), ONE CALCIUM ION AND ONE WATER.
+HEADER    SYNTHETIC CONNECTIVITY FIXTURE          01-JAN-70   CONN              
+MODEL        1
+ATOM      1  N   CYS A   1       0.000   0.000   0.000  1.00 20.00           N
+ATOM      2  CA  CYS A   1       1.458   0.000   0.000  1.00 20.00           C
+ATOM      3  C   CYS A   1       2.009   1.422   0.000  1.00 20.00           C
+ATOM      4  O   CYS A   1       1.540   2.280  -0.748  1.00 20.00           O
+ATOM      5  CB  CYS A   1       1.991  -0.768   1.200  1.00 20.00           C
+ATOM      6  SG  CYS A   1       1.475  -0.089   2.795  1.00 20.00           S
+ATOM      7  N   ALA A   2       3.008   1.664   0.843  1.00 20.00           N
+ATOM      8  CA  ALA A   2       3.625   2.981   0.942  1.00 20.00           C
+ATOM      9  C   ALA A   2       5.140   2.872   1.075  1.00 20.00           C
+ATOM     10  O   ALA A   2       5.648   2.057   1.845  1.00 20.00           O
+ATOM     11  CB  ALA A   2       3.266   3.830  -0.268  1.00 20.00           C
+ATOM     12  N   GLY A   3       5.856   3.698   0.320  1.00 20.00           N
+ATOM     13  CA  GLY A   3       7.314   3.696   0.352  1.00 20.00           C
+ATOM     14  C   GLY A   3       7.869   5.116   0.315  1.00 20.00           C
+ATOM     15  O   GLY A   3       7.418   5.948  -0.472  1.00 20.00           O
+ATOM     16  N   CYS A  11       0.618  -1.456   7.544  1.00 20.00           N
+ATOM     17  CA  CYS A  11       1.236  -0.137   7.611  1.00 20.00           C
+ATOM     18  C   CYS A  11       2.748  -0.244   7.781  1.00 20.00           C
+ATOM     19  O   CYS A  11       3.237  -1.032   8.590  1.00 20.00           O
+ATOM     20  CB  CYS A  11       0.906   0.670   6.364  1.00 20.00           C
+ATOM     21  SG  CYS A  11       1.475  -0.089   4.825  1.00 20.00           S
+TER      22      CYS A  11
+HETATM   23  C1  LIG B   1      20.000   0.000   0.000  1.00 30.00           C
+HETATM   24  C2  LIG B   1      21.500   0.000   0.000  1.00 30.00           C
+HETATM   25  O1  LIG B   1      22.200   1.200   0.000  1.00 30.00           O
+HETATM   26  N1  LIG B   1      18.600   0.600   0.000  1.00 30.00           N
+HETATM   27 CA    CA B   2      30.000   0.000   0.000  1.00 30.00          CA
+HETATM   28  O   HOH B   3      32.000   2.000   0.000  1.00 30.00           O
+ENDMDL
+END

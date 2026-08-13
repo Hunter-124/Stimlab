@@ -14,6 +14,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
@@ -21,12 +22,16 @@
 #include <implot.h>
 
 #include "assay/Design.h"
+#include "bio/Cartoon.h"
+#include "bio/CifReader.h"
+#include "bio/Connectivity.h"
 #include "bio/Imgt.h"
 #include "bio/Liabilities.h"
 #include "bio/NucSeq.h"
 #include "bio/PdbReader.h"
 #include "bio/Structure.h"
 #include "chem/Canonical.h"
+#include "chem/Formula.h"
 #include "chem/Rings.h"
 #include "chem/Aromaticity.h"
 #include "chem/Solubility.h"
@@ -37,6 +42,7 @@
 #include "core/AppPaths.h"
 #include "core/Manifest.h"
 #include "modules/IonizationModule.h"
+#include "modules/MechanismModule.h"
 #include "modules/Metabolites.h"
 #include "modules/NucleicModule.h"
 #include "modules/docking/Presets.h"
@@ -296,6 +302,67 @@ void appendReceptorToScene(render::MolScene& scene, const chem::Conformer& rec) 
     scene.radius = static_cast<float>(maxR);
 }
 
+// Host one already-built MolScene in an interactive off-screen viewport. Extracted from
+// molViewer3D so the protein cartoon (which builds its scene from a bio::Structure, not a
+// chem::Conformer) reuses exactly the same camera, hover and wheel-capture behaviour instead of
+// growing a second copy of it.
+bool sceneViewport(AppShell& shell, const render::MolScene& scene, ViewerUiState& ui,
+                   const std::string& key, float height) {
+    render::MolViewport* vp = shell.viewer();
+    if (!vp) {
+        ImGui::TextDisabled("3D viewer unavailable (no DirectX device).");
+        return false;
+    }
+    // Auto-fit only when the framed content changes, so a user's orbit survives every frame.
+    if (key != ui.lastKey) {
+        vp->resetCamera(scene);
+        ui.lastKey = key;
+    }
+
+    const float avail = ImGui::GetContentRegionAvail().x;
+    const int w = std::max(64, static_cast<int>(avail));
+    const int h = std::max(64, static_cast<int>(height));
+
+    if (scene.atoms.empty() && scene.mesh.empty()) {
+        ImGui::Dummy(ImVec2(static_cast<float>(w), static_cast<float>(h)));
+        ImGui::TextDisabled("(nothing to display)");
+        return true;
+    }
+
+    void* srv = vp->draw(scene, w, h);
+    if (!srv) {
+        ImGui::TextDisabled("3D render failed.");
+        return false;
+    }
+
+    // Host the rendered image in its own child window flagged NoScrollWithMouse +
+    // NoScrollbar so ImGui absorbs the wheel here (zoom) instead of scrolling the panel.
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::BeginChild(("##vp3d_" + key).c_str(),
+                      ImVec2(static_cast<float>(w), static_cast<float>(h)),
+                      ImGuiChildFlags_None,
+                      ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoScrollbar);
+    ImGui::PopStyleVar();
+    ImGui::Image(reinterpret_cast<ImTextureID>(srv),
+                 ImVec2(static_cast<float>(w), static_cast<float>(h)));
+    const bool hovered = ImGui::IsItemHovered();
+    ImGuiIO& io = ImGui::GetIO();
+    if (hovered) {
+        if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+            const ImVec2 d = io.MouseDelta;
+            vp->orbit(d.x, d.y);
+        }
+        if (ImGui::IsMouseDragging(ImGuiMouseButton_Right) ||
+            ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
+            const ImVec2 d = io.MouseDelta;
+            vp->pan(d.x, d.y);
+        }
+        if (io.MouseWheel != 0.0f) vp->zoom(io.MouseWheel);
+    }
+    ImGui::EndChild();
+    return true;
+}
+
 // Draw a chem::Conformer in an interactive 3D viewport (off-screen RT -> ImGui
 // image) with toggles + a CPK legend. `cacheKey` identifies the molecule so the
 // camera only auto-fits when the displayed structure changes. Returns false (and
@@ -331,58 +398,11 @@ bool molViewer3D(AppShell& shell, const chem::Conformer& conf, const std::string
     render::MolScene scene = render::buildMolScene(conf, ui.spacefill, ui.showH);
     if (overlayReceptor) appendReceptorToScene(scene, *receptor);
 
-    // Auto-fit when the molecule (or toggle that changes framing) changes.
+    // Auto-fit when the molecule (or a toggle that changes framing) changes.
     const std::string key = cacheKey + (ui.showH ? "|H" : "") + (ui.spacefill ? "|S" : "") +
                             (overlayReceptor ? "|R" : "");
-    if (key != ui.lastKey) {
-        vp->resetCamera(scene);
-        ui.lastKey = key;
-    }
-
-    const float avail = ImGui::GetContentRegionAvail().x;
-    const int w = std::max(64, static_cast<int>(avail));
-    const int h = std::max(64, static_cast<int>(height));
-
-    if (conf.empty() || scene.atoms.empty()) {
-        ImGui::Dummy(ImVec2(static_cast<float>(w), static_cast<float>(h)));
-        ImGui::TextDisabled("(no atoms to display)");
-        return true;
-    }
-
-    void* srv = vp->draw(scene, w, h);
-    if (!srv) {
-        ImGui::TextDisabled("3D render failed.");
-        return false;
-    }
-
-    // Host the rendered image in its own child window flagged NoScrollWithMouse +
-    // NoScrollbar. With both flags set, ImGui absorbs the mouse wheel over this child
-    // instead of forwarding it to the scrolling panel, so hovering + wheel zooms the
-    // model directly (no need to scroll the page up first). Zero window padding so the
-    // image fills the child exactly (no offset / no spurious scroll region).
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-    ImGui::BeginChild("##vp3d", ImVec2(static_cast<float>(w), static_cast<float>(h)),
-                      ImGuiChildFlags_None,
-                      ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoScrollbar);
-    ImGui::PopStyleVar();
-    ImGui::Image(reinterpret_cast<ImTextureID>(srv), ImVec2(static_cast<float>(w), static_cast<float>(h)));
-    const bool hovered = ImGui::IsItemHovered();
-
-    // Camera input - only while the image is hovered.
-    ImGuiIO& io = ImGui::GetIO();
-    if (hovered) {
-        if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-            const ImVec2 d = io.MouseDelta;
-            vp->orbit(d.x, d.y);
-        }
-        if (ImGui::IsMouseDragging(ImGuiMouseButton_Right) ||
-            ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
-            const ImVec2 d = io.MouseDelta;
-            vp->pan(d.x, d.y);
-        }
-        if (io.MouseWheel != 0.0f) vp->zoom(io.MouseWheel);
-    }
-    ImGui::EndChild();
+    if (!sceneViewport(shell, scene, ui, key, height)) return false;
+    if (conf.empty() || scene.atoms.empty()) return true;
 
     // Legend (only elements that actually appear).
     bool seen[120] = {false};
@@ -2791,6 +2811,96 @@ void assayDesign(AppShell& shell) {
         ImGui::TextColored(theme::verdictColor(2), "%s", w.c_str());
 }
 
+// ---- Protein 3D scene assembly (shared by the Structure3D panel's two modes) ----
+namespace {
+
+// Atomic number of a PDB element symbol, through the one element table the tree already has
+// (chem::parseFormula). Cached because a 100k-atom structure would otherwise parse "C" 100k
+// times, and duplicated as a second symbol table is how two tables disagree.
+int elementZ(const std::string& symbol) {
+    static std::unordered_map<std::string, int> cache;
+    if (symbol.empty()) return 6;
+    const auto it = cache.find(symbol);
+    if (it != cache.end()) return it->second;
+    int z = 6;   // an unrecognised symbol renders as carbon grey rather than vanishing
+    std::string tidy;
+    for (char c : symbol)
+        if (c != ' ') tidy += c;
+    if (!tidy.empty()) {
+        tidy[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(tidy[0])));
+        for (std::size_t i = 1; i < tidy.size(); ++i)
+            tidy[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(tidy[i])));
+        if (const auto f = chem::parseFormula(tidy); f && f->ok && f->terms.size() == 1)
+            z = f->terms.front().z;
+    }
+    cache[symbol] = z;
+    return z;
+}
+
+// Spheres and sticks for a whole model, using the residue-template bond graph. The bonds are the
+// point: without Connectivity this mode could only draw disconnected spheres, because the file
+// has no bond list.
+render::MolScene proteinSticksScene(const bio::Model& model, const bio::ConnectivityResult& conn) {
+    render::MolScene scene;
+    // Flat index per (chain, residue, atom) so a StructureBond can address the sphere list.
+    std::map<std::tuple<int, int, int>, std::size_t> index;
+    for (std::size_t ci = 0; ci < model.chains.size(); ++ci) {
+        const bio::Chain& c = model.chains[ci];
+        for (std::size_t ri = 0; ri < c.residues.size(); ++ri) {
+            const bio::Residue& r = c.residues[ri];
+            for (std::size_t ai = 0; ai < r.atoms.size(); ++ai) {
+                const bio::Atom& a = r.atoms[ai];
+                render::AtomInst inst;
+                inst.x = static_cast<float>(a.x);
+                inst.y = static_cast<float>(a.y);
+                inst.z = static_cast<float>(a.z);
+                inst.r = 0.30f;
+                inst.rgba = render::cpkColor(elementZ(a.element));
+                index[{static_cast<int>(ci), static_cast<int>(ri), static_cast<int>(ai)}] =
+                    scene.atoms.size();
+                scene.atoms.push_back(inst);
+            }
+        }
+    }
+    for (const bio::StructureBond& b : conn.bonds) {
+        const auto ia = index.find({b.a.chain, b.a.residue, b.a.atom});
+        const auto ib = index.find({b.b.chain, b.b.residue, b.b.atom});
+        if (ia == index.end() || ib == index.end()) continue;
+        const render::AtomInst& A = scene.atoms[ia->second];
+        const render::AtomInst& B = scene.atoms[ib->second];
+        render::BondInst stick;
+        stick.ax = A.x; stick.ay = A.y; stick.az = A.z;
+        stick.bx = B.x; stick.by = B.y; stick.bz = B.z;
+        stick.rgbaA = A.rgba;
+        stick.rgbaB = B.rgba;
+        // A disulfide is drawn thicker so the one bond the geometry (not a template) produced is
+        // visible as such.
+        stick.radius = b.kind == bio::BondKind::Disulfide ? 0.16f : 0.11f;
+        scene.bonds.push_back(stick);
+    }
+    render::computeSceneBounds(scene);
+    return scene;
+}
+
+// The cartoon: bio::CartoonMesh straight into the generic indexed-mesh path. The palette index
+// is resolved here because the renderer's vertex carries a packed colour, not an index.
+render::MolScene proteinCartoonScene(const bio::CartoonMesh& mesh) {
+    render::MolScene scene;
+    scene.mesh.vertices.reserve(mesh.vertices.size());
+    for (const bio::CartoonVertex& v : mesh.vertices) {
+        render::MeshVertexRgba out;
+        out.px = v.px; out.py = v.py; out.pz = v.pz;
+        out.nx = v.nx; out.ny = v.ny; out.nz = v.nz;
+        out.rgba = v.colorIndex < mesh.palette.size() ? mesh.palette[v.colorIndex] : 0xFFFFFFFFu;
+        scene.mesh.vertices.push_back(out);
+    }
+    scene.mesh.indices = mesh.indices;
+    render::computeSceneBounds(scene);
+    return scene;
+}
+
+}  // namespace
+
 // ------------------------------------------------------ Protein Structure
 void proteinStructure(AppShell& shell) {
     Services& s = shell.services();
@@ -2799,6 +2909,16 @@ void proteinStructure(AppShell& shell) {
     static char pathBuf[1024] = "";
     static std::optional<bio::Structure> loaded;
     static std::string loadError;
+    // The Structure module's load() returns coordinates only, and the cartoon needs the HELIX /
+    // SHEET (or _struct_conf / _struct_sheet_range) records. They are read here with the same
+    // readers, from the same file, rather than by inventing a third secondary-structure source.
+    static bio::Annotations annotations;
+    static bool cartoonMode = true;
+    static ViewerUiState viewerUi;
+    static std::string sceneKey;                 // structure + mode currently built
+    static render::MolScene scene;
+    static bio::CartoonMesh cartoon;
+    static bio::ConnectivityResult conn;
 
     ImGui::PushTextWrapPos(0.0f);
     ImGui::TextColored(theme::provenanceColor(Provenance::Measured),
@@ -2816,6 +2936,17 @@ void proteinStructure(AppShell& shell) {
         loadError = loaded ? std::string()
                            : "Could not read '" + std::string(pathBuf) +
                                  "'. Expected an existing .pdb, .ent, .cif or .mmcif file.";
+        annotations = bio::Annotations{};
+        sceneKey.clear();
+        if (loaded) {
+            const std::filesystem::path p(pathBuf);
+            std::string ext = p.extension().string();
+            for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (ext == ".cif" || ext == ".mmcif")
+                (void)bio::readCifFile(p, &annotations);
+            else
+                (void)bio::readPdbFile(p, &annotations);
+        }
     }
     if (!loadError.empty()) {
         ImGui::TextColored(theme::verdictColor(3), "%s", loadError.c_str());
@@ -2852,6 +2983,66 @@ void proteinStructure(AppShell& shell) {
     if (!st.warnings.empty()) {
         theme::sectionHeader("PARSE WARNINGS (RECOVERED, NOT FATAL)");
         for (const auto& w : st.warnings)
+            ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(theme::kWarn), "%s", w.c_str());
+        ImGui::Spacing();
+    }
+
+    theme::sectionHeader("3D VIEW");
+    if (m) {
+        // The two modes need different geometry, so each is built once and cached under a key
+        // that includes the mode: rebuilding a 77k-triangle ribbon every frame would be the one
+        // avoidable cost in this panel.
+        const std::string wanted = st.source + (cartoonMode ? "|cartoon" : "|sticks");
+        if (wanted != sceneKey) {
+            conn = bio::connect(*m);
+            if (cartoonMode) {
+                cartoon = bio::buildCartoon(*m, annotations);
+                scene = proteinCartoonScene(cartoon);
+            } else {
+                cartoon = bio::CartoonMesh{};
+                scene = proteinSticksScene(*m, conn);
+            }
+            sceneKey = wanted;
+            viewerUi.lastKey.clear();   // re-frame: the two modes have different extents
+        }
+
+        if (ImGui::RadioButton("Cartoon (ribbon)", cartoonMode)) cartoonMode = true;
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Spheres and sticks", !cartoonMode)) cartoonMode = false;
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Reset view")) viewerUi.lastKey.clear();
+        ImGui::SameLine();
+        ImGui::TextDisabled("(drag: orbit  -  wheel: zoom  -  right-drag: pan)");
+
+        sceneViewport(shell, scene, viewerUi, sceneKey, 420.0f);
+
+        if (cartoonMode) {
+            ImGui::Text("Ribbon: %zu residues, %zu vertices, %zu triangles.", cartoon.residues,
+                        cartoon.vertices.size(), cartoon.triangleCount());
+            // Secondary structure is the records', not this panel's: an entry with no HELIX or
+            // SHEET record renders as all-coil, and saying so is the difference between "this
+            // protein has no helices" and "this file did not list any".
+            if (annotations.helices.empty() && annotations.strands.empty()) {
+                ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(theme::kWarn),
+                                   "No HELIX / SHEET records in this file: every residue is drawn "
+                                   "as coil. That is missing annotation, not absent structure.");
+            } else {
+                ImGui::TextDisabled("Secondary structure from the file's own HELIX / SHEET "
+                                    "records (%zu helices, %zu strands).",
+                                    annotations.helices.size(), annotations.strands.size());
+            }
+            for (const auto& w : cartoon.warnings)
+                ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(theme::kWarn), "%s", w.c_str());
+        } else {
+            ImGui::Text("Bonds: %zu from residue templates, %zu polymer links, %zu disulfides.",
+                        conn.diagnostics.templateBonds, conn.diagnostics.linkBonds,
+                        conn.diagnostics.disulfides);
+        }
+        // Connectivity diagnostics are shown in BOTH modes: what could not be bonded is a fact
+        // about the file, not about the current representation.
+        ImGui::Text("Unbonded atoms: %zu. Template atoms absent from the file: %zu.",
+                    conn.diagnostics.unbondedAtoms, conn.diagnostics.missingTemplateAtoms);
+        for (const auto& w : conn.diagnostics.warnings)
             ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(theme::kWarn), "%s", w.c_str());
         ImGui::Spacing();
     }
@@ -2895,6 +3086,196 @@ void proteinStructure(AppShell& shell) {
         }
         ImGui::EndTable();
     }
+}
+
+// ------------------------------------------------------- Variant Analysis
+// Three surfaces, and the order is deliberate: the homolog set FIRST, because the
+// conservation numbers are meaningless without it; the substitution scores with
+// their published thresholds printed beside them; and the rebuilt side chain last,
+// badged model, with no energy anywhere on the panel. Below the homolog minimum the
+// conservation track is not drawn at all - a greyed-out track invites the reader to
+// squint at it, whereas a sentence saying "15 required, 4 supplied" does not.
+void variants(AppShell& shell) {
+    Services& s = shell.services();
+    if (!s.variants) return;
+
+    static char queryBuf[8192] =
+        "MKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQAPILSRVGDGTQDNLSGAEKAVQVKVKALPDAQFEVVHSLAKWKR";
+    static char homologBuf[65536] = "";
+    static char structPath[1024] = "";
+    static int  position = 1;
+    static char mutant = 'A';
+    static std::optional<bio::Structure> structure;
+    static std::string structureError;
+
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic),
+                       "Conservation scores describe the homolog set YOU supply. They are not a "
+                       "pathogenicity call, not a clinical interpretation, and not advice.");
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+
+    theme::sectionHeader("QUERY AND HOMOLOGS (ONE SEQUENCE PER LINE)");
+    ImGui::TextUnformatted("Query");
+    ImGui::InputTextMultiline("##varquery", queryBuf, sizeof(queryBuf), ImVec2(-1, 60));
+    ImGui::TextUnformatted("Homologs");
+    ImGui::InputTextMultiline("##varhomologs", homologBuf, sizeof(homologBuf), ImVec2(-1, 110));
+
+    const auto clean = [](const std::string& raw) {
+        std::string out;
+        for (char c : raw)
+            if (std::isalpha(static_cast<unsigned char>(c)))
+                out += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        return out;
+    };
+    const std::string query = clean(queryBuf);
+    std::vector<std::string> homologs;
+    {
+        std::stringstream in{std::string(homologBuf)};
+        std::string line;
+        while (std::getline(in, line)) {
+            if (!line.empty() && line[0] == '>') continue;   // a FASTA header is not sequence
+            const std::string h = clean(line);
+            if (!h.empty()) homologs.push_back(h);
+        }
+    }
+    if (query.empty()) {
+        ImGui::TextDisabled("Enter a query sequence.");
+        return;
+    }
+
+    const ConservationProfile profile = s.variants->conservation(query, homologs);
+
+    const std::string minimumSub =
+        "supplied; " + std::to_string(profile.minimumHomologsRequired) + " required";
+    statCard("HOMOLOGS", std::to_string(profile.homologs.sequenceCount), minimumSub.c_str(),
+             230.0f);
+    ImGui::SameLine();
+    statCard("EFFECTIVE", std::to_string(profile.homologs.effectiveSequenceCount),
+             "after identity clustering", 210.0f);
+    ImGui::SameLine();
+    statCard("MEDIAN IDENTITY", f2(profile.homologs.medianIdentityPct) + "%", "to the query",
+             220.0f);
+    ImGui::SameLine();
+    statCard("RANGE", f2(profile.homologs.minIdentityPct) + " - " +
+                          f2(profile.homologs.maxIdentityPct) + "%",
+             "min - max identity", 220.0f);
+    ImGui::Spacing();
+
+    for (const auto& w : profile.warnings) ImGui::TextWrapped("%s", w.c_str());
+    ImGui::Spacing();
+
+    theme::sectionHeader("CONSERVATION TRACK");
+    if (!profile.usable) {
+        // No track. See the comment at the top of this function.
+        ImGui::TextColored(theme::provenanceColor(Provenance::NotComputed),
+                           "Not computed: %d homolog(s) supplied, %d required.",
+                           profile.homologs.sequenceCount, profile.minimumHomologsRequired);
+        ImGui::TextWrapped(
+            "A column distribution estimated from a handful of ad-hoc sequences is dominated by "
+            "the pseudocount rather than by the protein, so no conservation track is drawn and "
+            "no SIFT or PROVEAN score is produced.");
+    } else {
+        // Entropy per column, in bits, on a fixed 0..log2(20) axis so two proteins
+        // are comparable and a flat-looking track cannot come from autoscaling.
+        std::vector<double> x, y;
+        x.reserve(profile.columns.size());
+        y.reserve(profile.columns.size());
+        for (const auto& c : profile.columns) {
+            x.push_back(static_cast<double>(c.position));
+            y.push_back(c.shannonEntropy);
+        }
+        if (ImPlot::BeginPlot("##conservation", ImVec2(-1, 190))) {
+            ImPlot::SetupAxes("Query position", "Shannon entropy (bits)");
+            ImPlot::SetupAxesLimits(1.0, static_cast<double>(profile.columns.size()), 0.0,
+                                    4.3219280948873626, ImPlotCond_Always);
+            ImPlot::PlotBars("entropy", x.data(), y.data(), static_cast<int>(x.size()), 0.8);
+            ImPlot::EndPlot();
+        }
+        ImGui::TextColored(theme::provenanceColor(Provenance::Measured),
+                           "0 bits = fully conserved in this set; log2(20) = 4.3219 bits = "
+                           "uniform. Background for the log-odds: %s",
+                           profile.backgroundFrequencySource.c_str());
+    }
+    ImGui::Spacing();
+
+    theme::sectionHeader("SUBSTITUTION");
+    ImGui::SetNextItemWidth(140.0f);
+    ImGui::InputInt("Position (1-based)", &position);
+    position = std::max(1, position);
+    char mut[2] = {mutant, '\0'};
+    ImGui::SetNextItemWidth(140.0f);
+    if (ImGui::InputText("Mutant residue", mut, sizeof(mut)))
+        mutant = static_cast<char>(std::toupper(static_cast<unsigned char>(mut[0])));
+
+    const VariantScore score = s.variants->score(profile, position, mutant);
+    ImGui::Text("Wild type at %d: %c", score.position, score.wildType);
+    drawQuantity("BLOSUM62 delta", score.blosum62Delta);
+    drawQuantity("SIFT-style index", score.siftScore);
+    ImGui::SameLine();
+    ImGui::TextDisabled("(deleterious below %.2f)", score.siftDeleteriousBelow);
+    drawQuantity("PROVEAN-style delta", score.proveanScore);
+    ImGui::SameLine();
+    ImGui::TextDisabled("(deleterious below %.3f)", score.proveanDeleteriousBelow);
+    drawQuantity("Column entropy", score.columnEntropy);
+    ImGui::TextColored(theme::provenanceColor(Provenance::Measured),
+                       "Computed from %d homolog(s), median identity %.1f%%.",
+                       score.homologs.sequenceCount, score.homologs.medianIdentityPct);
+    ImGui::TextWrapped("%s", score.interpretation.c_str());
+    ImGui::Spacing();
+
+    theme::sectionHeader("POINT-MUTATION REBUILD");
+    ImGui::SetNextItemWidth(-140.0f);
+    ImGui::InputTextWithHint("##varstruct", "Path to a .pdb / .cif file...", structPath,
+                             sizeof(structPath));
+    ImGui::SameLine();
+    if (ImGui::Button("Load structure", ImVec2(120, 0))) {
+        structure = s.structure ? s.structure->load(std::filesystem::path(structPath))
+                                : std::nullopt;
+        structureError = structure ? std::string()
+                                   : "Could not read '" + std::string(structPath) + "'.";
+    }
+    if (!structureError.empty())
+        ImGui::TextColored(theme::verdictColor(3), "%s", structureError.c_str());
+    if (!structure) {
+        ImGui::TextDisabled("Load a structure to rebuild a side chain on it.");
+        return;
+    }
+
+    static char chainId[8] = "A";
+    static int  residueNumber = 1;
+    ImGui::SetNextItemWidth(80.0f);
+    ImGui::InputText("Chain", chainId, sizeof(chainId));
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(140.0f);
+    ImGui::InputInt("Residue (author numbering)", &residueNumber);
+
+    const RotamerRebuild r = s.variants->rebuild(*structure, chainId, residueNumber, mutant);
+    // The badge is the point: a built side chain is a constructed artefact.
+    ImGui::TextColored(theme::provenanceColor(r.provenance), "[%s]  %c%d%c",
+                       provenanceLabel(r.provenance), r.wildType, r.position, r.mutant);
+    if (!r.rotamerLibrarySource.empty())
+        ImGui::TextWrapped("Rotamer library: %s", r.rotamerLibrarySource.c_str());
+    if (!r.chiAngles.empty()) {
+        std::string chis;
+        for (std::size_t i = 0; i < r.chiAngles.size(); ++i)
+            chis += (i ? ", " : "") + std::string("chi") + std::to_string(i + 1) + " " +
+                    f2(r.chiAngles[i]) + " deg";
+        ImGui::TextWrapped("%s", chis.c_str());
+        ImGui::Text("Library probability %.3f   heavy-atom clashes %d", r.rotamerProbability,
+                    r.clashCount);
+    }
+    if (!r.repackedNeighbours.empty()) {
+        std::string list;
+        for (const auto& n : r.repackedNeighbours) list += (list.empty() ? "" : ", ") + n;
+        ImGui::TextWrapped("Repacked neighbours: %s", list.c_str());
+    }
+    for (const auto& a : r.assumptions) ImGui::BulletText("%s", a.c_str());
+    for (const auto& w : r.warnings)
+        ImGui::TextColored(theme::verdictColor(3), "%s", w.c_str());
+    ImGui::TextColored(theme::provenanceColor(Provenance::NotComputed),
+                       "Stability change (ddG): not computed. No model weights ship in this "
+                       "build - see docs/variants.md.");
 }
 
 // ------------------------------------------------- Reaction network / systems
@@ -6153,6 +6534,354 @@ void antibody(AppShell& shell) {
         ImGui::EndTable();
     }
     for (const auto& a : scan.assumptions) ImGui::TextWrapped("%s", a.c_str());
+}
+
+// ---------------------------------------------------------------- Mechanism of action
+// Everything here is RETRIEVED. The panel's job is to keep two facts visible: where
+// each record came from, and that an empty list is a statement about the query and the
+// source rather than about the compound.
+namespace {
+
+void warningsBlock(const std::vector<std::string>& warnings) {
+    for (const std::string& w : warnings) {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic), "%s", w.c_str());
+        ImGui::PopTextWrapPos();
+    }
+}
+
+// One shared line: this build cannot retrieve anything, and that is not a result.
+void offlineBanner(bool online) {
+    ImGui::TextColored(theme::provenanceColor(online ? Provenance::Measured
+                                                     : Provenance::NotComputed),
+                       online ? "Network transport: available (science feature on)."
+                              : "Network transport: NOT compiled in. Nothing below was retrieved, "
+                                "and an empty result is an absence of retrieval.");
+}
+
+}  // namespace
+
+void mechanism(AppShell& shell) {
+    Services& s = shell.services();
+    if (!s.mechanism) return;
+    const Molecule m = shell.currentMolecule();
+
+    offlineBanner(mechanismNetworkAvailable());
+    ImGui::TextWrapped("A mechanism is retrieved with its reference. BioCAD never infers one from a "
+                       "docking pose or a fingerprint, and the source's free-text mechanism is shown "
+                       "verbatim - it is never parsed into a vocabulary.");
+    ImGui::Spacing();
+
+    static std::string lastId;
+    static MechanismReport report;
+    static bool ran = false;
+    if (ImGui::Button("Retrieve mechanisms", ImVec2(180, 0)) || (ran && lastId != m.id)) {
+        report = s.mechanism->mechanisms(m.id);
+        lastId = m.id;
+        ran = true;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("compound: %s", m.name.c_str());
+    if (!ran) {
+        ImGui::TextDisabled("Not retrieved yet. Nothing is queried until you ask.");
+        return;
+    }
+
+    statCard("RECORDS", std::to_string(report.entries.size()), "retrieved, with references", 200.0f);
+    ImGui::SameLine();
+    statCard("ATTEMPTED", report.retrievalAttempted ? "yes" : "no",
+             report.networkAvailable ? "query formed and sent" : "no transport", 200.0f);
+    ImGui::Spacing();
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(theme::provenanceColor(Provenance::NotComputed), "%s",
+                       report.coverageNote.c_str());
+    ImGui::PopTextWrapPos();
+    warningsBlock(report.warnings);
+
+    if (report.entries.empty()) return;
+    if (ImGui::BeginTable("moa", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("Target", ImGuiTableColumnFlags_WidthFixed, 200.0f);
+        ImGui::TableSetupColumn("Accession", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+        ImGui::TableSetupColumn("Action type", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+        ImGui::TableSetupColumn("Mechanism (verbatim)", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Modality", ImGuiTableColumnFlags_WidthFixed, 110.0f);
+        ImGui::TableHeadersRow();
+        for (const MechanismEntry& e : report.entries) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextColored(theme::provenanceColor(e.provenance), "%s", e.targetName.c_str());
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextUnformatted(e.targetAccession.c_str());
+            ImGui::TableSetColumnIndex(2);
+            ImGui::TextUnformatted(e.actionType.c_str());
+            ImGui::TableSetColumnIndex(3);
+            ImGui::TextWrapped("%s", e.freeTextMechanism.c_str());
+            ImGui::TableSetColumnIndex(4);
+            // BioCAD's own axis, and it stays "unknown" until an assay fit supplies it:
+            // the source cannot express inhibition modality, so neither do we.
+            ImGui::TextDisabled("%s",
+                                e.modality == InhibitionModality::Unknown ? "unknown" : "set");
+        }
+        ImGui::EndTable();
+    }
+    ImGui::Spacing();
+    theme::sectionHeader("REFERENCES (THE RECORD IS ONLY AS GOOD AS THESE)");
+    for (const MechanismEntry& e : report.entries) {
+        ImGui::TextDisabled("%s  [%s]  %s", e.targetName.c_str(), e.organism.c_str(),
+                            e.source.c_str());
+        for (const std::string& r : e.references) ImGui::BulletText("%s", r.c_str());
+    }
+}
+
+// ----------------------------------------------------------------- Off-target panel
+// The unscreened count is rendered FIRST and largest, because it is the honest
+// headline: a 44-target panel with a handful screened leaves the unknown fraction
+// dominant, and a view that leads with the hits inverts that.
+void offTargetPanel(AppShell& shell) {
+    Services& s = shell.services();
+    if (!s.mechanism) return;
+    const Molecule m = shell.currentMolecule();
+
+    static char panelId[64] = "safetyscreen44";
+    static double hergIc50Nm = 0.0, freeCmaxNm = 0.0;
+    static char hergCite[256] = "";
+    static PanelScreenReport report;
+    static bool ran = false;
+
+    ImGui::TextWrapped("Runs the docking module over every target in the named panel pack. There is "
+                       "no composite safety score and no cross-target ranking: receptor "
+                       "preparations and box volumes differ per row, so the scores are not on a "
+                       "common scale.");
+    ImGui::SetNextItemWidth(220.0f);
+    ImGui::InputText("Panel id", panelId, sizeof(panelId));
+    ImGui::TextDisabled("shipped: safetyscreen44, safetyscreen87, cipa-currents");
+
+    theme::sectionHeader("MEASURED hERG INPUTS (OPTIONAL, USER-SUPPLIED ONLY)");
+    ImGui::TextWrapped("The margin is measured IC50 / free Cmax. BioCAD does not predict a hERG "
+                       "IC50 and derives no QT or TdP risk, so leaving these empty leaves the "
+                       "margin not computed rather than estimated.");
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::InputDouble("hERG IC50 (nM)", &hergIc50Nm, 0.0, 0.0, "%.1f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::InputDouble("free Cmax (nM)", &freeCmaxNm, 0.0, 0.0, "%.1f");
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputText("IC50 source", hergCite, sizeof(hergCite));
+
+    if (ImGui::Button("Screen panel", ImVec2(160, 0))) {
+        // Exactly one implementation of the interface exists, so the measured hERG
+        // inputs are handed to it directly rather than widened into the contract.
+        if (auto* real = dynamic_cast<RealMechanism*>(s.mechanism)) {
+            HergInput in;
+            in.measuredIc50Molar = hergIc50Nm > 0.0 ? hergIc50Nm * 1e-9 : -1.0;
+            in.freeCmaxMolar = freeCmaxNm > 0.0 ? freeCmaxNm * 1e-9 : -1.0;
+            in.citation = hergCite;
+            real->setHergInput(in);
+        }
+        report = s.mechanism->screenPanel(m, panelId);
+        ran = true;
+    }
+    if (!ran) {
+        ImGui::TextDisabled("Not run. Every row docks independently, so a full panel takes a while.");
+        return;
+    }
+
+    statCard("NOT SCREENED", std::to_string(report.unscreened), "the number that matters", 220.0f);
+    ImGui::SameLine();
+    statCard("SCREENED", std::to_string(report.screened), "real engine poses only", 200.0f);
+    ImGui::SameLine();
+    statCard("PANEL SIZE", std::to_string(report.panelSize), "as the panel declares it", 200.0f);
+    ImGui::Spacing();
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(theme::provenanceColor(Provenance::NotComputed), "%s",
+                       report.coverageStatement.c_str());
+    ImGui::PopTextWrapPos();
+    drawQuantity("hERG margin (IC50 / free Cmax)", report.hergSafetyMargin);
+    if (report.hergSafetyMargin.provenance != Provenance::NotComputed &&
+        report.hergSafetyMargin.value < report.hergMarginFlagBelow)
+        ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(theme::kWarn),
+                          "Margin below %.0f-fold. That is a flag on the ratio of two "
+                          "measurements, not a proarrhythmia prediction.",
+                          report.hergMarginFlagBelow);
+    warningsBlock(report.warnings);
+
+    if (ImGui::BeginTable("panel", 5,
+                          ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY,
+                          ImVec2(-1, 300))) {
+        ImGui::TableSetupScrollFreeze(0, 1);
+        ImGui::TableSetupColumn("Target", ImGuiTableColumnFlags_WidthFixed, 120.0f);
+        ImGui::TableSetupColumn("Screened", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+        ImGui::TableSetupColumn("Affinity", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+        ImGui::TableSetupColumn("Receptor preparation", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Box", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableHeadersRow();
+        for (const PanelTargetResult& r : report.results) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(r.targetId.c_str());
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextColored(theme::provenanceColor(r.screened ? Provenance::Model
+                                                                : Provenance::NotComputed),
+                               "%s", r.screened ? "yes" : "no");
+            ImGui::TableSetColumnIndex(2);
+            ImGui::TextColored(theme::provenanceColor(r.affinity.provenance), "%s",
+                               quantityShort(r.affinity).c_str());
+            ImGui::TableSetColumnIndex(3);
+            ImGui::TextWrapped("%s", r.screened ? r.receptorPreparation.c_str()
+                                                : r.skipReason.c_str());
+            ImGui::TableSetColumnIndex(4);
+            ImGui::TextWrapped("%s", r.boxDefinition.c_str());
+        }
+        ImGui::EndTable();
+    }
+}
+
+// ------------------------------------------------------------------ Pathway context
+void pathwayContext(AppShell& shell) {
+    Services& s = shell.services();
+    if (!s.mechanism) return;
+
+    static char accession[32] = "P29274";
+    static PathwayContext ctx;
+    static bool ran = false;
+
+    offlineBanner(mechanismNetworkAvailable());
+    ImGui::TextWrapped("Reactome pathway membership (CC0) for one UniProt accession, with its event "
+                       "ancestors. There is no pathway impact score: no database supports "
+                       "propagating a docking score through a pathway graph.");
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::InputText("UniProt accession", accession, sizeof(accession));
+    if (ImGui::Button("Retrieve pathways", ImVec2(180, 0))) {
+        ctx = s.mechanism->pathways(accession);
+        ran = true;
+    }
+    if (!ran) {
+        ImGui::TextDisabled("Not retrieved yet.");
+        return;
+    }
+    ImGui::TextDisabled("source: %s", ctx.source.c_str());
+    warningsBlock(ctx.warnings);
+    for (const PathwayNode& n : ctx.pathways) {
+        // Indent by ancestor depth so the flat mapping reads as the hierarchy it is.
+        ImGui::Indent(12.0f * static_cast<float>(std::min<std::size_t>(n.ancestorIds.size(), 6)));
+        ImGui::BulletText("%s  %s  [%s]", n.stableId.c_str(), n.name.c_str(), n.species.c_str());
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s", n.url.c_str());
+        ImGui::Unindent(12.0f * static_cast<float>(std::min<std::size_t>(n.ancestorIds.size(), 6)));
+    }
+    ImGui::Spacing();
+    theme::sectionHeader("EXTERNAL PATHWAY BROWSERS");
+    ImGui::TextWrapped("%s", keggDeepLinkNote());
+    ImGui::TextDisabled("%s", keggPathwayUrl("hsa04726").c_str());
+}
+
+// -------------------------------------------------------------------- Stack checker
+void stackCheck(AppShell& shell) {
+    Services& s = shell.services();
+    if (!s.mechanism) return;
+
+    static char membersText[4096] = "caffeine\nfluvoxamine\ngrapefruit-juice\nst-johns-wort\n";
+    static StackReport report;
+    static bool ran = false;
+
+    ImGui::TextWrapped("Enter every drug, supplement, food or habit in the stack, one per line. Each "
+                       "result is a MECHANISM WITH A CITATION, never a severity score and never a "
+                       "recommendation. A member this build does not know is listed as unknown "
+                       "rather than silently ignored.");
+    ImGui::InputTextMultiline("##stack-members", membersText, sizeof(membersText), ImVec2(-1, 120));
+    if (ImGui::Button("Check stack", ImVec2(150, 0))) {
+        std::vector<std::string> ids;
+        std::istringstream in(membersText);
+        std::string line;
+        while (std::getline(in, line)) {
+            while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
+            if (!line.empty()) ids.push_back(line);
+        }
+        report = s.mechanism->checkStack(ids);
+        ran = true;
+    }
+    if (!ran) return;
+
+    statCard("FLAGS", std::to_string(report.flags.size()), "mechanisms, not severities", 200.0f);
+    ImGui::SameLine();
+    statCard("UNKNOWN", std::to_string(report.unknownMembers.size()), "entered but not screened",
+             210.0f);
+    ImGui::Spacing();
+    if (!report.unknownMembers.empty()) {
+        std::string list;
+        for (const std::string& u : report.unknownMembers) list += (list.empty() ? "" : ", ") + u;
+        ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(theme::kWarn),
+                          "NOT screened (unknown to the pack): %s", list.c_str());
+    }
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(theme::provenanceColor(Provenance::NotComputed), "%s",
+                       report.coverageNote.c_str());
+    ImGui::PopTextWrapPos();
+    warningsBlock(report.warnings);
+
+    if (ImGui::BeginTable("stack", 4,
+                          ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY,
+                          ImVec2(-1, 280))) {
+        ImGui::TableSetupScrollFreeze(0, 1);
+        ImGui::TableSetupColumn("Mechanism", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Direction", ImGuiTableColumnFlags_WidthFixed, 220.0f);
+        ImGui::TableSetupColumn("Evidence", ImGuiTableColumnFlags_WidthFixed, 180.0f);
+        ImGui::TableSetupColumn("Citation", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableHeadersRow();
+        for (const InteractionFlag& f : report.flags) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextColored(theme::provenanceColor(Provenance::Measured), "%s",
+                               f.mechanism.c_str());
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextWrapped("%s", f.direction.c_str());
+            ImGui::TableSetColumnIndex(2);
+            ImGui::TextWrapped("%s", f.evidence.c_str());
+            ImGui::TableSetColumnIndex(3);
+            ImGui::TextWrapped("%s", f.citation.c_str());
+        }
+        ImGui::EndTable();
+    }
+    if (!report.flags.empty()) {
+        ImGui::Spacing();
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(theme::kWarn), "%s",
+                           report.flags.front().boundaryNote.c_str());
+        ImGui::PopTextWrapPos();
+    }
+
+    ImGui::Spacing();
+    theme::sectionHeader("PHARMACOGENOMIC NOTES (CONDITIONAL, CPIC CC0)");
+    const Molecule m = shell.currentMolecule();
+    const PharmacogenomicReport pgx = s.mechanism->pharmacogenomics(m.id);
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(theme::kWarn), "%s",
+                       pgx.boundaryStatement.c_str());
+    ImGui::PopTextWrapPos();
+    if (pgx.notes.empty()) {
+        warningsBlock(pgx.warnings);
+        return;
+    }
+    if (ImGui::BeginTable("pgx", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("Gene", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+        ImGui::TableSetupColumn("Phenotype", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+        ImGui::TableSetupColumn("Activity score", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+        ImGui::TableSetupColumn("Conditional implication", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableHeadersRow();
+        for (const PharmacogenomicNote& n : pgx.notes) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(n.gene.c_str());
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextUnformatted(n.phenotype.c_str());
+            ImGui::TableSetColumnIndex(2);
+            ImGui::TextUnformatted(n.activityScoreBand.c_str());
+            ImGui::TableSetColumnIndex(3);
+            ImGui::TextWrapped("%s", n.implication.c_str());
+        }
+        ImGui::EndTable();
+    }
+    warningsBlock(pgx.warnings);
 }
 
 }  // namespace biocad::panels

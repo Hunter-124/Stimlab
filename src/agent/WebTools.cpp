@@ -206,6 +206,16 @@ fs::path webCacheDir() {
     return d;
 }
 
+// Sibling of webCacheDir() for public-API responses. Kept separate so a licence
+// question about cached third-party database content (ChEMBL is CC BY-SA) applies to
+// one directory with a known provenance, not to a mixed bag of scraped HTML.
+fs::path apiCacheDir() {
+    const fs::path d = AppPaths::instance().cache() / "api";
+    std::error_code ec;
+    fs::create_directories(d, ec);
+    return d;
+}
+
 bool freshEnough(const fs::path& p, std::chrono::hours ttl) {
     std::error_code ec;
     if (!fs::exists(p, ec)) return false;
@@ -302,6 +312,45 @@ bool webToolsAvailable() {
     return true;
 #else
     return false;
+#endif
+}
+
+ApiGetResult apiGet(const std::string& url, int cacheTtlHours) {
+    ApiGetResult r;
+#ifndef BIOCAD_HAVE_SCIENCE
+    (void)cacheTtlHours;
+    (void)url;
+    r.error = "this build has no networking compiled in (rebuild with the science feature)";
+    return r;
+#else
+    if (url.rfind("http", 0) != 0) {
+        r.error = "only http(s) URLs are supported";
+        return r;
+    }
+    // Cached under its own key prefix so an API response can never be served to the
+    // assistant's web_fetch, or vice versa.
+    const fs::path cache = apiCacheDir() / (hashHex("api:" + url) + ".txt");
+    if (cacheTtlHours > 0 && freshEnough(cache, std::chrono::hours(cacheTtlHours))) {
+        r.body = readFile(cache);
+        if (!r.body.empty()) {
+            r.ok = true;
+            r.fromCache = true;
+            r.status = 200;
+            return r;
+        }
+    }
+    std::string err;
+    if (!httpGet(url, r.body, err, r.status)) {
+        r.error = "request failed: " + err;
+        return r;
+    }
+    if (r.status >= 400) {
+        r.error = "HTTP " + std::to_string(r.status);
+        return r;
+    }
+    r.ok = true;
+    if (cacheTtlHours > 0) writeFile(cache, r.body);
+    return r;
 #endif
 }
 

@@ -57,14 +57,40 @@ struct BondInst {
     float radius = 0.15f;
 };
 
+// One vertex of a generic indexed triangle mesh: world-space position, world-space normal and
+// a packed colour in the SAME 0xAABBGGRR order as AtomInst::rgba, so the mesh path reuses the
+// existing colour packing instead of introducing a second convention.
+struct MeshVertexRgba {
+    float px = 0, py = 0, pz = 0;
+    float nx = 0, ny = 0, nz = 0;
+    std::uint32_t rgba = 0xFFFFFFFFu;
+};
+
+// A triangle list. This is the path the protein cartoon (bio::CartoonMesh) uses: unlike the
+// sphere and cylinder instancing above there is no repeated unit mesh to instance, because
+// every ribbon vertex is different. Coordinates are already world-space (Angstrom), so the
+// vertex shader only applies the view-projection.
+struct IndexedMesh {
+    std::vector<MeshVertexRgba> vertices;
+    std::vector<std::uint32_t>  indices;
+
+    [[nodiscard]] bool empty() const { return indices.empty() || vertices.empty(); }
+};
+
 // A whole molecule turned into draw instances plus its bounding sphere (used by
 // the camera to auto-fit). `center`/`radius` are in the same Angstrom space.
 struct MolScene {
     std::vector<AtomInst> atoms;
     std::vector<BondInst> bonds;
+    IndexedMesh           mesh;   // optional ribbon / surface geometry, drawn after the sticks
     chem::Vec3 center;     // geometric center of the heavy+H atoms
     float       radius = 1.0f;  // bounding radius (>= 1, never zero)
 };
+
+// Recompute center/radius over everything the scene contains, including the mesh. buildMolScene
+// does this for a conformer; a caller that assembles a scene itself (the protein cartoon) needs
+// it too, and duplicating the arithmetic in the panel is how the two drift apart.
+void computeSceneBounds(MolScene& scene);
 
 // CPK element color as 0xAABBGGRR (alpha = 0xFF). Falls back to pink for any
 // element outside the explicit table (matches PyMOL/Jmol conventions).
@@ -140,6 +166,14 @@ private:
     ID3D11Buffer* bondInstVB_ = nullptr;
     unsigned      bondInstCap_ = 0;
 
+    // Generic indexed-mesh path (the protein cartoon). Both buffers are DYNAMIC and grow by
+    // doubling, the same policy as the instance buffers above: a ribbon is rebuilt whenever the
+    // structure or the secondary-structure assignment changes, not once at load.
+    ID3D11Buffer* meshVB_ = nullptr;
+    unsigned      meshVBCap_ = 0;   // in vertices
+    ID3D11Buffer* meshIB_ = nullptr;
+    unsigned      meshIBCap_ = 0;   // in indices
+
     // Constant buffer (view-proj + light dir).
     ID3D11Buffer* cbuf_ = nullptr;
 
@@ -152,6 +186,14 @@ private:
     ID3D11PixelShader*       bondPS_ = nullptr;
     ID3D11RasterizerState*   raster_ = nullptr;
     ID3D11DepthStencilState* depthState_ = nullptr;
+    ID3D11InputLayout*       meshLayout_ = nullptr;
+    ID3D11VertexShader*      meshVS_ = nullptr;
+    ID3D11PixelShader*       meshPS_ = nullptr;
+    // The ribbon is drawn with culling OFF and two-sided shading. A cartoon cross-section is a
+    // thin closed tube whose triangle winding depends on the sign of the local frame, which the
+    // geometry stage does not fix; culling it would drop faces on half the ribbon. A flat ribbon
+    // is also legitimately viewed from behind.
+    ID3D11RasterizerState*   rasterNoCull_ = nullptr;
 
     // Orbit camera state (spherical around a target point).
     float yaw_ = 0.6f;       // radians
@@ -163,6 +205,7 @@ private:
 
     bool ensureAtomInstCapacity(unsigned count);
     bool ensureBondInstCapacity(unsigned count);
+    bool ensureMeshCapacity(unsigned vertexCount, unsigned indexCount);
 };
 
 }  // namespace biocad::render

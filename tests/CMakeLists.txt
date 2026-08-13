@@ -31,6 +31,11 @@ add_executable(biocad_tests
   test_sim_ddi.cpp
   test_bio_score.cpp
   test_bio_align.cpp
+  test_bio_conservation.cpp
+  test_bio_rotamer.cpp
+  test_variant_module.cpp
+  test_bio_connectivity.cpp
+  test_bio_cartoon.cpp
   test_bio_io.cpp
   test_bio_nuc.cpp
   test_bio_oligo.cpp
@@ -52,6 +57,7 @@ add_executable(biocad_tests
   test_biologics_numbering.cpp
   test_biologics_mass.cpp
   test_biologics_interface.cpp
+  test_mechanism.cpp
 )
 
 target_link_libraries(biocad_tests PRIVATE

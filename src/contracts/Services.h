@@ -28,6 +28,14 @@ struct Services {
     IAssayModule*       assay      = nullptr;
     IBiologicsModule*   biologics  = nullptr;
     IPopulationPkModule* populationPk = nullptr;
+    // Phase 9. Conservation profiling, substitution scoring and point-mutation
+    // rebuilds. Present in every build: it refuses below its homolog minimum and
+    // when its rotamer pack is missing, rather than being absent.
+    IVariantModule*     variants   = nullptr;
+    // Phase 7. Retrieval only: mechanism records, panel coverage, pathway membership,
+    // interaction flags and pharmacogenomic notes. Present in every build; with the
+    // science feature off its network-backed methods report why they retrieved nothing.
+    IMechanismModule*   mechanism  = nullptr;
     // Phase 14. `flux` stays a nullptr in a build without BIOCAD_ENABLE_FBA and is
     // deliberately NOT required by valid(): the constraint-based path is an optional
     // feature, so requiring it would make every default build invalid.
@@ -39,7 +47,8 @@ struct Services {
         return library && stability && admet && absorption &&
                similarity && legal && docking && runs && pharmacodynamics &&
                sequence && structure && metabolismFacts && alerts && ionization &&
-               nucleicAcid && assay && biologics && populationPk && simulation && enrichment;
+               nucleicAcid && assay && biologics && populationPk && simulation && enrichment &&
+               mechanism && variants;
     }
 };
 

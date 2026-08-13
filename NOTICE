@@ -115,6 +115,16 @@ United States (public domain):
 |-----------|---------|-------|------------|
 | NIST Standard Reference Database 144, *Atomic Weights and Isotopic Compositions with Relative Atomic Masses* (J. S. Coursey, D. J. Schwab, J. J. Tsai, R. A. Dragoset, NIST Physical Measurement Laboratory) - relative atomic masses, representative terrestrial isotopic compositions, and standard atomic weights | **Public domain** (work of the US Government; NIST asks to be cited, and does not endorse derived products) | transcribed into `assets/packs/descriptors/isotopes.json` (`source` and `licence` fields record this), consumed by `src/chem/Formula.cpp` and returned by `chem::formulaCitation()` | None legally. Keep the `source` field intact and keep citing NIST SRD 144 as the origin of every mass BioCAD computes from it |
 
+A third shipped data file is **not** transcribed from anyone: the rotamer pack is
+measured here from public-domain coordinates, and it is listed because a reader
+will reasonably expect the Dunbrack library and must be told plainly that this is
+not it:
+
+| Component | Licence | Where | Obligation |
+|-----------|---------|-------|------------|
+| Backbone-dependent rotamer means, circular standard deviations, probabilities and side-chain internal coordinates measured from 219 RCSB PDB X-ray entries at <= 1.4 A by `scripts/build-rotamer-pack.py` | **CC0 1.0** on the input coordinates (wwPDB); the derived table is BioCAD's own | `assets/packs/rotamers/rotamers-pdb-derived-2026.json`, consumed by `src/bio/Rotamer.cpp` | None. The pack lists its 219 source entries in `dataset.entries`; keep that field |
+| Shapovalov & Dunbrack 2011, *Structure* 19:844-858 - the 2010 smoothed backbone-dependent rotamer library | CC BY 4.0, but distributed **only** through a manually approved licence application (`https://dunbrack.fccc.edu/lab/bbdep2010`), so it could not be obtained and is **NOT redistributed here** | the rotamer BINNING CONVENTION only (rotameric chi thirds, non-rotameric terminal chi, phi/psi bins), recorded in the pack's `notDunbrack` and `attribution` fields | Citation only. Nothing from that library ships. If it is ever licensed and added, it arrives as its own pack file with its own CC BY 4.0 attribution entry here |
+
 4b. Works cited by the shipped rule and descriptor packs
 -----------------------------------------------------------------------------
 

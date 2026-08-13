@@ -50,6 +50,7 @@ $shots = @(
     @{ name = "interactions"; panel = "InteractionScenarios" }
     @{ name = "sequence";    panel = "Sequence" }
     @{ name = "structure3d"; panel = "Structure3D" }
+    @{ name = "variants";    panel = "Variants" }
     @{ name = "settings";    panel = "Settings" }
 )
 

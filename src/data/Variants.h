@@ -63,10 +63,16 @@ struct ConservationProfile {
     bool                            usable = false;
     int                             minimumHomologsRequired = 0;
     std::string                     backgroundFrequencySource;
+    // The query sequence itself, kept even when the profile is unusable. Without
+    // it a BLOSUM62 delta - which does not depend on the homolog set at all -
+    // would be unavailable purely because the conservation half was refused, and
+    // the cheap honest number would be lost with the expensive uncertain one.
+    std::string                     query;
     std::vector<std::string>        warnings;
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ConservationProfile, queryId, homologs, columns, usable,
-                                   minimumHomologsRequired, backgroundFrequencySource, warnings)
+                                   minimumHomologsRequired, backgroundFrequencySource, query,
+                                   warnings)
 
 // One substitution's conservation-based scores. The two published thresholds are
 // carried WITH the scores so the reader is not left to remember them: SIFT is

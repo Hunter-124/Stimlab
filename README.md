@@ -46,9 +46,16 @@ The error bar and the tier are part of the value, never a tooltip.
 | Area | What it provides | |
 | --- | --- | --- |
 | **Structure and properties** | SMILES parsing, molecular graph, descriptors, formula/MW/logP/TPSA, 3D conformer embedding, and a DX11 molecular viewport | ![Structure](docs/media/structure.png) |
+| **Cheminformatics engine** | SSSR rings, graph aromaticity perception, canonical SMILES with a 64-bit graph hash, a full SMARTS parser with recursive `$()` and a VF2 matcher, faithful Wildman-Crippen logP/MR, and pack-defined functional groups and structural alerts | ![Structure](docs/media/structure.png) |
+| **Exact chemistry** | Formula and isotope arithmetic over the NIST table, equation balancing from the integer null space, the component-tableau speciation solver with Davies activities, buffer capacity, and pH-solubility with the salt-limited branch | ![Absorption](docs/media/absorption.png) |
 | **Docking** | Ranked poses from real AutoDock Vina / smina, with Vina-GPU (OpenCL) and a first-party CUDA backend; auto-provisioned engines and on-demand receptor prep | ![Docking](docs/media/docking.png) |
 | **Absorption and PK** | Absorbed fraction and hepatic availability under the well-stirred model, with the assumption set printed beside the number | ![Absorption](docs/media/absorption.png) |
-| **ADMET and metabolism** | Structure-derived liability perception driving metabolism, stability and safety endpoints | ![Metabolism](docs/media/metabolism.png) |
+| **PK/PD and population PK** | Dose-response and Schild fits, Cheng-Prusoff, an RK4 exposure engine, target occupancy, seeded population variability bands, noncompartmental analysis, and mechanistic static and dynamic drug-interaction models | ![Absorption](docs/media/absorption.png) |
+| **Assay workbench** | Plate import (long or 96/384/1536 grid), Z-prime and robust QC, 4PL/5PL, enzyme kinetics with modality selection by AICc, SPR/BLI, DSF and ITC fits, and forward simulation of a plate you have not run yet | ![Metabolism](docs/media/metabolism.png) |
+| **ADMET and metabolism** | Structure-derived liability perception driving metabolism, stability and safety endpoints, curated cited metabolite facts, and structural alerts as liability flags | ![Metabolism](docs/media/metabolism.png) |
+| **Proteins and biologics** | PDB/mmCIF I/O, Gotoh alignment, Kabach superposition, lDDT and SASA, IMGT antibody numbering with anchor-or-nothing refusal, sequence liabilities, mass ladders, interfaces and a geometric alanine scan | ![Structure](docs/media/structure.png) |
+| **Systems biology** | Reaction networks with an analytic Jacobian, an L-stable Rosenbrock solver, Gillespie and tau-leaping, Arrhenius/Eyring kinetics, an SBML L3V2 subset, optional FBA, and hypergeometric pathway enrichment | ![Workflows](docs/media/workflows-dag.gif) |
+| **DNA / RNA workbench** | IUPAC sequences, FASTA and GenBank I/O, restriction mapping, six-frame translation and ORFs, SantaLucia oligo thermodynamics, primer design, codon metrics and constraint-based codon optimization | ![Structure](docs/media/structure.png) |
 | **Similarity and analogs** | Fingerprint and pharmacophore similarity against the loaded catalog, plus an analog sketch/compare workflow | ![Similarity](docs/media/similarity.png) |
 | **Legal analog** | Substantial-similarity scorecard against controlled references - illustrative, explicitly not legal advice | ![Legal](docs/media/legal.png) |
 | **Workflows** | A cancellable, content-cached prep-to-dock DAG with a live execution view | ![Workflows](docs/media/workflows-dag.gif) |
@@ -78,16 +85,16 @@ There is no hard-coded compound table. Packs are versioned JSON documents under
 
 An unknown `schemaVersion` is a load error shown in the Presets panel, never a silent skip. A
 binding-site box requires a real PDB entry; a target without one is listed as an honest
-coverage gap rather than given an invented site. Four packs ship built in: 67 compounds and 59
+coverage gap rather than given an invented site. Four packs ship built in: 69 compounds and 59
 targets, 29 of them dockable. Full schema in [docs/packs.md](docs/packs.md).
 
 ## Architecture
 
 Modules are compile-time dependency injection through a struct of interface pointers
-(`src/contracts/Services.h`), populated by `RealBackend::services()` and mirrored by a
-`RealBackend::services()`. There is no plugin loader, and there is deliberately no fake
-backend: the test suite runs the shipping implementation, because a suite that validates a
-double while the product ships the original proves nothing.
+(`src/contracts/Services.h`), populated by `RealBackend::services()`. There is no plugin
+loader, and there is deliberately no fake backend: the test suite runs the shipping
+implementation, because a suite that validates a double while the product ships the original
+proves nothing.
 
 ```text
 ┌───────────────────────────────────────────────────────────────────────────┐
@@ -120,7 +127,12 @@ provisioning, receptor-prep and scoring story is in [docs/docking.md](docs/docki
 | [docs/docking.md](docs/docking.md) | Engine locate/provision order, receptor prep, PDBQT, the box marker, what a Vina score is and is not |
 | [docs/pkpd.md](docs/pkpd.md) | Dose-response fits, Cheng-Prusoff, Schild, the PK engine and occupancy |
 | [docs/population-pk.md](docs/population-pk.md) | The seeded sampler, population variability bands, noncompartmental analysis, and the mechanistic static and dynamic drug-interaction models |
+| [docs/assay.md](docs/assay.md) | The plate import format, the QC statistics with their published bands, the fitted models, and the measured design-simulation coverage |
 | [docs/protein.md](docs/protein.md) | Structure and sequence I/O, alignment, superposition, structure scoring |
+| [docs/rendering.md](docs/rendering.md) | Residue-template bonding, the cartoon pipeline and its constants, the 180-degree flip check with its measured twist, and what the DX11 mesh path could not be run against |
+| [docs/biologics.md](docs/biologics.md) | IMGT numbering and the anchor refusal, sequence liabilities, developability descriptors, mass ladders, interfaces, and the geometric alanine scan |
+| [docs/systems.md](docs/systems.md) | Reaction networks, the solvers and their reported settings, chemical kinetics, the SBML subset, flux, and pathway enrichment |
+| [docs/nucleic.md](docs/nucleic.md) | The DNA/RNA workbench, the nearest-neighbour parameter set, the guide-search honesty rule, and the biosecurity boundary |
 | [docs/data-sources.md](docs/data-sources.md) | Every external service, its endpoint, its licence, and what may be cached or committed |
 | [docs/limitations.md](docs/limitations.md) | The do-not-ship list, descriptor fidelity, and the honesty rules |
 

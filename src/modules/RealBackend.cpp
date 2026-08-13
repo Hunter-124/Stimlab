@@ -17,8 +17,10 @@
 #include "modules/SimulationModule.h"
 #include "modules/BiologicsModule.h"
 #include "modules/PopulationPkModule.h"
+#include "modules/VariantModule.h"
 #include "modules/BioModules.h"
 #include "modules/IonizationModule.h"
+#include "modules/MechanismModule.h"
 #include "modules/Metabolites.h"
 #include "modules/NucleicModule.h"
 #include "modules/docking/Backends.h"
@@ -509,6 +511,14 @@ struct RealBackend::Impl {
     // A failed IMGT anchor returns NO numbering here, and the alanine scan is a
     // unit-free rank ordering rather than a binding energy.
     RealBiologics biologics;
+    // Phase 9. Conservation profiling, substitution scoring and rotamer rebuilds.
+    // Below its homolog minimum every dependent quantity is NotComputed, and a
+    // rebuild with no rotamer pack on disk produces no angles at all.
+    RealVariants variants;
+    // Phase 7. Retrieval only. It consumes the docking module rather than scoring
+    // anything itself, and the loaded catalog only so a compound id can be resolved
+    // to its ChEMBL cross-reference; it is declared last so `docking` already exists.
+    RealMechanism mechanism{&docking, packReport.compounds()};
 };
 
 RealBackend::RealBackend() : impl_(std::make_unique<Impl>()) {}
@@ -539,6 +549,8 @@ Services RealBackend::services() {
 #endif
     s.populationPk = &impl_->populationPk;
     s.biologics = &impl_->biologics;
+    s.variants = &impl_->variants;
+    s.mechanism = &impl_->mechanism;
     return s;
 }
 
