@@ -56,7 +56,7 @@ implements or consumes them inherits `biocad_data` and `biocad_chem` through it.
 `src/contracts/Services.h` is the whole dependency-injection mechanism:
 
 ```cpp
-struct Services {
+struct Services {                        // abridged - see the header for every member
     ILibrary*           library    = nullptr;
     IStabilityModule*   stability  = nullptr;
     IAdmetModule*       admet      = nullptr;
@@ -65,6 +65,7 @@ struct Services {
     ILegalModule*       legal      = nullptr;
     IDockingModule*     docking    = nullptr;
     IRunStore*          runs       = nullptr;
+    IIonizationModule*  ionization = nullptr;   // Ionization panel: exact chemistry
 
     [[nodiscard]] bool valid() const;
 };

@@ -5,6 +5,7 @@ add_library(biocad_modules STATIC
   Pipelines.cpp
   Metabolites.cpp
   AlertsModule.cpp
+  IonizationModule.cpp
   docking/Presets.cpp
   docking/PdbqtWriter.cpp
   docking/VinaParser.cpp

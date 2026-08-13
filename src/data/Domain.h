@@ -240,7 +240,10 @@ struct AbsorptionReport {
     double      hiaPct = 0;               // human intestinal absorption (%)
     double      caco2LogPapp = 0;         // log(cm/s) apparent permeability
     double      logBB = 0;                // blood-brain barrier partition (logBB)
-    double      logS = 0;                 // aqueous solubility (logS, mol/L)
+    // Aqueous solubility as log10 mol/L. This was a fabricated regression on MW and
+    // logP; it is now a Quantity so an absent melting point reads notComputed rather
+    // than a plausible-looking number. The JSON key is unchanged on purpose.
+    Quantity    logS;
     bool        pgpSubstrate = false;     // P-glycoprotein efflux substrate
     bool        cnsPenetrant = false;     // crosses BBB meaningfully
     std::vector<PkMetric> metrics;        // for the PK dashboard / charts
@@ -355,13 +358,21 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(CurveFit, top, bottom, ec50, hillSlope, rSqua
 // How an inhibitor acts. There is no default: competitive and uncompetitive differ
 // by 10x at [S] = 10*Km and by 100x at [S] = 100*Km, so guessing would silently
 // magnitude. ChEMBL has no UNCOMPETITIVE action type to disambiguate with.
-enum class InhibitionModality { Competitive, Noncompetitive, Uncompetitive, RadioligandBinding };
+// Unknown and Mixed exist for the one producer that can legitimately return them:
+// the Phase 10 global fit over the full [S] x [I] matrix, which selects a modality
+// by AICc and answers Unknown when the difference is under 2. Cheng-Prusoff
+// refuses to convert an IC50 under Unknown rather than falling back to
+// competitive.
+enum class InhibitionModality { Competitive, Noncompetitive, Uncompetitive, Mixed,
+                               RadioligandBinding, Unknown };
 
 NLOHMANN_JSON_SERIALIZE_ENUM(InhibitionModality, {
     {InhibitionModality::Competitive,        "competitive"},
     {InhibitionModality::Noncompetitive,     "noncompetitive"},
     {InhibitionModality::Uncompetitive,      "uncompetitive"},
+    {InhibitionModality::Mixed,              "mixed"},
     {InhibitionModality::RadioligandBinding, "radioligand-binding"},
+    {InhibitionModality::Unknown,            "unknown"},
 })
 
 // Cheng-Prusoff input. The modality decides which fields are REQUIRED; a missing

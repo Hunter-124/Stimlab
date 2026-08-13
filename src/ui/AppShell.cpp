@@ -93,6 +93,8 @@ AppShell::AppShell(Services services) : svc_(services) {
          "Liability flags: substructures literature-associated with reactive-metabolite formation. Not a toxicity verdict.", "Predict"},
         {"PkPd", "PK / PD",
          "Exposure scenarios: concentration-time and target-occupancy curves under stated assumptions.", "Predict"},
+        {"Ionization", "Ionization & Solubility",
+         "Microspecies fractions, logD, pH-solubility with the pHmax kink, buffer capacity, isotope envelope and dissolution. pKa and melting point are inputs, never guessed.", "Predict"},
         {"Sequence", "Sequence Compare",
          "Pairwise protein sequence alignment (global or local) with identity, similarity and an E-value.", "Discover"},
         {"Structure3D", "Protein Structure",
@@ -1152,6 +1154,196 @@ void AppShell::registerAgentServiceTools() {
                 return {j.dump(), false};
             }));
     }
+
+    // ---- Exact chemistry (Phase 11). Two of these are arithmetic on measured
+    // isotope masses and are therefore unconditionally available; the other two
+    // depend on a pKa, which is an INPUT. None of them predicts a pKa, and the
+    // solubility tool is deliberately NOT called "predict_solubility_profile":
+    // "predict" would tell the model it may quote the curve for a compound whose
+    // dissociation constants nobody measured, which is the exact failure this
+    // phase is built to prevent.
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"formula", {{"type", "string"},
+                           {"description", "A molecular formula, e.g. \"C13H18O2\", "
+                                           "\"CuSO4.5H2O\", \"[13C]6H12O6\", \"SO4 2-\". Takes "
+                                           "precedence over 'compound'."}}},
+              {"compound", {{"type", "string"},
+                            {"description", "Library name/id or SMILES; its formula is used when "
+                                            "'formula' is omitted."}}},
+              {"min_intensity", {{"type", "number"},
+                                 {"description", "Isotope peaks below this fraction of the base "
+                                                 "peak are pruned (default 1e-4)."}}}}}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "compute_exact_mass",
+            "Compute the monoisotopic mass, the average mass, m/z, electron count and "
+            "rings-plus-double-bond equivalents of a molecular formula, plus its theoretical "
+            "isotope envelope. Monoisotopic and average mass are NOT interchangeable: the "
+            "monoisotopic mass is the sum of each element's most abundant isotope and matches a "
+            "resolved low-mass peak, while above roughly 10 kDa only the average mass "
+            "corresponds to an observed envelope centroid. Both are returned; quote the right "
+            "one. Every number here is arithmetic on measured NIST isotope masses, so it is "
+            "'measured' provenance, not a prediction.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.ionization) return {"Ionization service unavailable.", true};
+                std::string text = args.value("formula", "");
+                if (text.empty()) {
+                    const auto mo = resolveAgentCompound(args.value("compound", ""));
+                    if (!mo) return {"Give a 'formula', or a 'compound' that resolves.", true};
+                    text = mo->formula;
+                    if (text.empty())
+                        return {"That compound carries no molecular formula to compute from.", true};
+                }
+                const auto fm = svc_.ionization->formula(text);
+                if (!fm) return {"'" + text + "' is not a molecular formula.", true};
+                const double minI = args.value("min_intensity", 1.0e-4);
+                const IsotopeEnvelope env = svc_.ionization->envelope(text, minI);
+                return {json{{"mass", *fm}, {"envelope", env}}.dump(), false};
+            }));
+    }
+
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"reactants", {{"type", "array"}, {"items", {{"type", "string"}}},
+                             {"description", "Reactant formulas, e.g. [\"C3H8\", \"O2\"]."}}},
+              {"products", {{"type", "array"}, {"items", {{"type", "string"}}},
+                            {"description", "Product formulas, e.g. [\"CO2\", \"H2O\"]."}}},
+              {"reactant_grams", {{"type", "array"}, {"items", {{"type", "number"}}},
+                                  {"description", "Optional, parallel to 'reactants'. Supplying "
+                                                  "these adds the limiting reagent, the "
+                                                  "theoretical yield of the FIRST product, and "
+                                                  "atom economy."}}}}},
+            {"required", json::array({"reactants", "products"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "balance_equation",
+            "Balance a chemical equation the USER wrote, by the integer null space of its "
+            "element-conservation matrix, and optionally report the limiting reagent, "
+            "theoretical yield and atom economy from supplied reactant masses. This is "
+            "stoichiometric arithmetic on a stated composition and nothing else: it returns no "
+            "reaction conditions, no route, no reagent or precursor selection, no procedure and "
+            "no scale-up, and you must not supply any of those either. An equation that cannot "
+            "be balanced exactly comes back balanced = false with the reason - there is no "
+            "approximate answer.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.ionization) return {"Ionization service unavailable.", true};
+                if (!args.contains("reactants") || !args["reactants"].is_array() ||
+                    args["reactants"].empty())
+                    return {"Provide a non-empty 'reactants' array of formulas.", true};
+                if (!args.contains("products") || !args["products"].is_array() ||
+                    args["products"].empty())
+                    return {"Provide a non-empty 'products' array of formulas.", true};
+                std::vector<std::string> reactants, products;
+                for (const auto& v : args["reactants"]) reactants.push_back(v.get<std::string>());
+                for (const auto& v : args["products"]) products.push_back(v.get<std::string>());
+                std::vector<double> grams;
+                if (args.contains("reactant_grams") && args["reactant_grams"].is_array()) {
+                    for (const auto& v : args["reactant_grams"]) grams.push_back(v.get<double>());
+                    if (grams.size() != reactants.size())
+                        return {"'reactant_grams' must be parallel to 'reactants'.", true};
+                }
+                const BalancedEquation b =
+                    svc_.ionization->balance(reactants, products, grams);
+                return {json{{"equation", b},
+                             {"scope", "stoichiometry only - no conditions, route, precursor or "
+                                       "scale-up is available from this tool"}}
+                            .dump(),
+                        false};
+            }));
+    }
+
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"compound", {{"type", "string"},
+                            {"description", "Library name/id or SMILES."}}},
+              {"ph", {{"type", "number"}, {"description", "The pH to report, 0-14."}}}}},
+            {"required", json::array({"ph"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "speciation_at_ph",
+            "Report a compound's microspecies fractions, net charge and log D at one pH, from "
+            "its CITED dissociation constants. pKa is an input read from BioCAD's cited "
+            "ionization pack - it is never predicted and never guessed - so a compound absent "
+            "from that pack is refused by name rather than answered approximately. Do not "
+            "estimate a pKa yourself to work around a refusal, and do not present these "
+            "fractions for a compound the tool declined. Groups are treated as independent, so "
+            "interacting neighbouring groups shift by up to about a pKa unit.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.ionization) return {"Ionization service unavailable.", true};
+                if (!args.contains("ph") || !args["ph"].is_number())
+                    return {"A numeric 'ph' is required.", true};
+                const auto mo = resolveAgentCompound(args.value("compound", ""));
+                if (!mo) return {"Could not resolve a compound from that argument.", true};
+                const IonizationReport r = svc_.ionization->analyze(*mo);
+                if (r.speciation.points.empty()) {
+                    return {"Refused for " + mo->name + ": " +
+                                r.speciation.isoelectricPoint.source +
+                                ". BioCAD does not predict a pKa, so there is no speciation to "
+                                "report. Supply measured dissociation constants or add a cited "
+                                "pack entry.",
+                            true};
+                }
+                const double ph = args["ph"].get<double>();
+                const SpeciationPoint* best = &r.speciation.points.front();
+                for (const auto& p : r.speciation.points)
+                    if (std::fabs(p.pH - ph) < std::fabs(best->pH - ph)) best = &p;
+                return {json{{"compound", mo->name},
+                             {"requestedPh", ph},
+                             {"reportedPh", best->pH},
+                             {"microspeciesLabels", r.speciation.labels},
+                             {"point", *best},
+                             {"isoelectricPoint", r.speciation.isoelectricPoint},
+                             {"logDAtPh74", r.speciation.logDAtPh74},
+                             {"logPUsed", r.speciation.logP},
+                             {"assumptions", r.speciation.assumptions}}
+                            .dump(),
+                        false};
+            }));
+    }
+
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"compound", {{"type", "string"},
+                            {"description", "Library name/id or SMILES."}}}}}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "solubility_profile",
+            "Return a compound's pH-solubility profile and BCS numbers, computed from CITED "
+            "inputs only: the intrinsic solubility comes from the General Solubility Equation, "
+            "which REQUIRES a measured melting point, and the pH dependence requires a measured "
+            "pKa. Nothing here is predicted from structure - there is no solubility model in "
+            "BioCAD that runs without those inputs, which is why this tool is not named "
+            "'predict'. Fields whose prerequisite is absent come back as not-computed naming it; "
+            "report them that way and never substitute an estimate. The salt-limited plateau and "
+            "its pHmax are omitted unless a Ksp and counter-ion concentration were supplied, "
+            "because a kink at an unknown pH is the most misleading feature of such a plot.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.ionization) return {"Ionization service unavailable.", true};
+                const auto mo = resolveAgentCompound(args.value("compound", ""));
+                if (!mo) return {"Could not resolve a compound from that argument.", true};
+                const IonizationReport r = svc_.ionization->analyze(*mo);
+                if (r.solubility.curve.empty()) {
+                    return {"Refused for " + mo->name + ": needs " +
+                                r.solubility.intrinsic.source +
+                                (r.speciation.points.empty()
+                                     ? ", and needs " + r.speciation.isoelectricPoint.source
+                                     : "") +
+                                ". These are measured inputs, not things BioCAD estimates.",
+                            true};
+                }
+                return {json{{"compound", mo->name},
+                             {"solubility", r.solubility},
+                             {"buffer", r.buffer},
+                             {"dissolution", r.dissolution}}
+                            .dump(),
+                        false};
+            }));
+    }
 }
 
 void AppShell::registerAgentWebTools() {
@@ -1552,6 +1744,7 @@ void AppShell::drawContent() {
         else if (panel == "Alerts")      panels::alerts(*this);
         else if (panel == "Metabolites") panels::metabolites(*this);
         else if (panel == "PkPd")        panels::pkpd(*this);
+        else if (panel == "Ionization")  panels::ionization(*this);
         else if (panel == "Sequence")    panels::sequenceCompare(*this);
         else if (panel == "Structure3D") panels::proteinStructure(*this);
         else if (panel == "Similarity")  panels::similarity(*this);

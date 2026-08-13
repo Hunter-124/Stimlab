@@ -20,12 +20,14 @@
 #include "chem/Canonical.h"
 #include "chem/Rings.h"
 #include "chem/Aromaticity.h"
+#include "chem/Solubility.h"
 #include "chem/Descriptors.h"
 #include "chem/Perceive.h"
 #include "chem/Embed3D.h"
 #include "chem/Smiles.h"
 #include "core/AppPaths.h"
 #include "core/Manifest.h"
+#include "modules/IonizationModule.h"
 #include "modules/Metabolites.h"
 #include "modules/docking/Presets.h"
 #include "modules/docking/Provisioning.h"
@@ -802,6 +804,9 @@ void absorption(AppShell& shell) {
     drawQuantity("Absorbed fraction (rank order)",
                  makeQuantity(r.hiaPct / 100.0, "", 0.0, Provenance::Heuristic,
                               "Veber/Egan descriptor model"));
+    // Aqueous solubility comes back NotComputed without a melting point, and that is
+    // exactly what the reader must see instead of a fabricated logS.
+    drawQuantity("Aqueous solubility (log10 mol/L)", r.logS);
     ImGui::Spacing();
 
     // Percent-scale metrics charted together (F and HIA), others in the table.
@@ -1297,6 +1302,308 @@ void metabolites(AppShell& shell) {
     ImGui::Spacing();
     theme::sectionHeader("WHY NOTHING HERE IS ENUMERATED");
     ImGui::TextWrapped("%s", metaboliteNoEnumerationNote());
+}
+
+// --------------------------------------------------- Ionization & Solubility
+// Every curve on this surface rests on a pKa, a melting point, a Ksp or a rate
+// constant, and every one of those is an INPUT. So the panel's first job is to
+// say which inputs it had and which it did not: a missing prerequisite is named
+// in the body, in the place the curve would have been, never tucked into a
+// tooltip a reader can miss. Formula, exact mass and the isotope envelope are
+// deliberately drawn first because they are the one part of this panel that is
+// always available - they are arithmetic on measured isotope masses, not a model.
+void ionization(AppShell& shell) {
+    Services& s = shell.services();
+    if (!s.ionization) return;
+    const Molecule          m = shell.currentMolecule();
+    const IonizationReport  r = s.ionization->analyze(m);
+
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(theme::provenanceColor(Provenance::Measured), "%s", ionizationInputNote());
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+
+    // A pack that failed to parse is louder than a compound that is merely absent,
+    // because the two call for opposite responses and look identical downstream.
+    if (const auto* real = dynamic_cast<const RealIonization*>(s.ionization)) {
+        const auto& pack = real->pack();
+        if (!pack.errors.empty()) {
+            theme::sectionHeader("IONIZATION PACK FAILED TO LOAD");
+            for (const auto& e : pack.errors) ImGui::TextColored(theme::verdictColor(3), "%s", e.c_str());
+            ImGui::Spacing();
+        }
+    }
+
+    // ---------------------------------------------- formula and exact mass
+    theme::sectionHeader("FORMULA AND EXACT MASS");
+    statCard("FORMULA", r.mass.formula, "Hill order", 190.0f);
+    ImGui::SameLine();
+    statCard("MONOISOTOPIC", f2(r.mass.monoisotopic.value), "Da (most abundant isotopes)", 210.0f);
+    ImGui::SameLine();
+    statCard("AVERAGE", f2(r.mass.average.value), "Da (standard atomic weights)", 200.0f);
+    ImGui::SameLine();
+    statCard("RDBE", f2(r.mass.unsaturation), "rings + double bonds", 160.0f);
+    ImGui::Spacing();
+    drawQuantity("Monoisotopic mass", r.mass.monoisotopic);
+    drawQuantity("Average mass", r.mass.average);
+    // The m/z row is present even for a neutral, where it reads "not computed -
+    // needs charge is zero": a blank row would invite the reader to assume the
+    // number merely failed this time.
+    drawQuantity("m/z", r.mass.mz);
+    ImGui::TextColored(theme::provenanceColor(Provenance::Measured), "Electrons: %d",
+                       r.mass.electrons);
+    for (const auto& w : r.mass.warnings)
+        ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic), "%s", w.c_str());
+    ImGui::Spacing();
+
+    // ------------------------------------------------- isotope envelope
+    theme::sectionHeader("THEORETICAL ISOTOPE ENVELOPE");
+    if (r.envelope.peaks.empty()) {
+        ImGui::TextColored(theme::provenanceColor(Provenance::NotComputed), "%s",
+                           r.envelope.source.c_str());
+    } else {
+        std::vector<double> mz, rel;
+        mz.reserve(r.envelope.peaks.size());
+        rel.reserve(r.envelope.peaks.size());
+        for (const auto& p : r.envelope.peaks) {
+            mz.push_back(p.mass);
+            rel.push_back(p.intensity);
+        }
+        if (ImPlot::BeginPlot("##ion-env", ImVec2(-1, 190),
+                              ImPlotFlags_NoMouseText | ImPlotFlags_NoLegend)) {
+            ImPlot::SetupAxes("m/z (Da)", "relative intensity");
+            ImPlot::SetupAxisLimits(ImAxis_Y1, 0.0, 1.05, ImPlotCond_Always);
+            ImPlot::PlotStems("isotopologue", mz.data(), rel.data(),
+                              static_cast<int>(mz.size()));
+            ImPlot::EndPlot();
+        }
+        ImGui::TextWrapped("Peaks below %.1e of the base peak were pruned. Isotope masses and "
+                           "abundances: %s", r.envelope.prunedBelow, r.envelope.source.c_str());
+    }
+    ImGui::Spacing();
+
+    // ------------------------------------------- microspecies vs pH
+    theme::sectionHeader("MICROSPECIES DISTRIBUTION VS pH");
+    const std::size_t nL = r.speciation.labels.size();
+    const std::size_t nP = r.speciation.points.size();
+    if (nP < 2 || nL == 0) {
+        // The missing input, in the body, where the plot would have been.
+        ImGui::TextColored(theme::provenanceColor(Provenance::NotComputed),
+                           "No microspecies plot: this needs %s.",
+                           r.speciation.isoelectricPoint.source.empty()
+                               ? "a cited pKa"
+                               : r.speciation.isoelectricPoint.source.c_str());
+    } else {
+        std::vector<double> xs(nP);
+        // Stacked areas need cumulative bounds, so cum[k] is the running sum below
+        // species k and cum[k+1] the sum including it.
+        std::vector<std::vector<double>> cum(nL + 1, std::vector<double>(nP, 0.0));
+        for (std::size_t p = 0; p < nP; ++p) {
+            xs[p] = r.speciation.points[p].pH;
+            for (std::size_t k = 0; k < nL; ++k) {
+                const auto& fr = r.speciation.points[p].microspeciesFractions;
+                cum[k + 1][p] = cum[k][p] + (k < fr.size() ? fr[k] : 0.0);
+            }
+        }
+        if (ImPlot::BeginPlot("##ion-spec", ImVec2(-1, 240))) {
+            ImPlot::SetupAxes("pH", "fraction of compound");
+            ImPlot::SetupAxisLimits(ImAxis_Y1, 0.0, 1.0, ImPlotCond_Always);
+            for (std::size_t k = 0; k < nL; ++k)
+                ImPlot::PlotShaded(r.speciation.labels[k].c_str(), xs.data(), cum[k].data(),
+                                   cum[k + 1].data(), static_cast<int>(nP));
+            ImPlot::EndPlot();
+        }
+
+        std::vector<double> charge(nP), logD(nP);
+        for (std::size_t p = 0; p < nP; ++p) {
+            charge[p] = r.speciation.points[p].netCharge;
+            logD[p]   = r.speciation.points[p].logD;
+        }
+        if (ImPlot::BeginPlot("##ion-charge", ImVec2(-1, 190))) {
+            ImPlot::SetupAxes("pH", "net charge (e) / log D");
+            ImPlot::PlotLine("net charge", xs.data(), charge.data(), static_cast<int>(nP));
+            // logD shares the axis on purpose: the pH at which the charge leaves
+            // zero is exactly the pH at which logD departs from logP, and splitting
+            // the two plots hides that they are the same event.
+            ImPlot::PlotLine("log D", xs.data(), logD.data(), static_cast<int>(nP));
+            ImPlot::EndPlot();
+        }
+    }
+    drawQuantity("Input log P", r.speciation.logP);
+    drawQuantity("log D at pH 7.4", r.speciation.logDAtPh74);
+    drawQuantity("Isoelectric point", r.speciation.isoelectricPoint);
+    for (const auto& w : r.speciation.warnings)
+        ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic), "%s", w.c_str());
+    ImGui::Spacing();
+
+    // ------------------------------------------------------ pH-solubility
+    theme::sectionHeader("pH-SOLUBILITY PROFILE");
+    if (r.solubility.curve.size() < 2) {
+        ImGui::TextColored(theme::provenanceColor(Provenance::NotComputed),
+                           "No solubility curve: this needs %s.",
+                           r.solubility.intrinsic.source.empty()
+                               ? "a melting point and a log P, or a measured intrinsic solubility"
+                               : r.solubility.intrinsic.source.c_str());
+    } else {
+        std::vector<double> sx, sy, saltX, saltY;
+        for (const auto& p : r.solubility.curve) {
+            sx.push_back(p.pH);
+            sy.push_back(p.logS);
+            if (p.saltLimited) {
+                saltX.push_back(p.pH);
+                saltY.push_back(p.logS);
+            }
+        }
+        // logS is plotted directly rather than putting S on a log axis: the value is
+        // already log10 mol/L, and a decade grid on a linear axis of logs is the
+        // same picture with no axis-scale API in the way.
+        if (ImPlot::BeginPlot("##ion-sol", ImVec2(-1, 230))) {
+            ImPlot::SetupAxes("pH", "log10 S (mol/L, total dissolved)");
+            ImPlot::PlotLine("pH-dependent", sx.data(), sy.data(), static_cast<int>(sx.size()));
+            if (!saltX.empty())
+                ImPlot::PlotLine("salt-limited plateau", saltX.data(), saltY.data(),
+                                 static_cast<int>(saltX.size()));
+            ImPlot::EndPlot();
+        }
+        if (saltX.empty()) {
+            ImGui::TextColored(theme::provenanceColor(Provenance::NotComputed),
+                               "No pHmax kink is drawn. The salt plateau needs a Ksp and a "
+                               "counter-ion concentration, and a kink at an unknown pH would be "
+                               "the most misleading feature on the plot.");
+        }
+    }
+    drawQuantity("Intrinsic solubility S0", r.solubility.intrinsic);
+    drawQuantity("pHmax (salt kink)", r.solubility.pHmax);
+    drawQuantity("Solubility at pH 7.4", r.solubility.solubilityAtPh74);
+    drawQuantity("Dose number Do", r.solubility.doseNumber);
+    drawQuantity("Dissolution number Dn", r.solubility.dissolutionNumber);
+    drawQuantity("Absorption number An", r.solubility.absorptionNumber);
+    for (const auto& w : r.solubility.warnings) ImGui::BulletText("%s", w.c_str());
+    ImGui::Spacing();
+
+    // ----------------------------------------------------- buffer capacity
+    theme::sectionHeader("BUFFER CAPACITY (VAN SLYKE)");
+    if (r.buffer.curve.size() < 2) {
+        ImGui::TextColored(theme::provenanceColor(Provenance::NotComputed),
+                           "No buffer-capacity curve: this needs %s.",
+                           r.buffer.betaAtPh74.source.empty() ? "a cited pKa"
+                                                              : r.buffer.betaAtPh74.source.c_str());
+    } else {
+        std::vector<double> bx, by;
+        for (const auto& p : r.buffer.curve) {
+            bx.push_back(p.pH);
+            by.push_back(p.beta);
+        }
+        if (ImPlot::BeginPlot("##ion-buffer", ImVec2(-1, 200))) {
+            ImPlot::SetupAxes("pH", "beta (mol/L per pH)");
+            ImPlot::PlotLine("buffer value", bx.data(), by.data(), static_cast<int>(bx.size()));
+            ImPlot::EndPlot();
+        }
+    }
+    drawQuantity("beta at pH 7.4", r.buffer.betaAtPh74);
+    drawQuantity("Maximum beta", r.buffer.maxCapacity);
+    drawQuantity("pH of maximum beta", r.buffer.maxCapacityPh);
+    ImGui::Spacing();
+
+    // ------------------------------------------- dissolution / precipitation
+    // Dissolution belongs to a FORMULATION, not to a molecule, so these four
+    // numbers are the user's and analyze() refuses to invent them. Once they are
+    // entered the time course is real physics on real inputs.
+    theme::sectionHeader("DISSOLUTION AND pH-SHIFT PRECIPITATION");
+    static double doseMg = 0.0, radiusUm = 0.0, densityGPerCm3 = 0.0, diffusivity = 0.0;
+    static double filmUm = 30.0, kppt = 0.0;
+    static bool   wantPrecipitation = false;
+    ImGui::SetNextItemWidth(130.0f);
+    ImGui::InputDouble("Dose (mg)", &doseMg, 0.0, 0.0, "%.1f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(130.0f);
+    ImGui::InputDouble("Radius (um)", &radiusUm, 0.0, 0.0, "%.2f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(150.0f);
+    ImGui::InputDouble("Density (g/cm3)", &densityGPerCm3, 0.0, 0.0, "%.3f");
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::InputDouble("Diffusivity (cm2/s)", &diffusivity, 0.0, 0.0, "%.2e");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(150.0f);
+    ImGui::InputDouble("Film h (um)", &filmUm, 0.0, 0.0, "%.1f");
+    ImGui::SameLine();
+    ImGui::Checkbox("pH-shift precipitation", &wantPrecipitation);
+    if (wantPrecipitation) {
+        ImGui::SetNextItemWidth(160.0f);
+        ImGui::InputDouble("kppt (1/s)", &kppt, 0.0, 0.0, "%.4e");
+    }
+
+    const bool haveSolubility = r.solubility.solubilityAtPh74.provenance != Provenance::NotComputed;
+    const bool haveMass       = r.mass.average.provenance != Provenance::NotComputed;
+    std::vector<std::string> missing;
+    if (!(doseMg > 0.0)) missing.emplace_back("a dose in mg");
+    if (!(radiusUm > 0.0)) missing.emplace_back("an initial particle radius");
+    if (!(densityGPerCm3 > 0.0)) missing.emplace_back("a solid density");
+    if (!(diffusivity > 0.0)) missing.emplace_back("a diffusivity");
+    if (!(filmUm > 0.0)) missing.emplace_back("a diffusion-layer thickness");
+    if (!haveSolubility) missing.emplace_back("a solubility to dissolve toward (needs a pKa)");
+    if (!haveMass) missing.emplace_back("a molecular weight");
+    if (wantPrecipitation && !(kppt > 0.0))
+        missing.emplace_back("a precipitation rate constant kppt, which is never predicted");
+
+    if (!missing.empty()) {
+        ImGui::TextColored(theme::provenanceColor(Provenance::NotComputed),
+                           "No dissolution time course. Still needed:");
+        for (const auto& mi : missing) ImGui::BulletText("%s", mi.c_str());
+        drawQuantity("Time to 85% dissolved", r.dissolution.timeTo85Pct);
+    } else {
+        chem::DissolutionInput in;
+        in.doseMg               = doseMg;
+        in.molWeight            = r.mass.average.value;
+        in.initialRadiusUm      = radiusUm;
+        in.densityGPerCm3       = densityGPerCm3;
+        in.diffusivityCm2PerS   = diffusivity;
+        in.diffusionLayerUm     = filmUm;
+        in.solubilityMolar      = r.solubility.solubilityAtPh74.value;
+        in.precipitation        = wantPrecipitation;
+        in.kpptPerS             = kppt;
+        in.hasKppt              = wantPrecipitation && kppt > 0.0;
+        in.precipSolubilityMolar = r.solubility.solubilityAtPh74.value;
+        const DissolutionReport d = chem::dissolutionTimeCourse(in);
+
+        std::vector<double> t, dissolved, solid, precipitated;
+        for (const auto& p : d.points) {
+            t.push_back(p.timeS / 60.0);   // minutes read better than seconds
+            dissolved.push_back(p.dissolvedMolar);
+            solid.push_back(p.solidMg);
+            precipitated.push_back(p.precipitatedMg);
+        }
+        if (t.size() > 1 && ImPlot::BeginPlot("##ion-diss", ImVec2(-1, 220))) {
+            ImPlot::SetupAxes("time (min)", "dissolved (mol/L)");
+            ImPlot::PlotLine("dissolved", t.data(), dissolved.data(), static_cast<int>(t.size()));
+            ImPlot::EndPlot();
+        }
+        if (t.size() > 1 && ImPlot::BeginPlot("##ion-diss-mass", ImVec2(-1, 200))) {
+            ImPlot::SetupAxes("time (min)", "mass (mg)");
+            ImPlot::PlotLine("undissolved solid", t.data(), solid.data(),
+                             static_cast<int>(t.size()));
+            ImPlot::PlotLine("precipitated", t.data(), precipitated.data(),
+                             static_cast<int>(t.size()));
+            ImPlot::EndPlot();
+        }
+        drawQuantity("Time to 85% dissolved", d.timeTo85Pct);
+        // The mass-balance residual is shown, not asserted in private: a
+        // dissolution model that loses mass is wrong in a way a single curve hides.
+        ImGui::TextColored(theme::provenanceColor(Provenance::Measured),
+                           "Worst solid+dissolved+precipitated mass imbalance: %.3e mg",
+                           d.maxMassImbalance);
+        for (const auto& a : d.assumptions) ImGui::BulletText("%s", a.c_str());
+        for (const auto& w : d.warnings)
+            ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic), "%s", w.c_str());
+    }
+    ImGui::Spacing();
+
+    // ------------------------------------------------------- assumptions
+    theme::sectionHeader("WHAT THESE CURVES REST ON");
+    for (const auto& a : r.speciation.assumptions) ImGui::BulletText("%s", a.c_str());
+    for (const auto& a : r.solubility.assumptions) ImGui::BulletText("%s", a.c_str());
+    for (const auto& a : r.buffer.assumptions) ImGui::BulletText("%s", a.c_str());
+    for (const auto& a : r.dissolution.assumptions) ImGui::BulletText("%s", a.c_str());
 }
 
 // ------------------------------------------------------ Protein Structure

@@ -7,6 +7,7 @@ add_executable(biocad_tests
   test_chem.cpp
   test_chem_groups.cpp
   test_chem_rings.cpp
+  test_chem_formula.cpp
   test_chem_canonical.cpp
   test_chem_smarts.cpp
   test_chem_alerts.cpp
@@ -29,6 +30,9 @@ add_executable(biocad_tests
   test_bio_align.cpp
   test_bio_io.cpp
   test_metabolites.cpp
+  test_chem_speciation.cpp
+  test_chem_solubility.cpp
+  test_ionization_module.cpp
 )
 
 target_link_libraries(biocad_tests PRIVATE

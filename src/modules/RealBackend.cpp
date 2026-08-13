@@ -14,6 +14,7 @@
 #include "chem/Smiles.h"
 #include "modules/AlertsModule.h"
 #include "modules/BioModules.h"
+#include "modules/IonizationModule.h"
 #include "modules/Metabolites.h"
 #include "modules/docking/Backends.h"
 #include "modules/docking/Presets.h"
@@ -160,7 +161,11 @@ AbsorptionReport realAbsorption(const Molecule& m) {
     r.bioavailabilityPct = bio.bioavailabilityPct;
     r.caco2LogPapp = clampd(-4.80 + 0.30 * logP - 0.008 * tpsa, -7.0, -4.0);
     r.logBB = clampd(0.15 + 0.17 * logP - 0.011 * tpsa, -2.0, 1.2);
-    r.logS = clampd(0.80 - 0.0100 * mw - 0.55 * logP, -6.5, 1.0);
+    // Solubility used to be a regression on MW and logP with invented coefficients.
+    // The General Solubility Equation is the real thing, and it needs a melting
+    // point, which no structure predicts and data::Molecule does not carry - so this
+    // is honestly notComputed until a measured melting point reaches this layer.
+    r.logS = notComputed("melting point");
     r.pgpSubstrate = (mw > 400.0 && m.hba >= 6) || tpsa > 120.0;
     r.cnsPenetrant = (r.logBB > -0.30) && (tpsa < 90.0) && (mw < 450.0);
 
@@ -177,8 +182,9 @@ AbsorptionReport realAbsorption(const Molecule& m) {
          "Higher (less negative) = more permeable."},
         {"BBB partition", r.logBB, "logBB", r.cnsPenetrant ? Verdict::Good : Verdict::Info,
          r.cnsPenetrant ? "Crosses the blood-brain barrier; central site of action plausible." : "Limited blood-brain-barrier partition."},
-        {"Aqueous solubility", r.logS, "logS", band(r.logS, -4.0, -5.0),
-         "Low solubility can dissolution-limit absorption."},
+        // No "Aqueous solubility" row: logS is a Quantity now and is rendered by the
+        // panel through drawQuantity, which can show the NotComputed tier. A PkMetric
+        // carries a bare double and would have to invent one.
         {"P-gp efflux substrate", r.pgpSubstrate ? 1.0 : 0.0, "bool",
          r.pgpSubstrate ? Verdict::Warn : Verdict::Good,
          r.pgpSubstrate ? "Efflux may reduce net absorption." : "Not a likely P-gp substrate."},
@@ -467,6 +473,9 @@ struct RealBackend::Impl {
     RealMetabolismFacts metabolismFacts;
     // Liability flags only: no branch here can produce a toxicity verdict.
     RealAlerts alerts;
+    // pKa and melting point are INPUTS: this member's pack is the only source of
+    // them, and a compound absent from it yields NotComputed, never a guess.
+    RealIonization ionization;
 };
 
 RealBackend::RealBackend() : impl_(std::make_unique<Impl>()) {}
@@ -487,6 +496,7 @@ Services RealBackend::services() {
     s.structure = &impl_->structure;
     s.metabolismFacts = &impl_->metabolismFacts;
     s.alerts = &impl_->alerts;
+    s.ionization = &impl_->ionization;
     return s;
 }
 

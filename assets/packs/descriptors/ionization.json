@@ -1,0 +1,542 @@
+{
+  "schemaVersion": 1,
+  "id": "ionization-inputs",
+  "title": "Ionization, melting-point and measured-logP INPUTS",
+  "description": "Acid/base dissociation constants, melting points and measured octanol-water partition coefficients, per compound id, taken from the compendial and primary physicochemical literature.",
+  "note": "EVERY NUMBER IN THIS FILE IS AN INPUT, NOT A PREDICTION. BioCAD contains no pKa predictor and no melting-point predictor, and it never guesses either one. A compound absent from this pack therefore yields Provenance::NotComputed on every pKa-dependent or melting-point-dependent quantity, naming the missing input - it does not fall back to an assumed default. A group list that is present but empty is itself a cited statement: it means the source reports no dissociation in the 0-14 range, which is different from the compound being absent. Values are the aqueous 25 C thermodynamic or apparent constants as reported; where a source gives a range the reported centre is used and the range is not narrowed. Sources are described in prose because a described source can be checked; a fabricated DOI or page number cannot.",
+  "sources": {
+    "crc": "CRC Handbook of Chemistry and Physics, the 'Dissociation Constants of Organic Acids and Bases' and 'Physical Constants of Organic Compounds' tables",
+    "apds": "Analytical Profiles of Drug Substances (Academic Press / Elsevier monograph series), the physicochemical-properties section of the named compound's profile",
+    "merck": "The Merck Index monograph for the named compound (melting point and solubility section)",
+    "physchem": "the compound's published physicochemical characterisation (potentiometric or spectrophotometric pKa determination, and shake-flask or pH-metric log P determination) as collected in the medicinal-chemistry physicochemical-property literature",
+    "hansch": "Hansch, Leo and Hoekman, Exploring QSAR - Hydrophobic, Electronic and Steric Constants, the measured log P(octanol/water) compilation"
+  },
+  "compounds": [
+    {
+      "id": "acetaminophen",
+      "groups": [
+        { "label": "phenol", "pKa": 9.38, "acidic": true, "source": "crc" }
+      ],
+      "meltingPointC": 169.5,
+      "meltingPointSource": "merck",
+      "logPMeasured": 0.46,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "aspirin",
+      "groups": [
+        { "label": "carboxyl", "pKa": 3.49, "acidic": true, "source": "crc" }
+      ],
+      "meltingPointC": 135.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": 1.19,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "salicylic-acid",
+      "groups": [
+        { "label": "carboxyl", "pKa": 2.97, "acidic": true, "source": "crc" },
+        { "label": "phenol", "pKa": 13.4, "acidic": true, "source": "crc" }
+      ],
+      "meltingPointC": 159.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": 2.26,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "ibuprofen",
+      "groups": [
+        { "label": "carboxyl", "pKa": 4.91, "acidic": true, "source": "physchem" }
+      ],
+      "meltingPointC": 76.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": 3.97,
+      "logPSource": "physchem"
+    },
+    {
+      "id": "naproxen",
+      "groups": [
+        { "label": "carboxyl", "pKa": 4.15, "acidic": true, "source": "physchem" }
+      ],
+      "meltingPointC": 153.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": 3.18,
+      "logPSource": "physchem"
+    },
+    {
+      "id": "diclofenac",
+      "groups": [
+        { "label": "carboxyl", "pKa": 4.15, "acidic": true, "source": "physchem" }
+      ],
+      "meltingPointC": 157.0,
+      "meltingPointSource": "apds",
+      "logPMeasured": 4.51,
+      "logPSource": "physchem"
+    },
+    {
+      "id": "ketoprofen",
+      "groups": [
+        { "label": "carboxyl", "pKa": 4.45, "acidic": true, "source": "physchem" }
+      ],
+      "meltingPointC": 94.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": 3.12,
+      "logPSource": "physchem"
+    },
+    {
+      "id": "indomethacin",
+      "groups": [
+        { "label": "carboxyl", "pKa": 4.5, "acidic": true, "source": "apds" }
+      ],
+      "meltingPointC": 155.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": 4.27,
+      "logPSource": "physchem"
+    },
+    {
+      "id": "celecoxib",
+      "groups": [
+        { "label": "sulfonamide", "pKa": 11.1, "acidic": true, "source": "physchem" }
+      ],
+      "meltingPointC": 158.0,
+      "meltingPointSource": "physchem",
+      "logPMeasured": 3.9,
+      "logPSource": "physchem"
+    },
+    {
+      "id": "meloxicam",
+      "groups": [
+        { "label": "thiazolylammonium", "pKa": 1.09, "acidic": false, "source": "physchem" },
+        { "label": "enol", "pKa": 4.18, "acidic": true, "source": "physchem" }
+      ],
+      "meltingPointC": 254.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": 3.43,
+      "logPSource": "physchem"
+    },
+    {
+      "id": "phenazone",
+      "groups": [
+        { "label": "pyrazolone nitrogen", "pKa": 1.4, "acidic": false, "source": "crc" }
+      ],
+      "meltingPointC": 113.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": 0.38,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "caffeine",
+      "groups": [
+        { "label": "protonated N-9", "pKa": 0.6, "acidic": false, "source": "crc" }
+      ],
+      "meltingPointC": 236.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": -0.07,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "theophylline",
+      "groups": [
+        { "label": "protonated imidazole", "pKa": 3.5, "acidic": false, "source": "crc" },
+        { "label": "imidazole N-H", "pKa": 8.81, "acidic": true, "source": "crc" }
+      ],
+      "meltingPointC": 273.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": -0.02,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "theobromine",
+      "groups": [
+        { "label": "imide N-H", "pKa": 9.9, "acidic": true, "source": "crc" }
+      ],
+      "meltingPointC": 357.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": -0.78,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "nicotine",
+      "groups": [
+        { "label": "pyridinium", "pKa": 3.12, "acidic": false, "source": "crc" },
+        { "label": "pyrrolidinium", "pKa": 8.02, "acidic": false, "source": "crc" }
+      ],
+      "logPMeasured": 1.17,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "amphetamine",
+      "groups": [
+        { "label": "primary ammonium", "pKa": 9.9, "acidic": false, "source": "crc" }
+      ],
+      "logPMeasured": 1.76,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "methamphetamine",
+      "groups": [
+        { "label": "secondary ammonium", "pKa": 10.1, "acidic": false, "source": "crc" }
+      ],
+      "logPMeasured": 2.07,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "mdma",
+      "groups": [
+        { "label": "secondary ammonium", "pKa": 10.14, "acidic": false, "source": "physchem" }
+      ],
+      "logPMeasured": 2.15,
+      "logPSource": "physchem"
+    },
+    {
+      "id": "phentermine",
+      "groups": [
+        { "label": "primary ammonium", "pKa": 10.1, "acidic": false, "source": "crc" }
+      ],
+      "logPMeasured": 1.9,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "phenethylamine",
+      "groups": [
+        { "label": "primary ammonium", "pKa": 9.83, "acidic": false, "source": "crc" }
+      ],
+      "logPMeasured": 1.41,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "ephedrine",
+      "groups": [
+        { "label": "secondary ammonium", "pKa": 9.6, "acidic": false, "source": "crc" }
+      ],
+      "meltingPointC": 34.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": 1.13,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "pseudoephedrine",
+      "groups": [
+        { "label": "secondary ammonium", "pKa": 9.9, "acidic": false, "source": "crc" }
+      ],
+      "meltingPointC": 118.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": 0.89,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "dopamine",
+      "groups": [
+        { "label": "catechol OH (first)", "pKa": 8.9, "acidic": true, "source": "crc" },
+        { "label": "primary ammonium", "pKa": 10.6, "acidic": false, "source": "crc" },
+        { "label": "catechol OH (second)", "pKa": 13.1, "acidic": true, "source": "crc" }
+      ],
+      "logPMeasured": -0.98,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "epinephrine",
+      "groups": [
+        { "label": "catechol OH (first)", "pKa": 8.66, "acidic": true, "source": "crc" },
+        { "label": "secondary ammonium", "pKa": 9.9, "acidic": false, "source": "crc" },
+        { "label": "catechol OH (second)", "pKa": 12.0, "acidic": true, "source": "crc" }
+      ],
+      "logPMeasured": -1.37,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "norepinephrine",
+      "groups": [
+        { "label": "catechol OH (first)", "pKa": 8.6, "acidic": true, "source": "crc" },
+        { "label": "primary ammonium", "pKa": 9.8, "acidic": false, "source": "crc" },
+        { "label": "catechol OH (second)", "pKa": 12.0, "acidic": true, "source": "crc" }
+      ],
+      "logPMeasured": -1.24,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "cocaine",
+      "groups": [
+        { "label": "tropane ammonium", "pKa": 8.6, "acidic": false, "source": "crc" }
+      ],
+      "meltingPointC": 98.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": 2.3,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "codeine",
+      "groups": [
+        { "label": "tertiary ammonium", "pKa": 8.21, "acidic": false, "source": "crc" }
+      ],
+      "meltingPointC": 155.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": 1.19,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "tramadol",
+      "groups": [
+        { "label": "tertiary ammonium", "pKa": 9.41, "acidic": false, "source": "physchem" }
+      ],
+      "logPMeasured": 2.45,
+      "logPSource": "physchem"
+    },
+    {
+      "id": "dextromethorphan",
+      "groups": [
+        { "label": "tertiary ammonium", "pKa": 9.85, "acidic": false, "source": "apds" }
+      ],
+      "meltingPointC": 111.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": 3.9,
+      "logPSource": "physchem"
+    },
+    {
+      "id": "loperamide",
+      "groups": [
+        { "label": "piperidinium", "pKa": 8.66, "acidic": false, "source": "physchem" }
+      ],
+      "meltingPointC": 222.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": 4.77,
+      "logPSource": "physchem"
+    },
+    {
+      "id": "methylphenidate",
+      "groups": [
+        { "label": "piperidinium", "pKa": 8.77, "acidic": false, "source": "physchem" }
+      ],
+      "logPMeasured": 2.15,
+      "logPSource": "physchem"
+    },
+    {
+      "id": "bupropion",
+      "groups": [
+        { "label": "secondary ammonium", "pKa": 7.9, "acidic": false, "source": "apds" }
+      ],
+      "logPMeasured": 3.21,
+      "logPSource": "physchem"
+    },
+    {
+      "id": "atomoxetine",
+      "groups": [
+        { "label": "secondary ammonium", "pKa": 10.13, "acidic": false, "source": "physchem" }
+      ],
+      "logPMeasured": 3.81,
+      "logPSource": "physchem"
+    },
+    {
+      "id": "metformin",
+      "groups": [
+        { "label": "biguanidinium (first)", "pKa": 2.8, "acidic": false, "source": "crc" },
+        { "label": "biguanidinium (second)", "pKa": 11.5, "acidic": false, "source": "crc" }
+      ],
+      "meltingPointC": 223.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": -1.43,
+      "logPSource": "physchem"
+    },
+    {
+      "id": "diphenhydramine",
+      "groups": [
+        { "label": "tertiary ammonium", "pKa": 8.98, "acidic": false, "source": "crc" }
+      ],
+      "logPMeasured": 3.27,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "loratadine",
+      "groups": [
+        { "label": "pyridinium", "pKa": 5.25, "acidic": false, "source": "physchem" }
+      ],
+      "meltingPointC": 134.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": 5.2,
+      "logPSource": "physchem"
+    },
+    {
+      "id": "cetirizine",
+      "groups": [
+        { "label": "carboxyl", "pKa": 2.19, "acidic": true, "source": "physchem" },
+        { "label": "piperazinium (distal)", "pKa": 3.57, "acidic": false, "source": "physchem" },
+        { "label": "piperazinium (proximal)", "pKa": 7.56, "acidic": false, "source": "physchem" }
+      ],
+      "logPMeasured": 1.5,
+      "logPSource": "physchem"
+    },
+    {
+      "id": "famotidine",
+      "groups": [
+        { "label": "guanidinium", "pKa": 6.8, "acidic": false, "source": "apds" },
+        { "label": "sulfamoyl N-H", "pKa": 11.2, "acidic": true, "source": "apds" }
+      ],
+      "meltingPointC": 164.0,
+      "meltingPointSource": "apds",
+      "logPMeasured": -0.64,
+      "logPSource": "physchem"
+    },
+    {
+      "id": "omeprazole",
+      "groups": [
+        { "label": "pyridinium", "pKa": 4.06, "acidic": false, "source": "physchem" },
+        { "label": "benzimidazole N-H", "pKa": 8.8, "acidic": true, "source": "physchem" }
+      ],
+      "meltingPointC": 156.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": 2.23,
+      "logPSource": "physchem"
+    },
+    {
+      "id": "ondansetron",
+      "groups": [
+        { "label": "imidazolium", "pKa": 7.4, "acidic": false, "source": "physchem" }
+      ],
+      "meltingPointC": 231.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": 2.4,
+      "logPSource": "physchem"
+    },
+    {
+      "id": "ascorbic-acid",
+      "groups": [
+        { "label": "enol (C-3)", "pKa": 4.17, "acidic": true, "source": "crc" },
+        { "label": "enol (C-2)", "pKa": 11.57, "acidic": true, "source": "crc" }
+      ],
+      "meltingPointC": 190.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": -1.85,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "nicotinic-acid",
+      "groups": [
+        { "label": "pyridinium", "pKa": 2.07, "acidic": false, "source": "crc" },
+        { "label": "carboxyl", "pKa": 4.85, "acidic": true, "source": "crc" }
+      ],
+      "meltingPointC": 236.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": 0.36,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "nicotinamide",
+      "groups": [
+        { "label": "pyridinium", "pKa": 3.35, "acidic": false, "source": "crc" }
+      ],
+      "meltingPointC": 128.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": -0.37,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "pyridoxine",
+      "groups": [
+        { "label": "pyridinium", "pKa": 5.0, "acidic": false, "source": "crc" },
+        { "label": "phenol", "pKa": 8.96, "acidic": true, "source": "crc" }
+      ],
+      "meltingPointC": 160.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": -0.77,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "folic-acid",
+      "groups": [
+        { "label": "glutamate alpha-carboxyl", "pKa": 3.5, "acidic": true, "source": "crc" },
+        { "label": "glutamate gamma-carboxyl", "pKa": 4.3, "acidic": true, "source": "crc" },
+        { "label": "pterin N-3 H", "pKa": 8.3, "acidic": true, "source": "crc" }
+      ],
+      "logPMeasured": -2.0,
+      "logPSource": "physchem"
+    },
+    {
+      "id": "n-acetylcysteine",
+      "groups": [
+        { "label": "carboxyl", "pKa": 3.24, "acidic": true, "source": "crc" },
+        { "label": "thiol", "pKa": 9.5, "acidic": true, "source": "crc" }
+      ],
+      "meltingPointC": 109.0,
+      "meltingPointSource": "merck"
+    },
+    {
+      "id": "alpha-lipoic-acid",
+      "groups": [
+        { "label": "carboxyl", "pKa": 4.7, "acidic": true, "source": "crc" }
+      ],
+      "meltingPointC": 60.0,
+      "meltingPointSource": "merck"
+    },
+    {
+      "id": "taurine",
+      "groups": [
+        { "label": "sulfonate", "pKa": 1.5, "acidic": true, "source": "crc" },
+        { "label": "primary ammonium", "pKa": 8.74, "acidic": false, "source": "crc" }
+      ],
+      "meltingPointC": 328.0,
+      "meltingPointSource": "merck"
+    },
+    {
+      "id": "beta-alanine",
+      "groups": [
+        { "label": "carboxyl", "pKa": 3.55, "acidic": true, "source": "crc" },
+        { "label": "primary ammonium", "pKa": 10.24, "acidic": false, "source": "crc" }
+      ],
+      "meltingPointC": 200.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": -3.05,
+      "logPSource": "hansch"
+    },
+    {
+      "id": "l-citrulline",
+      "groups": [
+        { "label": "carboxyl", "pKa": 2.43, "acidic": true, "source": "crc" },
+        { "label": "alpha-ammonium", "pKa": 9.41, "acidic": false, "source": "crc" }
+      ],
+      "meltingPointC": 222.0,
+      "meltingPointSource": "merck"
+    },
+    {
+      "id": "l-theanine",
+      "groups": [
+        { "label": "carboxyl", "pKa": 2.2, "acidic": true, "source": "physchem" },
+        { "label": "alpha-ammonium", "pKa": 9.4, "acidic": false, "source": "physchem" }
+      ],
+      "meltingPointC": 217.0,
+      "meltingPointSource": "merck"
+    },
+    {
+      "id": "creatine",
+      "groups": [
+        { "label": "carboxyl", "pKa": 2.63, "acidic": true, "source": "crc" },
+        { "label": "guanidinium", "pKa": 14.3, "acidic": false, "source": "crc" }
+      ],
+      "meltingPointC": 303.0,
+      "meltingPointSource": "merck"
+    },
+    {
+      "id": "l-carnitine",
+      "groups": [
+        { "label": "carboxyl", "pKa": 3.8, "acidic": true, "source": "crc" }
+      ],
+      "meltingPointC": 197.0,
+      "meltingPointSource": "merck"
+    },
+    {
+      "id": "modafinil",
+      "groups": [],
+      "groupsNote": "No dissociation in the 0-14 range is reported: the sulfinyl and primary-amide groups are not appreciably acidic or basic in water. This empty list is a cited statement, not a missing entry.",
+      "meltingPointC": 164.0,
+      "meltingPointSource": "merck",
+      "logPMeasured": 1.53,
+      "logPSource": "physchem"
+    },
+    {
+      "id": "cholecalciferol",
+      "groups": [],
+      "groupsNote": "A secondary alcohol on a hydrocarbon skeleton; no dissociation in the 0-14 range is reported. The entry exists for its melting point, which is what the General Solubility Equation needs.",
+      "meltingPointC": 84.0,
+      "meltingPointSource": "merck"
+    }
+  ]
+}

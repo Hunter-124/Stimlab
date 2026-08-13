@@ -12,6 +12,9 @@ add_library(biocad_chem STATIC
   Smarts.cpp
   Alerts.cpp
   Crippen.cpp
+  Formula.cpp
+  Speciation.cpp
+  Solubility.cpp
 )
 
 target_include_directories(biocad_chem PUBLIC
@@ -22,9 +25,14 @@ target_include_directories(biocad_chem PUBLIC
 # rule packs are read through; nlohmann_json parses them. This must never become
 # a dependency on biocad_packs: biocad_contracts already depends on biocad_chem,
 # so that direction would be a cycle.
+# biocad_data supplies Quantity/Provenance, which the Phase 11 equilibrium and
+# solubility results are built out of; biocad_numeric supplies the one ODE
+# integrator the dissolution/precipitation time course steps with.
 target_link_libraries(biocad_chem PUBLIC
   Eigen3::Eigen
   biocad_core
+  biocad_data
+  biocad_numeric
   nlohmann_json::nlohmann_json
 )
 

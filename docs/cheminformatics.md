@@ -623,6 +623,145 @@ TPSA (incl S,P) mismatches>0.1: 11
 Formula comparison strips RDKit's charge suffix before comparing, because
 `molecularFormula()` reports the Hill formula without a charge annotation.
 
+## Phase 11: exact chemistry, speciation, and formulation
+
+Everything above computes a property from a structure. This part does the opposite: it computes
+exact consequences from **measured inputs**, and refuses when it does not have them. The split
+runs straight down the middle of the `Ionization` panel and is the most important thing to
+understand about it.
+
+| Layer | File | Depends on | Available |
+|---|---|---|---|
+| Formula, exact/average mass, isotope envelope, equation balancing | `chem/Formula.*` | the NIST isotope table only | **always** |
+| Acid/base speciation, microspecies ladder, logD, pI | `chem/Speciation.*` | a measured **pKa** | only with a cited pKa |
+| Buffer value, pH-solubility, BCS numbers, dissolution | `chem/Solubility.*` | pKa, **melting point**, Ksp, kppt | only with each input |
+| Compound-to-input adapter and the cited pack | `modules/IonizationModule.*` | `assets/packs/descriptors/ionization.json` | see below |
+
+Mass is arithmetic on measured physical constants, so it is `Provenance::Measured` and it never
+depends on the pack. A pKa is not derivable from a structure to the accuracy that matters, so
+**BioCAD contains no pKa predictor and no melting-point predictor**, and there is no entry point
+that could acquire one by accident. A compound absent from the pack gets a `notComputed()`
+naming the input it lacked; it does not get a curve drawn from a plausible default, because a
+plausible default is indistinguishable from a measurement once it is plotted.
+
+### The component tableau
+
+A monoprotic acid has an algebraic solution. A polyprotic acid in a buffer with a counter-ion
+does not, and every closed form quoted for that case is an approximation that fails silently
+near a pKa or at low concentration. So one solver handles every case. Species *i* is a product
+of component activities with formation constant *K*, mass balance on component *j* is
+`R_j = sum_i a_ij c_i - T_j`, and Newton's method in `ln x` has the analytic Jacobian
+`J_jk = sum_i a_ij a_ik c_i`, which is `B^T C B` with `C` diagonal positive and therefore
+symmetric positive semi-definite by construction - hence an LDLT factorization first and a
+full-pivot LU only for a rank-deficient tableau. Iterating in `ln x` is what keeps every
+concentration positive without a barrier term or a clamp.
+
+`solvePh()` wraps that inner solve in an outer scalar solve on pH closing on charge balance.
+The inner solve satisfies every non-proton mass balance exactly, so the only residual the outer
+solve has to kill is `sum_i z_i c_i`. Both residuals are **reported fields of
+`SpeciationResult`**, not internal state: a solver that does not show its residual is asking to
+be trusted on faith.
+
+### Activity models refuse rather than extrapolate
+
+Ideal activities are the default. Davies,
+`log gamma = -0.5085 z^2 (sqrt(I)/(1 + sqrt(I)) - 0.3 I)`, is available up to **I = 0.5 M** and
+is *refused* above it rather than evaluated. The expression will happily return a number at
+I = 3 M; that number is not an activity coefficient, and returning it with a tidy `Provenance`
+badge would be worse than returning nothing.
+
+The General Solubility Equation carries the same discipline in the other direction.
+`log S0 = 0.5 - 0.01 (MP_C - 25) - logP` (the Jain & Yalkowsky form) **requires a melting
+point**, which is why `SolubilityReport::intrinsic` is `notComputed("a melting point ...")` for
+every compound whose melting point nobody measured. It also refuses at the *soluble* end: the
+expression is unbounded above, so a strongly hydrophilic compound extrapolates to nonsense. The
+case that found this was beta-alanine (measured logP -3.05, MP 200 C), for which the GSE
+returns log S0 = +1.80, i.e. **63.1 mol/L - about 5.6 kg/L**. That is now a refusal, and
+`phSolubility()` propagates it: no intrinsic solubility, no curve, no BCS numbers, and a warning
+telling the reader to enter a measured S0.
+
+### The salt plateau is omitted, not guessed
+
+`pHmax` - the kink where a salt's solubility product caps the curve - needs a Ksp and a
+counter-ion concentration. Without them the plateau is simply not drawn, and the panel says why
+in the plot's place. A kink at an unknown pH is the single most misleading feature such a plot
+can have, because pHmax is exactly the number a reader takes away from it.
+
+Likewise a dissolution time course needs a dose, a particle radius, a density and a
+diffusivity. Those are properties of a **formulation**, not of a molecule, so `analyze()` never
+supplies them: it returns `notComputed()` naming all four, and the panel collects them from the
+user before `chem::dissolutionTimeCourse()` runs. Solid, dissolved and precipitated mass are
+three separate ODE states whose derivatives sum to zero identically, and
+`DissolutionReport::maxMassImbalance` reports the worst observed deviation in mg - a dissolution
+model that loses mass is wrong in a way a single curve hides.
+
+### The cited input pack
+
+`assets/packs/descriptors/ionization.json` (`schemaVersion: 1`) carries, per compound id, a list
+of `{label, pKa, acidic}` plus a melting point and a measured logP where those are known, each
+with a `source` key resolving to a prose description of where it came from - the CRC Handbook
+dissociation-constant tables, an Analytical Profiles of Drug Substances monograph, a Merck Index
+monograph, or the compound's published physicochemical characterisation. Sources are described
+in prose deliberately: a described source can be checked, whereas a fabricated DOI or page
+number cannot, and inventing one would be a worse failure than having no citation.
+
+A `groups` array that is present but **empty** is itself a cited statement - the source reports
+no dissociation in the 0-14 range - and is distinguished from an absent entry by
+`IonizationEntry::hasGroups`. Loading is strict and every rejection is reported rather than
+swallowed: a non-object top level, an unknown `schemaVersion`, a missing inputs-not-predictions
+note, an uncited pKa, a group with no acidic/basic direction, a pKa outside -5..20, a melting
+point with no source, a duplicate id, and an entry that supplies no input at all are each an
+entry in `IonizationPack::errors`, which the panel renders in red. A pack that silently
+half-loaded is indistinguishable from a compound that genuinely has no cited pKa, and those two
+situations call for opposite responses.
+
+A measured logP in the pack beats Wildman-Crippen outright. Crippen's own published RMS error
+is about 0.67 log units, which propagates straight into logD and from there into every
+partitioning statement, so the two are not merely ranked but categorically different in tier:
+`Provenance::Measured` with the source, versus `Provenance::Predicted` with `crippenCitation()`
+and that error bar attached to the value.
+
+### Measured fixtures
+
+Every number below was produced by running the code, not by reading the formula. The first
+block is the phase's acceptance fixtures; the second is the adapter's own output.
+
+| Fixture | Expected | Measured | Route |
+|---|---|---|---|
+| 0.1 M acetic acid, pH | 2.881 | **2.8809** | `solvePh()` tableau, 8 iterations |
+| ... mass-balance residual | < 1e-10 | **1.066e-13** | reported field, not internal |
+| ... charge-balance residual | < 1e-10 | **2.548e-13** | outer scalar solve |
+| 0.1 M buffer at pH == pKa, beta | 0.0576 M/pH | **0.0576** | Van Slyke, water terms retained |
+| C9H13N monoisotopic mass | 135.1048 Da | **135.104799 Da** | NIST SRD 144 table |
+
+| Compound | Pack inputs | Measured output |
+|---|---|---|
+| ibuprofen | carboxyl pKa 4.91, MP 76 C, logP 3.97 | logD(7.4) **1.4786**; S0 **1.047e-4 M**; S(7.4) **3.246e-2 M**; beta(7.4) **7.410e-4 M/pH**; pI **not computed** |
+| omeprazole | pyridinium 4.06, benzimidazole 8.80, MP 156 C, logP 2.23 | pI **6.43**; logD(7.4) **2.2129**; S0 **9.120e-4 M**; 4 microspecies, each pH's fractions summing to 1 within **1e-10** |
+| sertraline (absent) | none | mass **306.23 Da** average, **7** envelope peaks with M+2 above half the base peak; **12 of 12** pack-dependent quantities not computed, each naming its input |
+
+Two of those entries deserve reading twice. Ibuprofen's isoelectric point is **not computed on
+purpose**: a monoprotic acid's net charge runs 0 to -1 and never crosses zero, so it has no pI,
+and the reason string says that rather than naming a prerequisite the user could go and supply.
+And omeprazole's pH-solubility curve carries a warning that it used one of its two groups,
+because `phSolubility()` is a monoprotic model - the adapter picks the group nearest the middle
+of the plotted window and *says so* instead of presenting the curve as the whole story.
+
+Across the 69 compounds the shipped packs load, 55 have a cited pKa ladder and 14 correctly
+report not-computed. `Services::valid()` is true with `ionization` wired, and every one of the
+69 has a `Provenance::Measured` mass and a non-empty isotope envelope - which is the invariant
+the whole split exists to protect.
+
+### Safety scope
+
+`balance_equation` takes an equation the **user wrote** and returns integer coefficients, a
+limiting reagent, a theoretical yield and atom economy. That is arithmetic on a stated
+composition. There is deliberately no type, field or entry point anywhere in Phase 11 for a
+reaction route, a condition, a reagent or precursor selection, a procedure, or scale-up, and the
+agent tool's own description says so to the model. An equation that cannot be balanced exactly
+comes back `balanced = false` with the reason; there is no least-squares "nearly balanced"
+answer, because that would be a fabrication wearing the costume of a computation.
+
 Related reading: [provenance.md](provenance.md) for the tier a descriptor may carry,
 [limitations.md](limitations.md) for the project-wide honesty rules, and
 [packs.md](packs.md) for how rule and descriptor data reach the engine.

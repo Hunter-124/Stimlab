@@ -7,11 +7,13 @@ BioCAD itself is licensed under the Apache License, Version 2.0; see LICENSE.
 BioCAD contains no vendored third-party source code. Every library below is
 resolved at build time by vcpkg (`vcpkg.json`) or is a Windows platform
 component. Data sources are either referenced by a URL in the source or cited
-inside `assets/packs/**/*.json`. Exactly one third-party *data* file is
-redistributed here in transcribed form - the Wildman-Crippen atom-class
-parameter table in `assets/packs/descriptors/crippen.json`, taken from RDKit's
-BSD-3-Clause `Data/Crippen.txt` - and its licence obligation is stated in
-section 4a below. No other third-party dataset is redistributed.
+inside `assets/packs/**/*.json`. Two third-party *data* files are redistributed
+here in transcribed form - the Wildman-Crippen atom-class parameter table in
+`assets/packs/descriptors/crippen.json`, taken from RDKit's BSD-3-Clause
+`Data/Crippen.txt`, and the NIST SRD 144 isotope table in
+`assets/packs/descriptors/isotopes.json`, a US Government public-domain work -
+and both are covered in section 4a below. Only the first carries a licence
+obligation. No other third-party dataset is redistributed.
 
 
 1. Build-time library dependencies (vcpkg.json)
@@ -97,6 +99,15 @@ SMARTS collections. Those are BSD-3 (RDKit FilterCatalog data) and CC BY-SA 3.0
 (ChEMBL-derived) respectively; adding them requires their own separately
 licensed pack file plus its own entry here. The 15 built-in bioactivation alerts
 are authored in house from the literature instead.
+
+A second shipped data file is transcribed from a third party but carries **no
+licence obligation at all**, only an attribution courtesy, because it is a work
+of the United States Government and therefore not subject to copyright in the
+United States (public domain):
+
+| Component | Licence | Where | Obligation |
+|-----------|---------|-------|------------|
+| NIST Standard Reference Database 144, *Atomic Weights and Isotopic Compositions with Relative Atomic Masses* (J. S. Coursey, D. J. Schwab, J. J. Tsai, R. A. Dragoset, NIST Physical Measurement Laboratory) - relative atomic masses, representative terrestrial isotopic compositions, and standard atomic weights | **Public domain** (work of the US Government; NIST asks to be cited, and does not endorse derived products) | transcribed into `assets/packs/descriptors/isotopes.json` (`source` and `licence` fields record this), consumed by `src/chem/Formula.cpp` and returned by `chem::formulaCitation()` | None legally. Keep the `source` field intact and keep citing NIST SRD 144 as the origin of every mass BioCAD computes from it |
 
 4b. Works cited by the shipped rule and descriptor packs
 -----------------------------------------------------------------------------

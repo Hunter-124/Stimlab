@@ -15,7 +15,9 @@
 
 #include "bio/Structure.h"
 #include "contracts/IDockingBackend.h"
+#include "data/Assay.h"
 #include "data/Domain.h"
+#include "data/Ionization.h"
 
 namespace biocad {
 
@@ -181,6 +183,102 @@ public:
     // string (algorithm, probe radius, point count, radii set, hydrogen policy)
     // because a SASA without them is not reproducible.
     virtual Quantity sasa(const bio::Structure& s) const = 0;
+};
+
+// Exact chemistry: formula/mass arithmetic, acid-base speciation, buffers and
+// pH-dependent solubility/dissolution.
+//
+// SAFETY SCOPE: pKa, melting point, Ksp and precipitation rate constants are
+// INPUTS. There is no entry point that predicts a pKa, and no curve is returned
+// from an assumed default: analyze() fills the dependent field with a
+// NotComputed Quantity naming the prerequisite it lacked. balance() is
+// stoichiometry on an equation the user wrote and deliberately has no route,
+// condition, precursor or scale-up output.
+class IIonizationModule {
+public:
+    virtual ~IIonizationModule() = default;
+
+    // Parses a formula string (nesting, isotope labels, trailing charge) into
+    // both masses. std::nullopt only when the string is not a formula.
+    virtual std::optional<FormulaMass> formula(const std::string& text) const = 0;
+
+    // Theoretical isotope envelope by sparse convolution, pruned below
+    // `minIntensity` relative to the base peak.
+    virtual IsotopeEnvelope envelope(const std::string& formula,
+                                     double minIntensity) const = 0;
+
+    // Integer-null-space balancing plus limiting reagent, theoretical yield and
+    // atom economy when the caller supplied reactant amounts (grams, parallel to
+    // `reactants`; empty for balancing only).
+    virtual BalancedEquation balance(const std::vector<std::string>& reactants,
+                                     const std::vector<std::string>& products,
+                                     const std::vector<double>& reactantGrams) const = 0;
+
+    // General polyprotic equilibrium by damped Newton on the component tableau.
+    virtual SpeciationResult solve(const SpeciationProblem& p) const = 0;
+
+    // pH of a solution whose totals are given, by closing on charge balance.
+    virtual SpeciationResult solvePh(const SpeciationProblem& p) const = 0;
+
+    // Microspecies fractions, net charge and logD over a pH range for one
+    // molecule's ionizable groups.
+    virtual SpeciationCurve titrate(const Molecule& m,
+                                    const std::vector<IonizableGroup>& groups,
+                                    const Quantity& logP) const = 0;
+
+    virtual BufferReport buffer(const std::vector<BufferComponent>& components) const = 0;
+
+    // pH-solubility. `meltingPointC` <= 0 means "not supplied", which makes
+    // SolubilityReport::intrinsic NotComputed rather than defaulted.
+    virtual SolubilityReport solubility(const Molecule& m,
+                                        const std::vector<IonizableGroup>& groups,
+                                        const Quantity& logP,
+                                        double meltingPointC) const = 0;
+
+    // Everything the panel renders for one compound, with pKa and melting point
+    // taken from the compound's pack entry when present.
+    virtual IonizationReport analyze(const Molecule& m) const = 0;
+};
+
+// Real experimental data: plate import, QC, curve/kinetics/thermodynamics fits,
+// and prospective assay-design simulation.
+//
+// SAFETY SCOPE: this interface consumes measurements and returns fits. A raw well
+// value is Measured and a fitted parameter is Model, and nothing here converts a
+// potency into a dose. The design entry point simulates plates, which is
+// experimental design; it is not a procedure for making anything.
+class IAssayModule {
+public:
+    virtual ~IAssayModule() = default;
+
+    // Parses long CSV/TSV or a 96/384/1536 grid export. Unknown columns survive as
+    // metadata; recoverable problems arrive in AssayDataset::warnings rather than
+    // as a silent drop. std::nullopt only when the text is not tabular at all.
+    virtual std::optional<AssayDataset> import(const std::string& text) const = 0;
+
+    // Per-plate QC. Z-prime is NotComputed without both a positive and a negative
+    // control, and edge/row/column effects are reported, never corrected.
+    virtual QcReport qc(const Plate& p) const = 0;
+
+    // Fits one concentration series (or one sensorgram/melt/isotherm) with the
+    // requested model. `robust` selects Tukey-biweight IRLS over plain weighting.
+    virtual FitResult fit(const std::vector<Well>& series, AssayModel model,
+                          bool robust) const = 0;
+
+    // Fits every candidate model and ranks by AICc. `decisive` is false when the
+    // top two differ by less than 2, which is the only honest answer there.
+    virtual ModelComparison compare(const std::vector<Well>& series,
+                                    const std::vector<AssayModel>& candidates) const = 0;
+
+    // Global fit over the full [S] x [I] matrix. This is the ONE producer of
+    // InhibitionModality; it returns Unknown rather than guessing when AICc cannot
+    // separate the modalities.
+    virtual ModelComparison inhibitionModality(const std::vector<Well>& matrix) const = 0;
+
+    // Forward-simulates plates from a stated truth model and error structure, then
+    // sends them through the same import/QC/fit path, and reports what the design
+    // would actually recover.
+    virtual AssayDesignReport simulate(const AssayDesignSpec& spec) const = 0;
 };
 
 }  // namespace biocad

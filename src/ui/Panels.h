@@ -26,6 +26,7 @@ void metabolism(AppShell& shell);
 void alerts(AppShell& shell);
 void metabolites(AppShell& shell);
 void pkpd(AppShell& shell);
+void ionization(AppShell& shell);
 void sequenceCompare(AppShell& shell);
 void proteinStructure(AppShell& shell);
 void similarity(AppShell& shell);

@@ -23,11 +23,12 @@ struct Services {
     IStructureModule*   structure  = nullptr;
     IMetabolismFactsModule* metabolismFacts = nullptr;
     IAlertsModule*      alerts     = nullptr;
+    IIonizationModule*  ionization = nullptr;
 
     [[nodiscard]] bool valid() const {
         return library && stability && admet && absorption &&
                similarity && legal && docking && runs && pharmacodynamics &&
-               sequence && structure && metabolismFacts && alerts;
+               sequence && structure && metabolismFacts && alerts && ionization;
     }
 };
 

@@ -244,6 +244,21 @@ Quantity kiFromIc50(const ChengPrusoffInput& in) {
             equation = "uncompetitive: Ki = IC50 / (1 + Km/[S])";
             break;
         }
+        case InhibitionModality::Mixed: {
+            // Mixed inhibition needs both Ki (free enzyme) and alpha (the factor by
+            // which substrate binding changes it); one IC50 at one [S] cannot
+            // separate them. The global [S] x [I] fit that produced the Mixed
+            // verdict already reports Ki and alpha directly, so converting here
+            // would discard the better number in favour of a worse one.
+            return notComputed("Ki and alpha from the global [S] x [I] fit "
+                               "(mixed inhibition is not a one-IC50 conversion)");
+        }
+        case InhibitionModality::Unknown: {
+            // The modality decides the equation, and the equations differ by 10x at
+            // [S] = 10*Km. Guessing competitive because it is the common case is how
+            // an order of magnitude gets published.
+            return notComputed("inhibition modality (a global [S] x [I] fit determines it)");
+        }
     }
 
     std::string source = equation;

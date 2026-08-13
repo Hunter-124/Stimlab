@@ -1,0 +1,210 @@
+{
+  "schemaVersion": 1,
+  "id": "isotopes",
+  "title": "Atomic weights and isotopic compositions",
+  "source": "NIST Standard Reference Database 144: J. S. Coursey, D. J. Schwab, J. J. Tsai and R. A. Dragoset, Atomic Weights and Isotopic Compositions with Relative Atomic Masses, NIST Physical Measurement Laboratory. Relative atomic masses from the AME2016 evaluation; isotopic compositions and standard atomic weights from the IUPAC Commission on Isotopic Abundances and Atomic Weights.",
+  "licence": "Work of the United States Government; not subject to copyright in the United States (public domain).",
+  "note": "isotopicComposition is the representative terrestrial mole fraction. Elements whose composition varies (H, Li, B, C, N, O, Mg, Si, S, Cl, Fe, Cu, Br, Tl-like) carry an interval in the source; the representative value is transcribed here and standardAtomicWeight follows the abridged IUPAC value.",
+  "elements": [
+    {
+      "symbol": "H", "z": 1, "standardAtomicWeight": 1.008,
+      "isotopes": [
+        { "massNumber": 1, "relativeAtomicMass": 1.00782503223, "isotopicComposition": 0.999885 },
+        { "massNumber": 2, "relativeAtomicMass": 2.01410177812, "isotopicComposition": 0.000115 }
+      ]
+    },
+    {
+      "symbol": "He", "z": 2, "standardAtomicWeight": 4.002602,
+      "isotopes": [
+        { "massNumber": 3, "relativeAtomicMass": 3.0160293201, "isotopicComposition": 0.00000134 },
+        { "massNumber": 4, "relativeAtomicMass": 4.00260325413, "isotopicComposition": 0.99999866 }
+      ]
+    },
+    {
+      "symbol": "Li", "z": 3, "standardAtomicWeight": 6.94,
+      "isotopes": [
+        { "massNumber": 6, "relativeAtomicMass": 6.0151228874, "isotopicComposition": 0.0759 },
+        { "massNumber": 7, "relativeAtomicMass": 7.0160034366, "isotopicComposition": 0.9241 }
+      ]
+    },
+    {
+      "symbol": "B", "z": 5, "standardAtomicWeight": 10.81,
+      "isotopes": [
+        { "massNumber": 10, "relativeAtomicMass": 10.01293695, "isotopicComposition": 0.199 },
+        { "massNumber": 11, "relativeAtomicMass": 11.00930536, "isotopicComposition": 0.801 }
+      ]
+    },
+    {
+      "symbol": "C", "z": 6, "standardAtomicWeight": 12.011,
+      "isotopes": [
+        { "massNumber": 12, "relativeAtomicMass": 12.0, "isotopicComposition": 0.9893 },
+        { "massNumber": 13, "relativeAtomicMass": 13.00335483507, "isotopicComposition": 0.0107 }
+      ]
+    },
+    {
+      "symbol": "N", "z": 7, "standardAtomicWeight": 14.007,
+      "isotopes": [
+        { "massNumber": 14, "relativeAtomicMass": 14.0030740044, "isotopicComposition": 0.99636 },
+        { "massNumber": 15, "relativeAtomicMass": 15.0001088989, "isotopicComposition": 0.00364 }
+      ]
+    },
+    {
+      "symbol": "O", "z": 8, "standardAtomicWeight": 15.999,
+      "isotopes": [
+        { "massNumber": 16, "relativeAtomicMass": 15.9949146196, "isotopicComposition": 0.99757 },
+        { "massNumber": 17, "relativeAtomicMass": 16.9991317565, "isotopicComposition": 0.00038 },
+        { "massNumber": 18, "relativeAtomicMass": 17.99915961286, "isotopicComposition": 0.00205 }
+      ]
+    },
+    {
+      "symbol": "F", "z": 9, "standardAtomicWeight": 18.998403163,
+      "isotopes": [
+        { "massNumber": 19, "relativeAtomicMass": 18.99840316273, "isotopicComposition": 1.0 }
+      ]
+    },
+    {
+      "symbol": "Ne", "z": 10, "standardAtomicWeight": 20.1797,
+      "isotopes": [
+        { "massNumber": 20, "relativeAtomicMass": 19.9924401762, "isotopicComposition": 0.9048 },
+        { "massNumber": 21, "relativeAtomicMass": 20.993846685, "isotopicComposition": 0.0027 },
+        { "massNumber": 22, "relativeAtomicMass": 21.991385114, "isotopicComposition": 0.0925 }
+      ]
+    },
+    {
+      "symbol": "Na", "z": 11, "standardAtomicWeight": 22.98976928,
+      "isotopes": [
+        { "massNumber": 23, "relativeAtomicMass": 22.989769282, "isotopicComposition": 1.0 }
+      ]
+    },
+    {
+      "symbol": "Mg", "z": 12, "standardAtomicWeight": 24.305,
+      "isotopes": [
+        { "massNumber": 24, "relativeAtomicMass": 23.985041697, "isotopicComposition": 0.7899 },
+        { "massNumber": 25, "relativeAtomicMass": 24.985836976, "isotopicComposition": 0.1 },
+        { "massNumber": 26, "relativeAtomicMass": 25.982592968, "isotopicComposition": 0.1101 }
+      ]
+    },
+    {
+      "symbol": "Al", "z": 13, "standardAtomicWeight": 26.9815385,
+      "isotopes": [
+        { "massNumber": 27, "relativeAtomicMass": 26.98153853, "isotopicComposition": 1.0 }
+      ]
+    },
+    {
+      "symbol": "Si", "z": 14, "standardAtomicWeight": 28.085,
+      "isotopes": [
+        { "massNumber": 28, "relativeAtomicMass": 27.97692653465, "isotopicComposition": 0.92223 },
+        { "massNumber": 29, "relativeAtomicMass": 28.9764946649, "isotopicComposition": 0.04685 },
+        { "massNumber": 30, "relativeAtomicMass": 29.973770136, "isotopicComposition": 0.03092 }
+      ]
+    },
+    {
+      "symbol": "P", "z": 15, "standardAtomicWeight": 30.973761998,
+      "isotopes": [
+        { "massNumber": 31, "relativeAtomicMass": 30.97376199842, "isotopicComposition": 1.0 }
+      ]
+    },
+    {
+      "symbol": "S", "z": 16, "standardAtomicWeight": 32.06,
+      "isotopes": [
+        { "massNumber": 32, "relativeAtomicMass": 31.9720711744, "isotopicComposition": 0.9499 },
+        { "massNumber": 33, "relativeAtomicMass": 32.9714589098, "isotopicComposition": 0.0075 },
+        { "massNumber": 34, "relativeAtomicMass": 33.967867004, "isotopicComposition": 0.0425 },
+        { "massNumber": 36, "relativeAtomicMass": 35.96708071, "isotopicComposition": 0.0001 }
+      ]
+    },
+    {
+      "symbol": "Cl", "z": 17, "standardAtomicWeight": 35.45,
+      "isotopes": [
+        { "massNumber": 35, "relativeAtomicMass": 34.968852682, "isotopicComposition": 0.7576 },
+        { "massNumber": 37, "relativeAtomicMass": 36.965902602, "isotopicComposition": 0.2424 }
+      ]
+    },
+    {
+      "symbol": "K", "z": 19, "standardAtomicWeight": 39.0983,
+      "isotopes": [
+        { "massNumber": 39, "relativeAtomicMass": 38.9637064864, "isotopicComposition": 0.932581 },
+        { "massNumber": 40, "relativeAtomicMass": 39.963998166, "isotopicComposition": 0.000117 },
+        { "massNumber": 41, "relativeAtomicMass": 40.9618252579, "isotopicComposition": 0.067302 }
+      ]
+    },
+    {
+      "symbol": "Ca", "z": 20, "standardAtomicWeight": 40.078,
+      "isotopes": [
+        { "massNumber": 40, "relativeAtomicMass": 39.962590863, "isotopicComposition": 0.96941 },
+        { "massNumber": 42, "relativeAtomicMass": 41.95861783, "isotopicComposition": 0.00647 },
+        { "massNumber": 43, "relativeAtomicMass": 42.95876644, "isotopicComposition": 0.00135 },
+        { "massNumber": 44, "relativeAtomicMass": 43.95548156, "isotopicComposition": 0.02086 },
+        { "massNumber": 46, "relativeAtomicMass": 45.953689, "isotopicComposition": 0.00004 },
+        { "massNumber": 48, "relativeAtomicMass": 47.95252276, "isotopicComposition": 0.00187 }
+      ]
+    },
+    {
+      "symbol": "Fe", "z": 26, "standardAtomicWeight": 55.845,
+      "isotopes": [
+        { "massNumber": 54, "relativeAtomicMass": 53.93960899, "isotopicComposition": 0.05845 },
+        { "massNumber": 56, "relativeAtomicMass": 55.93493633, "isotopicComposition": 0.91754 },
+        { "massNumber": 57, "relativeAtomicMass": 56.93539284, "isotopicComposition": 0.02119 },
+        { "massNumber": 58, "relativeAtomicMass": 57.93327443, "isotopicComposition": 0.00282 }
+      ]
+    },
+    {
+      "symbol": "Cu", "z": 29, "standardAtomicWeight": 63.546,
+      "isotopes": [
+        { "massNumber": 63, "relativeAtomicMass": 62.92959772, "isotopicComposition": 0.6915 },
+        { "massNumber": 65, "relativeAtomicMass": 64.9277897, "isotopicComposition": 0.3085 }
+      ]
+    },
+    {
+      "symbol": "Zn", "z": 30, "standardAtomicWeight": 65.38,
+      "isotopes": [
+        { "massNumber": 64, "relativeAtomicMass": 63.92914201, "isotopicComposition": 0.4917 },
+        { "massNumber": 66, "relativeAtomicMass": 65.92603381, "isotopicComposition": 0.2773 },
+        { "massNumber": 67, "relativeAtomicMass": 66.92712775, "isotopicComposition": 0.0404 },
+        { "massNumber": 68, "relativeAtomicMass": 67.92484455, "isotopicComposition": 0.1845 },
+        { "massNumber": 70, "relativeAtomicMass": 69.9253192, "isotopicComposition": 0.0061 }
+      ]
+    },
+    {
+      "symbol": "As", "z": 33, "standardAtomicWeight": 74.921595,
+      "isotopes": [
+        { "massNumber": 75, "relativeAtomicMass": 74.92159457, "isotopicComposition": 1.0 }
+      ]
+    },
+    {
+      "symbol": "Se", "z": 34, "standardAtomicWeight": 78.971,
+      "isotopes": [
+        { "massNumber": 74, "relativeAtomicMass": 73.922475934, "isotopicComposition": 0.0089 },
+        { "massNumber": 76, "relativeAtomicMass": 75.919213704, "isotopicComposition": 0.0937 },
+        { "massNumber": 77, "relativeAtomicMass": 76.919914154, "isotopicComposition": 0.0763 },
+        { "massNumber": 78, "relativeAtomicMass": 77.91730928, "isotopicComposition": 0.2377 },
+        { "massNumber": 80, "relativeAtomicMass": 79.9165218, "isotopicComposition": 0.4961 },
+        { "massNumber": 82, "relativeAtomicMass": 81.9166995, "isotopicComposition": 0.0873 }
+      ]
+    },
+    {
+      "symbol": "Br", "z": 35, "standardAtomicWeight": 79.904,
+      "isotopes": [
+        { "massNumber": 79, "relativeAtomicMass": 78.9183376, "isotopicComposition": 0.5069 },
+        { "massNumber": 81, "relativeAtomicMass": 80.9162897, "isotopicComposition": 0.4931 }
+      ]
+    },
+    {
+      "symbol": "I", "z": 53, "standardAtomicWeight": 126.90447,
+      "isotopes": [
+        { "massNumber": 127, "relativeAtomicMass": 126.9044719, "isotopicComposition": 1.0 }
+      ]
+    },
+    {
+      "symbol": "Pt", "z": 78, "standardAtomicWeight": 195.084,
+      "isotopes": [
+        { "massNumber": 190, "relativeAtomicMass": 189.9599297, "isotopicComposition": 0.00012 },
+        { "massNumber": 192, "relativeAtomicMass": 191.9610387, "isotopicComposition": 0.00782 },
+        { "massNumber": 194, "relativeAtomicMass": 193.9626809, "isotopicComposition": 0.3286 },
+        { "massNumber": 195, "relativeAtomicMass": 194.9647917, "isotopicComposition": 0.3378 },
+        { "massNumber": 196, "relativeAtomicMass": 195.96495209, "isotopicComposition": 0.2521 },
+        { "massNumber": 198, "relativeAtomicMass": 197.9678949, "isotopicComposition": 0.07356 }
+      ]
+    }
+  ]
+}
