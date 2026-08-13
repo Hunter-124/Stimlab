@@ -18,6 +18,7 @@ target_link_libraries(biocad_ui PUBLIC
   biocad_modules
   biocad_workflow
   biocad_agent
+  biocad_pkpd
   imgui::imgui
   implot::implot
 )

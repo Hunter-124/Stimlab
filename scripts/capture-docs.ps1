@@ -45,6 +45,7 @@ $shots = @(
     @{ name = "legal";       panel = "Legal" }
     @{ name = "runs";        panel = "Runs" }
     @{ name = "presets";     panel = "Presets" }
+    @{ name = "pkpd";        panel = "PkPd" }
     @{ name = "settings";    panel = "Settings" }
 )
 

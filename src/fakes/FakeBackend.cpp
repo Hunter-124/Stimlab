@@ -8,6 +8,7 @@
 
 #include "chem/AdmetModel.h"
 #include "packs/Pack.h"
+#include "pkpd/Pharmacodynamics.h"
 
 namespace biocad {
 namespace {
@@ -975,6 +976,31 @@ public:
     }
 };
 
+// The PK/PD fake is NOT a second set of numbers: the real implementation is a set
+// of pure, deterministic functions (no clock, no randomness, no filesystem), so the
+// fake delegates to it and keeps one code path under test.
+class FakePharmacodynamics final : public IPharmacodynamicsModule {
+public:
+    CurveFit fitFourParameterLogistic(
+        const std::vector<DoseResponsePoint>& pts) const override {
+        return real_.fitFourParameterLogistic(pts);
+    }
+    Quantity kiFromIc50(const ChengPrusoffInput& in) const override {
+        return real_.kiFromIc50(in);
+    }
+    SchildResult schild(const std::vector<SchildPoint>& pts) const override {
+        return real_.schild(pts);
+    }
+    PkProfile simulate(const PkModelSpec& spec, const DoseRegimen& reg) const override {
+        return real_.simulate(spec, reg);
+    }
+    OccupancyCurve occupancy(const PkProfile& p, const Quantity& kd) const override {
+        return real_.occupancy(p, kd);
+    }
+private:
+    pkpd::RealPharmacodynamics real_;
+};
+
 }  // namespace
 
 // =============================================================== FakeBackend
@@ -987,6 +1013,7 @@ struct FakeBackend::Impl {
     FakeLegal      legal{library.ref()};
     FakeDocking    docking;
     FakeRuns       runs;
+    FakePharmacodynamics pharmacodynamics;
 };
 
 FakeBackend::FakeBackend() : impl_(std::make_unique<Impl>()) {}
@@ -1002,6 +1029,7 @@ Services FakeBackend::services() {
     s.legal      = &impl_->legal;
     s.docking    = &impl_->docking;
     s.runs       = &impl_->runs;
+    s.pharmacodynamics = &impl_->pharmacodynamics;
     return s;
 }
 

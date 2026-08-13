@@ -16,7 +16,9 @@ add_executable(biocad_tests
   test_manifest.cpp
   test_packs.cpp
   test_provenance.cpp
+  test_pkpd_fits.cpp
   test_numeric.cpp
+  test_pkpd_engine.cpp
 )
 
 target_link_libraries(biocad_tests PRIVATE
@@ -24,6 +26,7 @@ target_link_libraries(biocad_tests PRIVATE
   biocad_core
   biocad_data
   biocad_numeric
+  biocad_pkpd
   biocad_packs
   biocad_fakes
   biocad_chem

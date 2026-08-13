@@ -251,4 +251,160 @@ struct RunRecord {
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(RunRecord, id, kind, subject, status, createdAt, summary)
 
+// ---------------------------------------------------------------------------
+// Pharmacodynamics and pharmacokinetics.
+//
+// SAFETY SCOPE: everything here is an EXPOSURE SCENARIO under stated assumptions.
+// None of it is a dose recommendation, and the UI and the agent are both forbidden
+// from turning it into one.
+// ---------------------------------------------------------------------------
+
+// One concentration/effect observation. `concentration` is molar; a non-positive
+// value cannot be log-transformed and is rejected by the fitter.
+struct DoseResponsePoint {
+    double concentration = 0.0;  // mol/L
+    double effect = 0.0;         // assay response, arbitrary units
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(DoseResponsePoint, concentration, effect)
+
+// A four-parameter logistic fit. `hillSlope` is deliberately named an EMPIRICAL
+// SLOPE, never "cooperativity": in a functional assay amplification and receptor
+// reserve bend the slope, so a value above 1 is not evidence of cooperative binding.
+struct CurveFit {
+    Quantity top;         // upper asymptote, assay units
+    Quantity bottom;      // lower asymptote, assay units
+    Quantity ec50;        // mol/L
+    Quantity hillSlope;   // empirical slope, dimensionless
+    double   rSquared = 0.0;
+    int      iterations = 0;
+    bool     converged = false;
+    std::string note;     // why a fit failed, or what was assumed
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(CurveFit, top, bottom, ec50, hillSlope, rSquared,
+                                   iterations, converged, note)
+
+// How an inhibitor acts. There is no default: competitive and uncompetitive differ
+// by 10x at [S] = 10*Km and by 100x at [S] = 100*Km, so guessing would silently
+// magnitude. ChEMBL has no UNCOMPETITIVE action type to disambiguate with.
+enum class InhibitionModality { Competitive, Noncompetitive, Uncompetitive, RadioligandBinding };
+
+NLOHMANN_JSON_SERIALIZE_ENUM(InhibitionModality, {
+    {InhibitionModality::Competitive,        "competitive"},
+    {InhibitionModality::Noncompetitive,     "noncompetitive"},
+    {InhibitionModality::Uncompetitive,      "uncompetitive"},
+    {InhibitionModality::RadioligandBinding, "radioligand-binding"},
+})
+
+// Cheng-Prusoff input. The modality decides which fields are REQUIRED; a missing
+// one yields a NotComputed Quantity naming it rather than an assumed competitive fit.
+struct ChengPrusoffInput {
+    InhibitionModality modality = InhibitionModality::Competitive;
+    double ic50 = 0.0;              // mol/L
+    double substrate = -1.0;        // [S], mol/L; < 0 = absent
+    double km = -1.0;               // Km, mol/L; < 0 = absent
+    double radioligand = -1.0;      // [L*], mol/L; < 0 = absent
+    double kdRadioligand = -1.0;    // Kd of the radioligand, mol/L; < 0 = absent
+    double enzymeConc = -1.0;       // [E]t, mol/L; >= 0 enables the tight-binding view
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ChengPrusoffInput, modality, ic50, substrate, km,
+                                   radioligand, kdRadioligand, enzymeConc)
+
+// One Schild point: an antagonist concentration and the agonist dose ratio it caused.
+struct SchildPoint {
+    double antagonist = 0.0;  // [B], mol/L
+    double doseRatio = 1.0;   // DR, dimensionless
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(SchildPoint, antagonist, doseRatio)
+
+// A Schild regression. KB is only meaningful when the slope is indistinguishable
+// from 1; otherwise the antagonism is not simple competitive and `kbUsable` is false.
+struct SchildResult {
+    Quantity pA2;          // -log10 of the [B] giving DR = 2
+    Quantity slope;        // Schild slope, dimensionless
+    double   slopeCiLow = 0.0;
+    double   slopeCiHigh = 0.0;
+    Quantity kb;           // NotComputed when the slope CI excludes 1
+    bool     kbUsable = false;
+    std::string note;
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(SchildResult, pA2, slope, slopeCiLow, slopeCiHigh,
+                                   kb, kbUsable, note)
+
+// Which PK structural model to integrate.
+enum class PkModel { IvBolus, IvInfusion, OralOneCompartment, OralTwoCompartment };
+
+NLOHMANN_JSON_SERIALIZE_ENUM(PkModel, {
+    {PkModel::IvBolus,            "iv-bolus"},
+    {PkModel::IvInfusion,         "iv-infusion"},
+    {PkModel::OralOneCompartment, "oral-1c"},
+    {PkModel::OralTwoCompartment, "oral-2c"},
+})
+
+// One dosing event in the simulated regimen.
+struct DoseEvent {
+    double timeH = 0.0;        // hours from t0
+    double amountMg = 0.0;
+    double durationH = 0.0;    // 0 = bolus / instantaneous oral input
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(DoseEvent, timeH, amountMg, durationH)
+
+// A PK parameter set. Every field carries its own Provenance because F, ka and fu
+// have NO credible structure-only predictor: they default to assumed, and the panel
+// says so rather than implying they were computed.
+struct PkModelSpec {
+    PkModel  model = PkModel::OralOneCompartment;
+    Quantity bioavailability;      // F, dimensionless 0..1
+    Quantity absorptionRate;       // ka, 1/h
+    Quantity clearance;            // CL, L/h
+    Quantity volume;               // V (central), L
+    Quantity volumePeripheral;     // V2, L (two-compartment only)
+    Quantity intercompartmental;   // Q, L/h (two-compartment only)
+    Quantity unboundFraction;      // fu, dimensionless
+    // Optional Michaelis-Menten elimination; used when vmax > 0.
+    Quantity vmax;                 // mg/h
+    Quantity km;                   // mg/L
+    double   stepH = 0.01;         // RK4 fixed step, hours
+    double   horizonH = 24.0;      // simulated span, hours
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(PkModelSpec, model, bioavailability, absorptionRate,
+                                   clearance, volume, volumePeripheral, intercompartmental,
+                                   unboundFraction, vmax, km, stepH, horizonH)
+
+struct DoseRegimen {
+    std::vector<DoseEvent> doses;
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(DoseRegimen, doses)
+
+// A simulated exposure profile. `assumptions` is rendered verbatim under the plot:
+// a curve whose assumptions are not visible is a curve that misleads.
+struct PkProfile {
+    std::vector<double> timeH;
+    std::vector<double> concentrationMgPerL;   // total plasma concentration
+    std::vector<double> unboundMgPerL;         // fu * total
+    Quantity cmax;         // mg/L
+    Quantity tmax;         // h
+    Quantity auc;          // mg*h/L, trapezoidal over the simulated horizon
+    Quantity halfLife;     // h
+    Quantity accumulation; // Rac, dimensionless (multiple dosing only)
+    bool flipFlop = false; // ka < ke: the terminal phase reflects absorption, not elimination
+    std::vector<std::string> assumptions;
+    std::string note;
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(PkProfile, timeH, concentrationMgPerL, unboundMgPerL,
+                                   cmax, tmax, auc, halfLife, accumulation, flipFlop,
+                                   assumptions, note)
+
+// Fractional target occupancy over time: theta = [A] / (Kd + [A]).
+// This is the honest synthesis of PK and PD - it needs no Emax, no tau and no
+// tissue assumption, only a free concentration and a Kd.
+struct OccupancyCurve {
+    std::vector<double> timeH;
+    std::vector<double> occupancy;   // 0..1
+    Quantity peakOccupancy;
+    Quantity timeAbove50Pct;         // hours above 50% occupancy
+    std::string note;
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(OccupancyCurve, timeH, occupancy, peakOccupancy,
+                                   timeAbove50Pct, note)
+
 }  // namespace biocad

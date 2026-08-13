@@ -15,6 +15,7 @@
 #include "modules/docking/Presets.h"
 #include "modules/docking/ReceptorPrep.h"
 #include "packs/Pack.h"
+#include "pkpd/Pharmacodynamics.h"
 #ifdef BIOCAD_HAVE_CUDA
 #  include "modules/docking/CudaBackend.h"
 #endif
@@ -505,6 +506,7 @@ struct RealBackend::Impl {
     RealLegal legal{library.ref(), similarity};
     RealDocking docking;
     SqliteRunStore runs;
+    pkpd::RealPharmacodynamics pharmacodynamics;
 };
 
 RealBackend::RealBackend() : impl_(std::make_unique<Impl>()) {}
@@ -520,6 +522,7 @@ Services RealBackend::services() {
     s.legal = &impl_->legal;
     s.docking = &impl_->docking;
     s.runs = &impl_->runs;
+    s.pharmacodynamics = &impl_->pharmacodynamics;
     return s;
 }
 

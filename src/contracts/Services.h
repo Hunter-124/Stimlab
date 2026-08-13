@@ -16,10 +16,11 @@ struct Services {
     ILegalModule*       legal      = nullptr;
     IDockingModule*     docking    = nullptr;
     IRunStore*          runs       = nullptr;
+    IPharmacodynamicsModule* pharmacodynamics = nullptr;
 
     [[nodiscard]] bool valid() const {
         return library && stability && admet && absorption &&
-               similarity && legal && docking && runs;
+               similarity && legal && docking && runs && pharmacodynamics;
     }
 };
 

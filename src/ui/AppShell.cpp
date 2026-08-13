@@ -84,6 +84,8 @@ AppShell::AppShell(Services services) : svc_(services) {
          "Permeability, oral bioavailability, blood-brain-barrier partition, and efflux.", "Predict"},
         {"Metabolism", "Metabolism (ADMET)",
          "Metabolic routes, risky metabolites, drug interactions, and safety flags (hERG).", "Predict"},
+        {"PkPd", "PK / PD",
+         "Exposure scenarios: concentration-time and target-occupancy curves under stated assumptions.", "Predict"},
         {"Analog", "Analog Explorer",
          "Model or draw a candidate derivative, preview its structure, and screen it against existing samples.", "Discover"},
         {"Compare", "Compare",
@@ -746,6 +748,202 @@ void AppShell::registerAgentServiceTools() {
                 return {rows.dump(), false};
             }));
     }
+
+    // ---- Pharmacodynamics / PK. Every one of these emits an EXPOSURE SCENARIO or a
+    // fitted parameter; none of them has a dose-recommendation entry point, and
+    // simulate_exposure additionally refuses to run without an explicit acknowledgement.
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"points",
+               {{"type", "array"},
+                {"items",
+                 {{"type", "object"},
+                  {"properties",
+                   {{"concentration", {{"type", "number"},
+                                       {"description", "Molar concentration, > 0."}}},
+                    {"effect", {{"type", "number"}, {"description", "Assay response."}}}}},
+                  {"required", json::array({"concentration", "effect"})}}},
+                {"description", "Four or more dose-response observations."}}}}},
+            {"required", json::array({"points"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "fit_dose_response",
+            "Fit a four-parameter logistic curve to dose-response data and return Top, Bottom, "
+            "EC50 and the EMPIRICAL slope with their standard errors. Analysis of supplied data "
+            "only: the result is an exposure/potency characterisation, never a dose recommendation.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.pharmacodynamics) return {"Pharmacodynamics service unavailable.", true};
+                if (!args.contains("points") || !args["points"].is_array())
+                    return {"Provide a 'points' array of {concentration, effect} objects.", true};
+                std::vector<DoseResponsePoint> pts;
+                for (const auto& p : args["points"]) {
+                    DoseResponsePoint d;
+                    d.concentration = p.value("concentration", 0.0);
+                    d.effect        = p.value("effect", 0.0);
+                    pts.push_back(d);
+                }
+                const CurveFit fit = svc_.pharmacodynamics->fitFourParameterLogistic(pts);
+                json j = fit;
+                j["disclaimer"] = "Curve fit only - not a dose recommendation.";
+                return {j.dump(), false};
+            }));
+    }
+
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"modality", {{"type", "string"},
+                            {"enum", json::array({"competitive", "noncompetitive", "uncompetitive",
+                                                  "radioligand-binding"})},
+                            {"description", "Inhibition modality; there is no default because "
+                                            "competitive and uncompetitive diverge with [S]/Km: "
+                                            "10x at [S] = 10*Km, 100x at [S] = 100*Km."}}},
+              {"ic50", {{"type", "number"}, {"description", "IC50 in mol/L."}}},
+              {"substrate", {{"type", "number"}, {"description", "[S] in mol/L (enzyme assays)."}}},
+              {"km", {{"type", "number"}, {"description", "Km in mol/L (enzyme assays)."}}},
+              {"radioligand", {{"type", "number"},
+                               {"description", "[L*] in mol/L (radioligand binding)."}}},
+              {"kd_radioligand", {{"type", "number"},
+                                  {"description", "Radioligand Kd in mol/L."}}},
+              {"enzyme_conc", {{"type", "number"},
+                               {"description", "[E]t in mol/L; enables the tight-binding view."}}}}},
+            {"required", json::array({"modality", "ic50"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "convert_ic50_to_ki",
+            "Convert an IC50 to a Ki by the Cheng-Prusoff relation for the stated inhibition "
+            "modality; returns 'not computed' naming the missing field rather than assuming one. "
+            "A potency conversion, never a dose recommendation.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.pharmacodynamics) return {"Pharmacodynamics service unavailable.", true};
+                const std::string mod = args.value("modality", "");
+                ChengPrusoffInput in;
+                if (mod == "competitive")            in.modality = InhibitionModality::Competitive;
+                else if (mod == "noncompetitive")    in.modality = InhibitionModality::Noncompetitive;
+                else if (mod == "uncompetitive")     in.modality = InhibitionModality::Uncompetitive;
+                else if (mod == "radioligand-binding")
+                    in.modality = InhibitionModality::RadioligandBinding;
+                else
+                    return {"Unknown 'modality'; use competitive, noncompetitive, uncompetitive or "
+                            "radioligand-binding. It is not guessed.", true};
+                in.ic50           = args.value("ic50", 0.0);
+                in.substrate      = args.value("substrate", -1.0);
+                in.km             = args.value("km", -1.0);
+                in.radioligand    = args.value("radioligand", -1.0);
+                in.kdRadioligand  = args.value("kd_radioligand", -1.0);
+                in.enzymeConc     = args.value("enzyme_conc", -1.0);
+                json j = svc_.pharmacodynamics->kiFromIc50(in);
+                return {j.dump(), false};
+            }));
+    }
+
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"assumptions_acknowledged",
+               {{"type", "boolean"},
+                {"description", "Must be true. Confirms the caller understands the output is an "
+                                "exposure scenario under stated assumptions and will not present "
+                                "it as a dose recommendation."}}},
+              {"model", {{"type", "string"},
+                         {"enum", json::array({"iv-bolus", "iv-infusion", "oral-1c", "oral-2c"})},
+                         {"description", "Structural PK model (default oral-1c)."}}},
+              {"clearance_l_per_h", {{"type", "number"}, {"description", "CL in L/h (required)."}}},
+              {"volume_l", {{"type", "number"}, {"description", "Central V in L (required)."}}},
+              {"bioavailability", {{"type", "number"},
+                                   {"description", "F, 0..1; assumed 0.8 when omitted."}}},
+              {"absorption_rate_per_h", {{"type", "number"},
+                                         {"description", "ka in 1/h; assumed 1.2 when omitted."}}},
+              {"unbound_fraction", {{"type", "number"},
+                                    {"description", "fu, 0..1; assumed 0.5 when omitted."}}},
+              {"horizon_h", {{"type", "number"}, {"description", "Simulated span in hours."}}},
+              {"doses",
+               {{"type", "array"},
+                {"items",
+                 {{"type", "object"},
+                  {"properties",
+                   {{"time_h", {{"type", "number"}}},
+                    {"amount_mg", {{"type", "number"}}},
+                    {"duration_h", {{"type", "number"}}}}},
+                  {"required", json::array({"time_h", "amount_mg"})}}},
+                {"description", "Dose events defining the scenario to integrate."}}}}},
+            {"required", json::array({"assumptions_acknowledged", "clearance_l_per_h", "volume_l",
+                                      "doses"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "simulate_exposure",
+            "Integrate a concentration-time profile (Cmax, Tmax, AUC, half-life, accumulation) for "
+            "a supplied dose-event list and PK parameter set, and return it together with the "
+            "assumption list. This is an EXPOSURE SCENARIO under those assumptions and is never a "
+            "dose recommendation; requires assumptions_acknowledged = true.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.pharmacodynamics) return {"Pharmacodynamics service unavailable.", true};
+                // The guard is the point of the field: a missing or falsy value stops the tool
+                // before any number exists that could be narrated as a dosing suggestion.
+                if (!args.contains("assumptions_acknowledged") ||
+                    !args["assumptions_acknowledged"].is_boolean() ||
+                    !args["assumptions_acknowledged"].get<bool>()) {
+                    return {"Refused: set assumptions_acknowledged = true. This tool emits an "
+                            "exposure scenario under stated assumptions, not a dose recommendation.",
+                            true};
+                }
+                if (!args.contains("clearance_l_per_h") || !args.contains("volume_l"))
+                    return {"Missing clearance_l_per_h and/or volume_l; they are not assumed.", true};
+                if (!args.contains("doses") || !args["doses"].is_array() || args["doses"].empty())
+                    return {"Provide a non-empty 'doses' array.", true};
+
+                PkModelSpec spec;
+                const std::string mdl = args.value("model", "oral-1c");
+                if (mdl == "iv-bolus")         spec.model = PkModel::IvBolus;
+                else if (mdl == "iv-infusion") spec.model = PkModel::IvInfusion;
+                else if (mdl == "oral-2c")     spec.model = PkModel::OralTwoCompartment;
+                else if (mdl == "oral-1c")     spec.model = PkModel::OralOneCompartment;
+                else return {"Unknown 'model'.", true};
+
+                auto given = [](double v, const char* unit) {
+                    return makeQuantity(v, unit, 0.0, Provenance::Measured, "caller-supplied");
+                };
+                auto assumedQ = [](double v, const char* unit, const char* why) {
+                    return makeQuantity(v, unit, 0.0, Provenance::Model,
+                                        std::string("assumed default - ") + why);
+                };
+                spec.clearance = given(args["clearance_l_per_h"].get<double>(), "L/h");
+                spec.volume    = given(args["volume_l"].get<double>(), "L");
+                spec.bioavailability =
+                    args.contains("bioavailability")
+                        ? given(args["bioavailability"].get<double>(), "")
+                        : assumedQ(0.8, "", "F is not predictable from structure");
+                spec.absorptionRate =
+                    args.contains("absorption_rate_per_h")
+                        ? given(args["absorption_rate_per_h"].get<double>(), "1/h")
+                        : assumedQ(1.2, "1/h", "ka is not predictable from structure");
+                spec.unboundFraction =
+                    args.contains("unbound_fraction")
+                        ? given(args["unbound_fraction"].get<double>(), "")
+                        : assumedQ(0.5, "", "fu is not predictable from structure");
+                spec.horizonH = args.value("horizon_h", 24.0);
+
+                DoseRegimen regimen;
+                for (const auto& d : args["doses"]) {
+                    DoseEvent e;
+                    e.timeH     = d.value("time_h", 0.0);
+                    e.amountMg  = d.value("amount_mg", 0.0);
+                    e.durationH = d.value("duration_h", 0.0);
+                    regimen.doses.push_back(e);
+                }
+
+                const PkProfile prof = svc_.pharmacodynamics->simulate(spec, regimen);
+                json j = {{"cmax", prof.cmax}, {"tmax", prof.tmax}, {"auc", prof.auc},
+                          {"halfLife", prof.halfLife}, {"accumulation", prof.accumulation},
+                          {"flipFlop", prof.flipFlop}, {"assumptions", prof.assumptions},
+                          {"note", prof.note},
+                          {"disclaimer",
+                           "Exposure scenario under the listed assumptions. Not a dose "
+                           "recommendation; do not present it as one."}};
+                return {j.dump(), false};
+            }));
+    }
 }
 
 void AppShell::registerAgentWebTools() {
@@ -1138,6 +1336,7 @@ void AppShell::drawContent() {
         else if (panel == "Stability")   panels::stability(*this);
         else if (panel == "Absorption")  panels::absorption(*this);
         else if (panel == "Metabolism")  panels::metabolism(*this);
+        else if (panel == "PkPd")        panels::pkpd(*this);
         else if (panel == "Similarity")  panels::similarity(*this);
         else if (panel == "Legal")       panels::legal(*this);
         else if (panel == "Docking")     panels::docking(*this);

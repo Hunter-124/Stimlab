@@ -11,6 +11,7 @@ target_link_libraries(biocad_fakes PUBLIC
   biocad_contracts
   biocad_data
   biocad_packs
+  biocad_pkpd
 )
 
 target_compile_features(biocad_fakes PUBLIC cxx_std_20)

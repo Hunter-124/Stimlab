@@ -23,6 +23,7 @@ void analogExplorer(AppShell& shell);
 void stability(AppShell& shell);
 void absorption(AppShell& shell);
 void metabolism(AppShell& shell);
+void pkpd(AppShell& shell);
 void similarity(AppShell& shell);
 void legal(AppShell& shell);
 void docking(AppShell& shell);

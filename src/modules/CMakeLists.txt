@@ -21,6 +21,7 @@ target_link_libraries(biocad_modules PUBLIC
   biocad_packs
   biocad_chem
   biocad_core
+  biocad_pkpd
   biocad_storage
   biocad_workflow
 )

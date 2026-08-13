@@ -856,6 +856,204 @@ void metabolism(AppShell& shell) {
     }
 }
 
+// ----------------------------------------------------------------------- PK / PD
+namespace {
+
+// An assumed default is a CONSTRUCTED artefact, not a prediction: F, ka and fu have
+// no credible structure-only predictor, so they are Model-tier and the source string
+// says out loud that nothing computed them.
+Quantity pkAssumed(double v, const char* unit, const char* why) {
+    return makeQuantity(v, unit, 0.0, Provenance::Model,
+                        std::string("assumed default - ") + why);
+}
+
+PkModelSpec defaultPkSpec() {
+    PkModelSpec s;
+    s.model              = PkModel::OralOneCompartment;
+    s.bioavailability    = pkAssumed(0.80, "", "F is not predictable from structure");
+    s.absorptionRate     = pkAssumed(1.20, "1/h", "ka is not predictable from structure");
+    s.clearance          = pkAssumed(5.00, "L/h", "enter a measured CL to leave this tier");
+    s.volume             = pkAssumed(50.0, "L", "enter a measured V to leave this tier");
+    s.volumePeripheral   = pkAssumed(30.0, "L", "two-compartment only");
+    s.intercompartmental = pkAssumed(4.00, "L/h", "two-compartment only");
+    s.unboundFraction    = pkAssumed(0.50, "", "fu is not predictable from structure");
+    s.vmax               = pkAssumed(0.00, "mg/h", "0 disables Michaelis-Menten elimination");
+    s.km                 = pkAssumed(1.00, "mg/L", "used only when Vmax > 0");
+    return s;
+}
+
+// One editable parameter row. Editing a value makes it user-entered, so the row
+// colour changes from "model" to "measured" the moment a real number is supplied.
+void pkParamRow(const char* id, const char* label, Quantity& q) {
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::TextColored(theme::provenanceColor(q.provenance), "%s", label);
+    ImGui::TableSetColumnIndex(1);
+    ImGui::SetNextItemWidth(-1.0f);
+    if (ImGui::InputDouble(id, &q.value, 0.0, 0.0, "%.4f")) {
+        q.provenance = Provenance::Measured;
+        q.source     = "user-entered";
+    }
+    ImGui::TableSetColumnIndex(2);
+    ImGui::TextUnformatted(q.unit.empty() ? "-" : q.unit.c_str());
+    ImGui::TableSetColumnIndex(3);
+    ImGui::TextColored(theme::provenanceColor(q.provenance), "%s - %s",
+                       provenanceLabel(q.provenance), q.source.c_str());
+}
+
+}  // namespace
+
+void pkpd(AppShell& shell) {
+    Services& s = shell.services();
+    if (!s.pharmacodynamics) return;
+
+    // Panel state is intentionally static: the regimen and the parameter set are the
+    // user's scenario, not a property of the selected molecule.
+    static PkModelSpec spec  = defaultPkSpec();
+    static std::vector<DoseEvent> doses = {{0.0, 100.0, 0.0}, {12.0, 100.0, 0.0}};
+    static Quantity    kd    = pkAssumed(0.05, "mg/L", "supply a measured Kd for a real occupancy");
+
+    // Fixed banner - always the first thing drawn, never behind a scroll or a tab.
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic),
+                       "EXPOSURE SCENARIO ONLY. This panel integrates a concentration-time and a "
+                       "target-occupancy curve under the assumptions listed under the plot. It is "
+                       "not, and will never be, a dose recommendation or a regimen suggestion.");
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+
+    const char* kModelNames[] = {"IV bolus", "IV infusion", "Oral 1-compartment",
+                                 "Oral 2-compartment"};
+    int modelIdx = static_cast<int>(spec.model);
+    ImGui::SetNextItemWidth(220.0f);
+    if (ImGui::Combo("Structural model", &modelIdx, kModelNames, 4))
+        spec.model = static_cast<PkModel>(modelIdx);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(110.0f);
+    ImGui::InputDouble("Horizon (h)", &spec.horizonH, 1.0, 6.0, "%.1f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(110.0f);
+    ImGui::InputDouble("Step (h)", &spec.stepH, 0.005, 0.05, "%.3f");
+    ImGui::Spacing();
+
+    DoseRegimen regimen;
+    regimen.doses = doses;
+    const PkProfile      prof = s.pharmacodynamics->simulate(spec, regimen);
+    const OccupancyCurve occ  = s.pharmacodynamics->occupancy(prof, kd);
+
+    statCard("Cmax", f2(prof.cmax.value), "mg/L (simulated)", 170.0f);
+    ImGui::SameLine();
+    statCard("Tmax", f2(prof.tmax.value), "h", 150.0f);
+    ImGui::SameLine();
+    statCard("AUC", f2(prof.auc.value), "mg*h/L over horizon", 190.0f);
+    ImGui::SameLine();
+    statCard("t 1/2", f2(prof.halfLife.value), "h", 150.0f);
+    ImGui::SameLine();
+    statCard("PEAK OCC.", f2(occ.peakOccupancy.value * 100.0) + "%", "fraction of target bound",
+             200.0f);
+    ImGui::Spacing();
+
+    if (prof.flipFlop) {
+        ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic),
+                           "Flip-flop kinetics: ka < ke, so the terminal slope reflects "
+                           "absorption, not elimination.");
+    }
+
+    const int n = static_cast<int>(prof.timeH.size());
+    if (n > 1 && ImPlot::BeginPlot("##pkpd-conc", ImVec2(-1, 220))) {
+        ImPlot::SetupAxes("time (h)", "concentration (mg/L)");
+        ImPlot::PlotLine("total", prof.timeH.data(), prof.concentrationMgPerL.data(), n);
+        if (prof.unboundMgPerL.size() == prof.timeH.size())
+            ImPlot::PlotLine("unbound", prof.timeH.data(), prof.unboundMgPerL.data(), n);
+        ImPlot::EndPlot();
+    }
+
+    const int on = static_cast<int>(occ.timeH.size());
+    if (on > 1 && ImPlot::BeginPlot("##pkpd-occ", ImVec2(-1, 200))) {
+        ImPlot::SetupAxes("time (h)", "fractional occupancy");
+        ImPlot::SetupAxisLimits(ImAxis_Y1, 0.0, 1.0, ImPlotCond_Always);
+        ImPlot::PlotLine("occupancy", occ.timeH.data(), occ.occupancy.data(), on);
+        ImPlot::EndPlot();
+    }
+
+    // The assumptions belong UNDER the plot, verbatim: a curve whose assumptions are
+    // not visible is a curve that misleads.
+    theme::sectionHeader("ASSUMPTIONS THIS CURVE RESTS ON");
+    if (prof.assumptions.empty()) {
+        ImGui::TextDisabled("(the module reported no assumptions)");
+    } else {
+        for (const auto& a : prof.assumptions) ImGui::BulletText("%s", a.c_str());
+    }
+    if (!prof.note.empty()) ImGui::TextWrapped("%s", prof.note.c_str());
+    if (!occ.note.empty()) ImGui::TextWrapped("%s", occ.note.c_str());
+    ImGui::Spacing();
+
+    theme::sectionHeader("DERIVED EXPOSURE QUANTITIES");
+    drawQuantity("Cmax", prof.cmax);
+    drawQuantity("Tmax", prof.tmax);
+    drawQuantity("AUC", prof.auc);
+    drawQuantity("Half-life", prof.halfLife);
+    drawQuantity("Accumulation (Rac)", prof.accumulation);
+    drawQuantity("Peak occupancy", occ.peakOccupancy);
+    drawQuantity("Time above 50% occupancy", occ.timeAbove50Pct);
+    ImGui::Spacing();
+
+    theme::sectionHeader("DOSE EVENTS");
+    if (ImGui::BeginTable("pkpd-doses", 4,
+                          ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("Time (h)", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+        ImGui::TableSetupColumn("Amount (mg)", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+        ImGui::TableSetupColumn("Duration (h)", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+        ImGui::TableSetupColumn("");
+        ImGui::TableHeadersRow();
+        int removeIdx = -1;
+        for (int i = 0; i < static_cast<int>(doses.size()); ++i) {
+            ImGui::PushID(i);
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::SetNextItemWidth(-1.0f);
+            ImGui::InputDouble("##t", &doses[i].timeH, 0.0, 0.0, "%.2f");
+            ImGui::TableSetColumnIndex(1);
+            ImGui::SetNextItemWidth(-1.0f);
+            ImGui::InputDouble("##amt", &doses[i].amountMg, 0.0, 0.0, "%.2f");
+            ImGui::TableSetColumnIndex(2);
+            ImGui::SetNextItemWidth(-1.0f);
+            ImGui::InputDouble("##dur", &doses[i].durationH, 0.0, 0.0, "%.2f");
+            ImGui::TableSetColumnIndex(3);
+            if (ImGui::SmallButton("Remove")) removeIdx = i;
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+        if (removeIdx >= 0) doses.erase(doses.begin() + removeIdx);
+    }
+    if (ImGui::Button("Add dose event")) {
+        const double last = doses.empty() ? 0.0 : doses.back().timeH;
+        doses.push_back({last + 12.0, doses.empty() ? 100.0 : doses.back().amountMg, 0.0});
+    }
+    ImGui::Spacing();
+
+    theme::sectionHeader("PARAMETERS (ROW COLOUR = PROVENANCE)");
+    if (ImGui::BeginTable("pkpd-params", 4,
+                          ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("Parameter", ImGuiTableColumnFlags_WidthFixed, 220.0f);
+        ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 140.0f);
+        ImGui::TableSetupColumn("Unit", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+        ImGui::TableSetupColumn("Provenance");
+        ImGui::TableHeadersRow();
+        pkParamRow("##F",  "Bioavailability F",      spec.bioavailability);
+        pkParamRow("##ka", "Absorption rate ka",     spec.absorptionRate);
+        pkParamRow("##CL", "Clearance CL",           spec.clearance);
+        pkParamRow("##V",  "Central volume V",       spec.volume);
+        pkParamRow("##V2", "Peripheral volume V2",   spec.volumePeripheral);
+        pkParamRow("##Q",  "Intercompartmental Q",   spec.intercompartmental);
+        pkParamRow("##fu", "Unbound fraction fu",    spec.unboundFraction);
+        pkParamRow("##Vm", "Vmax (0 = linear)",      spec.vmax);
+        pkParamRow("##Km", "Km",                     spec.km);
+        pkParamRow("##Kd", "Target Kd (occupancy)",  kd);
+        ImGui::EndTable();
+    }
+}
+
 // ------------------------------------------------------------------ Similarity
 void similarity(AppShell& shell) {
     const Molecule m = shell.currentMolecule();

@@ -87,4 +87,32 @@ public:
     virtual void record(const RunRecord&) {}
 };
 
+// Pharmacodynamics and pharmacokinetics.
+//
+// SAFETY SCOPE: this interface emits EXPOSURE SCENARIOS under stated assumptions.
+// It has no dose-recommendation entry point, and adding one is out of scope by
+// design. Every returned number carries a Provenance; a missing prerequisite is a
+// NotComputed Quantity naming what is missing, never a silently assumed default.
+class IPharmacodynamicsModule {
+public:
+    virtual ~IPharmacodynamicsModule() = default;
+
+    // Four-parameter logistic fit in log-concentration space.
+    virtual CurveFit fitFourParameterLogistic(const std::vector<DoseResponsePoint>&) const = 0;
+
+    // Cheng-Prusoff Ki from an IC50. Returns NotComputed naming the missing field
+    // when the modality's required inputs are absent.
+    virtual Quantity kiFromIc50(const ChengPrusoffInput&) const = 0;
+
+    // Schild regression: pA2, slope with a confidence interval, and KB only when
+    // the slope CI includes 1.
+    virtual SchildResult schild(const std::vector<SchildPoint>&) const = 0;
+
+    // Integrate an exposure profile for a dosing regimen.
+    virtual PkProfile simulate(const PkModelSpec&, const DoseRegimen&) const = 0;
+
+    // Fractional target occupancy from a free-concentration profile and a Kd.
+    virtual OccupancyCurve occupancy(const PkProfile&, const Quantity& kd) const = 0;
+};
+
 }  // namespace biocad
