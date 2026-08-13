@@ -164,6 +164,30 @@
       "drugClass": "Antitussive / NMDA antagonist",
       "legalUs": "OTC (US)",
       "notes": "O-demethylated by CYP2D6 to dextrorphan, so exposure varies widely with CYP2D6 phenotype."
+    },
+    {
+      "id": "codeine",
+      "name": "Codeine",
+      "smiles": "CN1CCC23C4C1CC5=C2C(=C(C=C5)OC)OC3C(C=C4)O",
+      "drugClass": "Opioid analgesic / antitussive (prodrug)",
+      "legalUs": "Schedule II-V depending on formulation (US)",
+      "notes": "A prodrug whose analgesia comes from CYP2D6 O-demethylation to morphine; CYP2D6 phenotype therefore determines both efficacy and overdose risk.",
+      "xrefs": {
+        "chembl": "CHEMBL485",
+        "pubchemCid": 5284371
+      }
+    },
+    {
+      "id": "tramadol",
+      "name": "Tramadol",
+      "smiles": "CN(C)CC1CCCCC1(C2=CC(=CC=C2)OC)O",
+      "drugClass": "Atypical opioid / monoamine reuptake inhibitor",
+      "legalUs": "Schedule IV (US)",
+      "notes": "Dual mechanism: the parent inhibits serotonin and noradrenaline reuptake while the CYP2D6-derived M1 metabolite carries the mu-opioid activity.",
+      "xrefs": {
+        "chembl": "CHEMBL1520",
+        "pubchemCid": 33741
+      }
     }
   ],
   "targets": [

@@ -4,11 +4,14 @@ Copyright 2026 Hunter
 This product includes software and data developed by third parties.
 BioCAD itself is licensed under the Apache License, Version 2.0; see LICENSE.
 
-BioCAD contains no vendored third-party source. Every library below is resolved
-at build time by vcpkg (`vcpkg.json`) or is a Windows platform component; every
-data source below is either referenced by a URL in the source or cited inside
-`assets/packs/*.json`. No third-party dataset is redistributed in this
-repository.
+BioCAD contains no vendored third-party source code. Every library below is
+resolved at build time by vcpkg (`vcpkg.json`) or is a Windows platform
+component. Data sources are either referenced by a URL in the source or cited
+inside `assets/packs/**/*.json`. Exactly one third-party *data* file is
+redistributed here in transcribed form - the Wildman-Crippen atom-class
+parameter table in `assets/packs/descriptors/crippen.json`, taken from RDKit's
+BSD-3-Clause `Data/Crippen.txt` - and its licence obligation is stated in
+section 4a below. No other third-party dataset is redistributed.
 
 
 1. Build-time library dependencies (vcpkg.json)
@@ -61,7 +64,7 @@ bundled; nothing is cached into this repository.
 | DuckDuckGo HTML endpoint | `https://html.duckduckgo.com/html/?q=` (`src/agent/WebTools.cpp:338`) | Used under DuckDuckGo's terms of use; agent `web_search` tool only, `science` feature only |
 | DigiCert timestamp authority | `http://timestamp.digicert.com` (`scripts/sign.ps1:37`) | Release-signing infrastructure only; not used by the application |
 
-4. Data sources cited by the shipped packs (`assets/packs/*.json`)
+4. Data sources cited by the shipped packs (`assets/packs/**/*.json`)
 -----------------------------------------------------------------------------
 
 The packs contain BioCAD-authored records. Where a record carries a cross
@@ -76,8 +79,46 @@ reference or follows a published selection, the source is named here.
 | PubChem CIDs (`xrefs.pubchemCid`) and InChIKeys | `cns-monoamine.json`, `analgesics-otc.json`, `metabolic-and-nutrition.json` | PubChem is US-government public domain; InChI/InChIKey is an IUPAC open standard |
 | RCSB PDB entry identifiers and binding-box centres | `targets[].pdb` in all packs | PDB entries are public domain; cite the entry and its primary citation when reporting a result |
 
-Attribution and share-alike summary: the only weak-copyleft *code* obligation
-is Eigen's MPL-2.0. The only share-alike *data* obligation that can attach is
-ChEMBL's CC BY-SA 3.0, which today applies to identifiers only. UniProt
-(CC BY 4.0) and the curl licence carry attribution obligations. Everything else
-above is permissive, public domain, or executed rather than distributed.
+4a. Licence obligation carried by a shipped data file
+-----------------------------------------------------------------------------
+
+One shipped pack carries a real third-party **licence** obligation, not merely a
+citation, because its machine-readable content was transcribed from a licensed
+file rather than authored here:
+
+| Component | Licence | Where | Obligation |
+|-----------|---------|-------|------------|
+| RDKit `Data/Crippen.txt` - the SMARTS encodings and the logP / molar-refractivity parameter columns of the Wildman-Crippen atom-class table | **BSD-3-Clause**, Copyright (C) 2002-2012 Greg Landrum and Rational Discovery LLC | transcribed into the 106 `classes` entries of `assets/packs/descriptors/crippen.json` (`sourceNote` field records this), consumed by `src/chem/Crippen.cpp` | BSD-3-Clause requires the copyright notice, the licence text and the disclaimer to be reproduced in redistributions **including binary and data redistribution**. Ship the RDKit BSD-3 licence text with any BioCAD distribution that contains this pack, and keep the `sourceNote` field intact |
+
+Deliberately **not** shipped, for licence reasons recorded in the `notice` field
+of `assets/packs/rules/alerts-bioactivation.json`: the PAINS (Baell & Holloway),
+Brenk, and ChEMBL-derived Glaxo / Dundee / BMS / Inpharmatica / SureChEMBL alert
+SMARTS collections. Those are BSD-3 (RDKit FilterCatalog data) and CC BY-SA 3.0
+(ChEMBL-derived) respectively; adding them requires their own separately
+licensed pack file plus its own entry here. The 15 built-in bioactivation alerts
+are authored in house from the literature instead.
+
+4b. Works cited by the shipped rule and descriptor packs
+-----------------------------------------------------------------------------
+
+These are **citations, not licences**. A scientific paper is not a licence: no
+permission is needed to implement a published method or to state a published
+fact, and no obligation attaches beyond crediting the source - which the packs
+and the UI do inline. They are listed here so a reader can find the primary
+source for every number.
+
+| Cited work | Where | Note |
+|------------|-------|------|
+| S. A. Wildman and G. M. Crippen, "Prediction of Physicochemical Parameters by Atomic Contributions", J Chem Inf Comput Sci 1999;39(5):868-873, doi:10.1021/ci990307l | the method implemented by `src/chem/Crippen.cpp`; quoted verbatim as the `citation` field of `assets/packs/descriptors/crippen.json` and returned by `chem::crippenCitation()` | **Citation, not a licence.** The paper describes the method; the BSD-3 obligation in section 4a attaches to the transcribed machine-readable table, not to the method |
+| P. Ertl et al., topological polar surface area (fragment-contribution scheme) | `chem::tpsa()` in `src/chem/Descriptors.cpp` | Citation only; the contribution table in the source is a reimplementation of the published scheme |
+| Stepan et al. 2011, Chem Res Toxicol 24(9):1345-1410, doi:10.1021/tx200168d | `conceptSource` of `assets/packs/rules/alerts-bioactivation.json` and the `citation` of all 15 alerts | Citation only. No text, table or SMARTS from the paper is reproduced; the SMARTS were authored here |
+| 19 distinct primary and reference works cited by the 28 records of `assets/packs/rules/metabolism-facts.json` - including Dring, Smith & Williams (Biochem J 1970;116:425-435), Mitchell et al. (J Pharmacol Exp Ther 1973;187:211-217), de la Torre et al. (Ther Drug Monit 2004;26:137-144), Pennick (Neuropsychiatr Dis Treat 2010;6:317-327), Benowitz, Hukkanen & Jacob (Handb Exp Pharmacol 2009;192:29-60), Thorn et al. PharmGKB caffeine pathway summary (Pharmacogenet Genomics 2012;22:389-395), the CPIC guidelines for CYP2D6/opioids, CYP2D6/atomoxetine and CYP2C9/NSAIDs (Clin Pharmacol Ther 2019-2021), and Goodman & Gilman's *The Pharmacological Basis of Therapeutics*, 13th ed. 2018 | each record's own `citation` field | Citations only - the pack states known biotransformations and names the source of each. Copyrighted text is not reproduced. CPIC's own tables are CC0; PharmGKB / ClinPGx content is CC BY-SA 4.0, so if a future pack copies PharmGKB *content* rather than citing a summary, that pack inherits the share-alike obligation and needs an entry in section 4a |
+
+Attribution and share-alike summary: the weak-copyleft *code* obligation is
+Eigen's MPL-2.0. The one third-party *data* licence actually shipped is
+BSD-3-Clause, on the transcribed Crippen parameter table (section 4a) - its
+notice must travel with any distribution. The share-alike *data* obligation that
+can attach is ChEMBL's CC BY-SA 3.0, which today applies to identifiers only.
+UniProt (CC BY 4.0) and the curl licence carry attribution obligations.
+Everything else above is permissive, public domain, cited rather than copied, or
+executed rather than distributed.

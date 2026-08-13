@@ -153,6 +153,75 @@ struct AdmetReport {
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(AdmetReport, moleculeId, overall, endpoints, summary)
 
 // ---------------------------------------------------------------------------
+// Structural alerts - LIABILITY FLAGS, never toxicity verdicts.
+//
+// A flag means: this substructure has been associated with reactive-metabolite
+// formation in the medicinal-chemistry literature. It does NOT mean the compound
+// is toxic, and it is not a prediction that bioactivation occurs - that depends
+// on the enzymes present, the competing clearance routes, the dose and the
+// detoxication capacity, none of which a substructure knows. Many marketed drugs
+// match several alerts.
+//
+// `severity` is therefore Verdict::Info or Verdict::Warn ONLY. Verdict::Danger is
+// not reachable from this type by construction: a substructure match cannot
+// support a danger verdict, so the producer never emits one and no consumer needs
+// to render one.
+// ---------------------------------------------------------------------------
+struct AlertFlag {
+    std::string label;      // e.g. "para-Aminophenol / anilide (quinone-imine former)"
+    std::string mechanism;  // the metabolic route, stated as a route
+    std::string citation;   // never empty: an uncitable alert is not an alert
+    int         atomCount = 0;  // atoms of this molecule that raised the flag
+    Verdict     severity = Verdict::Info;  // Info or Warn only
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(AlertFlag, label, mechanism, citation, atomCount, severity)
+
+struct AlertReport {
+    std::string            moleculeId;
+    std::vector<AlertFlag> flags;
+    std::string            summary;
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(AlertReport, moleculeId, flags, summary)
+
+// ---------------------------------------------------------------------------
+// Known metabolites - CURATED FACTS, not enumerated hypotheses.
+//
+// Every entry here is a transformation that has actually been characterised in a
+// citable source, which is why it can be rendered Provenance::Measured. The
+// alternative - enumerating a rule-based metabolite tree - was measured by an
+// independent EPA cross-tool benchmark at 1.1-29% precision and 14.7-28.3%
+// sensitivity (Boyce et al. 2022, Comput Toxicol 21:100208), so the two must never
+// share a surface: a hypothesis rendered next to a fact inherits its credibility.
+// ---------------------------------------------------------------------------
+struct MetaboliteFact {
+    std::string parentId;          // library compound id this metabolite comes from
+    std::string metaboliteName;    // display name of the product
+    std::string metaboliteSmiles;  // empty when the structure is not certain - never guessed
+    std::string enzyme;            // e.g. "CYP2D6", "UGT2B7", "Butyrylcholinesterase"
+    std::string reaction;          // e.g. "O-demethylation at the 3-position"
+    std::string significance;      // why this transformation matters
+    std::string citation;          // real, checkable reference; never fabricated
+    bool        polymorphic = false;  // the enzyme has clinically relevant genetic variation
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(MetaboliteFact, parentId, metaboliteName,
+                                   metaboliteSmiles, enzyme, reaction, significance,
+                                   citation, polymorphic)
+
+struct MetabolismReport {
+    std::string moleculeId;
+    std::vector<MetaboliteFact> known;
+    std::string summary;
+    // ALWAYS populated, and rendered whether or not `known` is empty. An empty
+    // list means BioCAD has no curated fact for this compound - it does NOT mean
+    // the compound has no metabolites. Implying the latter is the single easiest
+    // lie this surface could tell, so the note is a required field rather than a
+    // conditional string the renderer might skip.
+    std::string coverageNote;
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(MetabolismReport, moleculeId, known, summary,
+                                   coverageNote)
+
+// ---------------------------------------------------------------------------
 // Absorption / Pharmacokinetics - the "A" of ADMET, modeled in depth so it can
 // discriminate between candidate analogs (per user request).
 // ---------------------------------------------------------------------------

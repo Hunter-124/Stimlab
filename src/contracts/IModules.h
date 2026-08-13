@@ -42,6 +42,35 @@ public:
     virtual AdmetReport screen(const Molecule& m) const = 0;
 };
 
+// Structural alerts for metabolic bioactivation.
+//
+// SAFETY SCOPE: this interface emits LIABILITY FLAGS. A flag says a substructure
+// has been associated with reactive-metabolite formation in the literature; it
+// does not say the compound is toxic, and there is deliberately no toxicity
+// verdict, no composite risk score and no Verdict::Danger anywhere in
+// AlertReport. An empty flag list means "no alert in the pack matched", which is
+// not a safety claim about the compound.
+class IAlertsModule {
+public:
+    virtual ~IAlertsModule() = default;
+    virtual AlertReport screen(const Molecule& m) const = 0;
+};
+
+// Curated, cited biotransformations for a library compound.
+//
+// SAFETY SCOPE: this interface RETRIEVES facts; it never enumerates hypotheses.
+// Rule-based metabolite prediction was measured at 1.1-29% precision and
+// 14.7-28.3% sensitivity across every major tool (Boyce et al. 2022, Comput
+// Toxicol 21:100208), so hypothesis generation is a separate surface and there is
+// no entry point here that would produce one. An empty MetabolismReport::known is
+// a statement about BioCAD's curation, not about the compound, which is why
+// coverageNote is a required field of the result.
+class IMetabolismFactsModule {
+public:
+    virtual ~IMetabolismFactsModule() = default;
+    virtual MetabolismReport known(const Molecule& m) const = 0;
+};
+
 // Absorption / pharmacokinetics (the "A" of ADMET) - permeability, F%, BBB.
 class IAbsorptionModule {
 public:

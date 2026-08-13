@@ -3,6 +3,8 @@ add_library(biocad_modules STATIC
   RealBackend.cpp
   BioModules.cpp
   Pipelines.cpp
+  Metabolites.cpp
+  AlertsModule.cpp
   docking/Presets.cpp
   docking/PdbqtWriter.cpp
   docking/VinaParser.cpp

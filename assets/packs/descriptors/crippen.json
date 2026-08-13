@@ -1,0 +1,753 @@
+{
+  "schemaVersion": 1,
+  "id": "crippen-logp-mr",
+  "title": "Wildman-Crippen atomic logP and molar-refractivity contributions",
+  "citation": "S. A. Wildman and G. M. Crippen, Prediction of Physicochemical Parameters by Atomic Contributions, J Chem Inf Comput Sci 1999;39(5):868-873. doi:10.1021/ci990307l",
+  "sourceNote": "SMARTS encodings and parameter values transcribed from RDKit's Data/Crippen.txt (BSD-3-Clause, Copyright (C) 2002-2012 Greg Landrum and Rational Discovery LLC), which is the reference machine-readable form of the paper's Table 1. Hydrogen classes H1-H4 and HS are NOT in this file: chem::Molecule carries no explicit hydrogen atoms, so Crippen.cpp derives them from Atom::totalH() and the heavy atom's own environment (see src/chem/Crippen.h for the exact mapping).",
+  "order": "SIGNIFICANT. Classification is first match wins, from most specific to least; the loader must preserve array order. Two order flips (O12 before O7, S2 before S1) are deliberate and come from the reference file.",
+  "methodError": "The method's own published performance is RMS ~0.67 log units against experimental logP over its 9920-compound training set. Faithfulness to the method is what this pack provides; agreement with experiment is not claimed.",
+  "classes": [
+    {
+      "type": "C1",
+      "smarts": "[CH4]",
+      "logP": 0.1441,
+      "mr": 2.503,
+      "note": "methane"
+    },
+    {
+      "type": "C1",
+      "smarts": "[CH3]C",
+      "logP": 0.1441,
+      "mr": 2.503,
+      "note": "primary aliphatic carbon, C neighbour"
+    },
+    {
+      "type": "C1",
+      "smarts": "[CH2](C)C",
+      "logP": 0.1441,
+      "mr": 2.503,
+      "note": "secondary aliphatic carbon, two C neighbours"
+    },
+    {
+      "type": "C2",
+      "smarts": "[CH](C)(C)C",
+      "logP": 0.0,
+      "mr": 2.433,
+      "note": "tertiary aliphatic carbon"
+    },
+    {
+      "type": "C2",
+      "smarts": "[C](C)(C)(C)C",
+      "logP": 0.0,
+      "mr": 2.433,
+      "note": "quaternary aliphatic carbon"
+    },
+    {
+      "type": "C3",
+      "smarts": "[CH3][N,O,P,S,F,Cl,Br,I]",
+      "logP": -0.2035,
+      "mr": 2.753,
+      "note": "primary carbon bearing a heteroatom"
+    },
+    {
+      "type": "C3",
+      "smarts": "[CH2X4]([N,O,P,S,F,Cl,Br,I])[A;!#1]",
+      "logP": -0.2035,
+      "mr": 2.753,
+      "note": "secondary carbon bearing a heteroatom"
+    },
+    {
+      "type": "C4",
+      "smarts": "[CH1X4]([N,O,P,S,F,Cl,Br,I])([A;!#1])[A;!#1]",
+      "logP": -0.2051,
+      "mr": 2.731,
+      "note": "tertiary carbon bearing a heteroatom"
+    },
+    {
+      "type": "C4",
+      "smarts": "[CH0X4]([N,O,P,S,F,Cl,Br,I])([A;!#1])([A;!#1])[A;!#1]",
+      "logP": -0.2051,
+      "mr": 2.731,
+      "note": "quaternary carbon bearing a heteroatom"
+    },
+    {
+      "type": "C5",
+      "smarts": "[C]=[!C;A;!#1]",
+      "logP": -0.2783,
+      "mr": 5.007,
+      "note": "carbon doubly bonded to a heteroatom"
+    },
+    {
+      "type": "C6",
+      "smarts": "[CH2]=C",
+      "logP": 0.1551,
+      "mr": 3.513,
+      "note": "olefinic carbon, terminal"
+    },
+    {
+      "type": "C6",
+      "smarts": "[CH1](=C)[A;!#1]",
+      "logP": 0.1551,
+      "mr": 3.513,
+      "note": "olefinic carbon, one substituent"
+    },
+    {
+      "type": "C6",
+      "smarts": "[CH0](=C)([A;!#1])[A;!#1]",
+      "logP": 0.1551,
+      "mr": 3.513,
+      "note": "olefinic carbon, two substituents"
+    },
+    {
+      "type": "C6",
+      "smarts": "[C](=C)=C",
+      "logP": 0.1551,
+      "mr": 3.513,
+      "note": "allenic carbon"
+    },
+    {
+      "type": "C7",
+      "smarts": "[CX2]#[A;!#1]",
+      "logP": 0.0017,
+      "mr": 3.888,
+      "note": "acetylenic carbon"
+    },
+    {
+      "type": "C8",
+      "smarts": "[CH3]c",
+      "logP": 0.08452,
+      "mr": 2.464,
+      "note": "primary carbon on an aromatic carbon"
+    },
+    {
+      "type": "C9",
+      "smarts": "[CH3]a",
+      "logP": -0.1444,
+      "mr": 2.412,
+      "note": "primary carbon on an aromatic heteroatom"
+    },
+    {
+      "type": "C10",
+      "smarts": "[CH2X4]a",
+      "logP": -0.0516,
+      "mr": 2.488,
+      "note": "secondary carbon on an aromatic atom"
+    },
+    {
+      "type": "C11",
+      "smarts": "[CHX4]a",
+      "logP": 0.1193,
+      "mr": 2.582,
+      "note": "tertiary carbon on an aromatic atom"
+    },
+    {
+      "type": "C12",
+      "smarts": "[CH0X4]a",
+      "logP": -0.0967,
+      "mr": 2.576,
+      "note": "quaternary carbon on an aromatic atom"
+    },
+    {
+      "type": "C13",
+      "smarts": "[cH0]-[A;!C;!N;!O;!S;!F;!Cl;!Br;!I;!#1]",
+      "logP": -0.5443,
+      "mr": 4.041,
+      "note": "aromatic carbon bearing an exotic substituent"
+    },
+    {
+      "type": "C14",
+      "smarts": "[c][#9]",
+      "logP": 0.0,
+      "mr": 3.257,
+      "note": "aromatic carbon bearing fluorine"
+    },
+    {
+      "type": "C15",
+      "smarts": "[c][#17]",
+      "logP": 0.245,
+      "mr": 3.564,
+      "note": "aromatic carbon bearing chlorine"
+    },
+    {
+      "type": "C16",
+      "smarts": "[c][#35]",
+      "logP": 0.198,
+      "mr": 3.18,
+      "note": "aromatic carbon bearing bromine"
+    },
+    {
+      "type": "C17",
+      "smarts": "[c][#53]",
+      "logP": 0.0,
+      "mr": 3.104,
+      "note": "aromatic carbon bearing iodine"
+    },
+    {
+      "type": "C18",
+      "smarts": "[cH]",
+      "logP": 0.1581,
+      "mr": 3.35,
+      "note": "aromatic CH"
+    },
+    {
+      "type": "C19",
+      "smarts": "[c](:a)(:a):a",
+      "logP": 0.2955,
+      "mr": 4.346,
+      "note": "aromatic bridgehead carbon"
+    },
+    {
+      "type": "C20",
+      "smarts": "[c](:a)(:a)-a",
+      "logP": 0.2713,
+      "mr": 3.904,
+      "note": "aromatic carbon joined to another ring"
+    },
+    {
+      "type": "C21",
+      "smarts": "[c](:a)(:a)-C",
+      "logP": 0.136,
+      "mr": 3.509,
+      "note": "aromatic carbon bearing aliphatic carbon"
+    },
+    {
+      "type": "C22",
+      "smarts": "[c](:a)(:a)-N",
+      "logP": 0.4619,
+      "mr": 4.067,
+      "note": "aromatic carbon bearing nitrogen"
+    },
+    {
+      "type": "C23",
+      "smarts": "[c](:a)(:a)-O",
+      "logP": 0.5437,
+      "mr": 3.853,
+      "note": "aromatic carbon bearing oxygen"
+    },
+    {
+      "type": "C24",
+      "smarts": "[c](:a)(:a)-S",
+      "logP": 0.1893,
+      "mr": 2.673,
+      "note": "aromatic carbon bearing sulfur"
+    },
+    {
+      "type": "C25",
+      "smarts": "[c](:a)(:a)=[C,N,O]",
+      "logP": -0.8186,
+      "mr": 3.135,
+      "note": "aromatic carbon doubly bonded outside the ring"
+    },
+    {
+      "type": "C26",
+      "smarts": "[C](=C)(a)[A;!#1]",
+      "logP": 0.264,
+      "mr": 4.305,
+      "note": "olefinic carbon attached to an aromatic ring"
+    },
+    {
+      "type": "C26",
+      "smarts": "[C](=C)(c)a",
+      "logP": 0.264,
+      "mr": 4.305,
+      "note": "olefinic carbon attached to two aromatic atoms"
+    },
+    {
+      "type": "C26",
+      "smarts": "[CH1](=C)a",
+      "logP": 0.264,
+      "mr": 4.305,
+      "note": "olefinic CH attached to an aromatic atom"
+    },
+    {
+      "type": "C26",
+      "smarts": "[C]=c",
+      "logP": 0.264,
+      "mr": 4.305,
+      "note": "carbon doubly bonded to an aromatic carbon"
+    },
+    {
+      "type": "C27",
+      "smarts": "[CX4][A;!C;!N;!O;!P;!S;!F;!Cl;!Br;!I;!#1]",
+      "logP": 0.2148,
+      "mr": 2.693,
+      "note": "aliphatic carbon bearing an exotic substituent"
+    },
+    {
+      "type": "CS",
+      "smarts": "[#6]",
+      "logP": 0.08129,
+      "mr": 3.243,
+      "note": "carbon, catch-all"
+    },
+    {
+      "type": "N1",
+      "smarts": "[NH2+0][A;!#1]",
+      "logP": -1.019,
+      "mr": 2.262,
+      "note": "primary aliphatic amine"
+    },
+    {
+      "type": "N2",
+      "smarts": "[NH+0]([A;!#1])[A;!#1]",
+      "logP": -0.7096,
+      "mr": 2.173,
+      "note": "secondary aliphatic amine"
+    },
+    {
+      "type": "N3",
+      "smarts": "[NH2+0]a",
+      "logP": -1.027,
+      "mr": 2.827,
+      "note": "primary aromatic amine"
+    },
+    {
+      "type": "N4",
+      "smarts": "[NH1+0]([!#1;A,a])a",
+      "logP": -0.5188,
+      "mr": 3.0,
+      "note": "secondary aromatic amine"
+    },
+    {
+      "type": "N5",
+      "smarts": "[NH+0]=[!#1;A,a]",
+      "logP": 0.08387,
+      "mr": 1.757,
+      "note": "imine NH"
+    },
+    {
+      "type": "N6",
+      "smarts": "[N+0](=[!#1;A,a])[!#1;A,a]",
+      "logP": 0.1836,
+      "mr": 2.428,
+      "note": "substituted imine"
+    },
+    {
+      "type": "N7",
+      "smarts": "[N+0]([A;!#1])([A;!#1])[A;!#1]",
+      "logP": -0.3187,
+      "mr": 1.839,
+      "note": "tertiary aliphatic amine"
+    },
+    {
+      "type": "N8",
+      "smarts": "[N+0](a)([!#1;A,a])[A;!#1]",
+      "logP": -0.4458,
+      "mr": 2.819,
+      "note": "tertiary aromatic amine"
+    },
+    {
+      "type": "N8",
+      "smarts": "[N+0](a)(a)a",
+      "logP": -0.4458,
+      "mr": 2.819,
+      "note": "tertiary amine, three aromatic neighbours"
+    },
+    {
+      "type": "N9",
+      "smarts": "[N+0]#[A;!#1]",
+      "logP": 0.01508,
+      "mr": 1.725,
+      "note": "nitrile"
+    },
+    {
+      "type": "N10",
+      "smarts": "[NH3,NH2,NH;+,+2,+3]",
+      "logP": -1.95,
+      "mr": 0.0,
+      "note": "protonated amine"
+    },
+    {
+      "type": "N11",
+      "smarts": "[n+0]",
+      "logP": -0.3239,
+      "mr": 2.202,
+      "note": "unprotonated aromatic nitrogen"
+    },
+    {
+      "type": "N12",
+      "smarts": "[n;+,+2,+3]",
+      "logP": -1.119,
+      "mr": 0.0,
+      "note": "protonated aromatic nitrogen"
+    },
+    {
+      "type": "N13",
+      "smarts": "[NH0;+,+2,+3]([A;!#1])([A;!#1])([A;!#1])[A;!#1]",
+      "logP": -0.3396,
+      "mr": 0.2604,
+      "note": "quaternary ammonium"
+    },
+    {
+      "type": "N13",
+      "smarts": "[NH0;+,+2,+3](=[A;!#1])([A;!#1])[!#1;A,a]",
+      "logP": -0.3396,
+      "mr": 0.2604,
+      "note": "quaternary nitrogen, one double bond"
+    },
+    {
+      "type": "N13",
+      "smarts": "[NH0;+,+2,+3](=[#6])=[#7]",
+      "logP": -0.3396,
+      "mr": 0.2604,
+      "note": "quaternary nitrogen, two double bonds"
+    },
+    {
+      "type": "N14",
+      "smarts": "[N;+,+2,+3]#[A;!#1]",
+      "logP": 0.2887,
+      "mr": 3.359,
+      "note": "other charged nitrogen, triple bond"
+    },
+    {
+      "type": "N14",
+      "smarts": "[N;-,-2,-3]",
+      "logP": 0.2887,
+      "mr": 3.359,
+      "note": "anionic nitrogen"
+    },
+    {
+      "type": "N14",
+      "smarts": "[N;+,+2,+3](=[N;-,-2,-3])=N",
+      "logP": 0.2887,
+      "mr": 3.359,
+      "note": "azide-type nitrogen"
+    },
+    {
+      "type": "NS",
+      "smarts": "[#7]",
+      "logP": -0.4806,
+      "mr": 2.134,
+      "note": "nitrogen, catch-all"
+    },
+    {
+      "type": "O1",
+      "smarts": "[o]",
+      "logP": 0.1552,
+      "mr": 1.08,
+      "note": "aromatic oxygen"
+    },
+    {
+      "type": "O2",
+      "smarts": "[OH,OH2]",
+      "logP": -0.2893,
+      "mr": 0.8238,
+      "note": "alcohol or water oxygen"
+    },
+    {
+      "type": "O3",
+      "smarts": "[O]([A;!#1])[A;!#1]",
+      "logP": -0.0684,
+      "mr": 1.085,
+      "note": "aliphatic ether oxygen"
+    },
+    {
+      "type": "O4",
+      "smarts": "[O](a)[!#1;A,a]",
+      "logP": -0.4195,
+      "mr": 1.182,
+      "note": "aromatic ether oxygen"
+    },
+    {
+      "type": "O5",
+      "smarts": "[O]=[#7,#8]",
+      "logP": 0.0335,
+      "mr": 3.367,
+      "note": "oxide oxygen"
+    },
+    {
+      "type": "O5",
+      "smarts": "[OX1;-,-2,-3][#7]",
+      "logP": 0.0335,
+      "mr": 3.367,
+      "note": "anionic oxygen on nitrogen"
+    },
+    {
+      "type": "O6",
+      "smarts": "[OX1;-,-2,-2][#16]",
+      "logP": -0.3339,
+      "mr": 0.7774,
+      "note": "anionic oxygen on sulfur"
+    },
+    {
+      "type": "O6",
+      "smarts": "[O;-0]=[#16;-0]",
+      "logP": -0.3339,
+      "mr": 0.7774,
+      "note": "sulfoxide or sulfone oxygen"
+    },
+    {
+      "type": "O12",
+      "smarts": "[O-]C(=O)",
+      "logP": -1.326,
+      "mr": 0.0,
+      "note": "carboxylate oxygen (order flip is intentional, before O7)"
+    },
+    {
+      "type": "O7",
+      "smarts": "[OX1;-,-2,-3][!#1;!N;!S]",
+      "logP": -1.189,
+      "mr": 0.0,
+      "note": "other anionic oxygen"
+    },
+    {
+      "type": "O8",
+      "smarts": "[O]=c",
+      "logP": 0.1788,
+      "mr": 3.135,
+      "note": "oxygen doubly bonded to an aromatic carbon"
+    },
+    {
+      "type": "O9",
+      "smarts": "[O]=[CH]C",
+      "logP": -0.1526,
+      "mr": 0.0,
+      "note": "aldehyde oxygen"
+    },
+    {
+      "type": "O9",
+      "smarts": "[O]=C(C)([A;!#1])",
+      "logP": -0.1526,
+      "mr": 0.0,
+      "note": "ketone oxygen"
+    },
+    {
+      "type": "O9",
+      "smarts": "[O]=[CH][N,O]",
+      "logP": -0.1526,
+      "mr": 0.0,
+      "note": "formamide or formate oxygen"
+    },
+    {
+      "type": "O9",
+      "smarts": "[O]=[CH2]",
+      "logP": -0.1526,
+      "mr": 0.0,
+      "note": "formaldehyde oxygen"
+    },
+    {
+      "type": "O9",
+      "smarts": "[O]=[CX2]=O",
+      "logP": -0.1526,
+      "mr": 0.0,
+      "note": "carbon dioxide oxygen"
+    },
+    {
+      "type": "O10",
+      "smarts": "[O]=[CH]c",
+      "logP": 0.1129,
+      "mr": 0.2215,
+      "note": "aromatic aldehyde oxygen"
+    },
+    {
+      "type": "O10",
+      "smarts": "[O]=C([C,c])[a;!#1]",
+      "logP": 0.1129,
+      "mr": 0.2215,
+      "note": "carbonyl oxygen with an aromatic neighbour"
+    },
+    {
+      "type": "O10",
+      "smarts": "[O]=C(c)[A;!#1]",
+      "logP": 0.1129,
+      "mr": 0.2215,
+      "note": "carbonyl oxygen on an aryl ketone"
+    },
+    {
+      "type": "O11",
+      "smarts": "[O]=C([!#1;!#6])[!#1;!#6]",
+      "logP": 0.4833,
+      "mr": 0.389,
+      "note": "carbonyl oxygen flanked by two heteroatoms"
+    },
+    {
+      "type": "OS",
+      "smarts": "[#8]",
+      "logP": -0.1188,
+      "mr": 0.6865,
+      "note": "oxygen, catch-all"
+    },
+    {
+      "type": "F",
+      "smarts": "[#9-0]",
+      "logP": 0.4202,
+      "mr": 1.108,
+      "note": "fluorine"
+    },
+    {
+      "type": "Cl",
+      "smarts": "[#17-0]",
+      "logP": 0.6895,
+      "mr": 5.853,
+      "note": "chlorine"
+    },
+    {
+      "type": "Br",
+      "smarts": "[#35-0]",
+      "logP": 0.8456,
+      "mr": 8.927,
+      "note": "bromine"
+    },
+    {
+      "type": "I",
+      "smarts": "[#53-0]",
+      "logP": 0.8857,
+      "mr": 14.02,
+      "note": "iodine"
+    },
+    {
+      "type": "Hal",
+      "smarts": "[#9,#17,#35,#53;-]",
+      "logP": -2.996,
+      "mr": 0.0,
+      "note": "halide anion"
+    },
+    {
+      "type": "Hal",
+      "smarts": "[#53;+,+2,+3]",
+      "logP": -2.996,
+      "mr": 0.0,
+      "note": "hypervalent iodine"
+    },
+    {
+      "type": "Hal",
+      "smarts": "[+;#3,#11,#19,#37,#55]",
+      "logP": -2.996,
+      "mr": 0.0,
+      "note": "alkali-metal cation (paper footnote h)"
+    },
+    {
+      "type": "P",
+      "smarts": "[#15]",
+      "logP": 0.8612,
+      "mr": 6.92,
+      "note": "phosphorus"
+    },
+    {
+      "type": "S2",
+      "smarts": "[S;-,-2,-3,-4,+1,+2,+3,+5,+6]",
+      "logP": -0.0024,
+      "mr": 7.365,
+      "note": "ionic sulfur (order flip is intentional, before S1)"
+    },
+    {
+      "type": "S2",
+      "smarts": "[S-0]=[N,O,P,S]",
+      "logP": -0.0024,
+      "mr": 7.365,
+      "note": "pseudo-ionic sulfur, sulfoxide or sulfone"
+    },
+    {
+      "type": "S1",
+      "smarts": "[S;A]",
+      "logP": 0.6482,
+      "mr": 7.591,
+      "note": "aliphatic sulfur"
+    },
+    {
+      "type": "S3",
+      "smarts": "[s;a]",
+      "logP": 0.6237,
+      "mr": 6.691,
+      "note": "aromatic sulfur"
+    },
+    {
+      "type": "Me1",
+      "smarts": "[#3,#11,#19,#37,#55]",
+      "logP": -0.3808,
+      "mr": 5.754,
+      "note": "group 1 metal"
+    },
+    {
+      "type": "Me1",
+      "smarts": "[#4,#12,#20,#38,#56]",
+      "logP": -0.3808,
+      "mr": 5.754,
+      "note": "group 2 metal"
+    },
+    {
+      "type": "Me1",
+      "smarts": "[#5,#13,#31,#49,#81]",
+      "logP": -0.3808,
+      "mr": 5.754,
+      "note": "group 13 element"
+    },
+    {
+      "type": "Me1",
+      "smarts": "[#14,#32,#50,#82]",
+      "logP": -0.3808,
+      "mr": 5.754,
+      "note": "group 14 element"
+    },
+    {
+      "type": "Me1",
+      "smarts": "[#33,#51,#83]",
+      "logP": -0.3808,
+      "mr": 5.754,
+      "note": "group 15 element"
+    },
+    {
+      "type": "Me1",
+      "smarts": "[#34,#52,#84]",
+      "logP": -0.3808,
+      "mr": 5.754,
+      "note": "group 16 element"
+    },
+    {
+      "type": "Me2",
+      "smarts": "[#21,#22,#23,#24,#25,#26,#27,#28,#29,#30]",
+      "logP": -0.0025,
+      "mr": 0.0,
+      "note": "first-row transition metal"
+    },
+    {
+      "type": "Me2",
+      "smarts": "[#39,#40,#41,#42,#43,#44,#45,#46,#47,#48]",
+      "logP": -0.0025,
+      "mr": 0.0,
+      "note": "second-row transition metal"
+    },
+    {
+      "type": "Me2",
+      "smarts": "[#72,#73,#74,#75,#76,#77,#78,#79,#80]",
+      "logP": -0.0025,
+      "mr": 0.0,
+      "note": "third-row transition metal"
+    },
+    {
+      "type": "S1",
+      "smarts": "[#16]",
+      "logP": 0.6482,
+      "mr": 7.591,
+      "note": "sulfur, catch-all guard"
+    },
+    {
+      "type": "F",
+      "smarts": "[#9]",
+      "logP": 0.4202,
+      "mr": 1.108,
+      "note": "fluorine, catch-all guard"
+    },
+    {
+      "type": "Cl",
+      "smarts": "[#17]",
+      "logP": 0.6895,
+      "mr": 5.853,
+      "note": "chlorine, catch-all guard"
+    },
+    {
+      "type": "Br",
+      "smarts": "[#35]",
+      "logP": 0.8456,
+      "mr": 8.927,
+      "note": "bromine, catch-all guard"
+    },
+    {
+      "type": "I",
+      "smarts": "[#53]",
+      "logP": 0.8857,
+      "mr": 14.02,
+      "note": "iodine, catch-all guard"
+    }
+  ]
+}

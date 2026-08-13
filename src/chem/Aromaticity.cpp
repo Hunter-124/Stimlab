@@ -76,6 +76,16 @@ std::optional<int> contribution(const Molecule& m, int i, const Mask& ringBond,
         case 15: {  // nitrogen, phosphorus
             if (strictDoubleInRing(m, i, ringBond)) return 1;  // pyridine-type
             if (a.charge == -1) return 2;                      // azolate anion
+            // Cationic nitrogen: a pyridinium, thiazolium or isoquinolinium N has
+            // spent its lone pair on the fourth sigma bond (or on a proton), so it
+            // donates one p electron like pyridine, NOT two like pyrrole. Tested
+            // before the pyrrole-type row because an N-methylpyridinium also has
+            // three sigma connections, and lowercase input gives every ring bond
+            // order 1.5, so the formal charge is the only thing that tells the two
+            // apart. Without this row N-methylated cofactors (NMN/NAD+, thiamine,
+            // berberine) come out non-aromatic and every aromatic rule pack misses
+            // them.
+            if (a.charge == 1 && piRingBond(m, i, ringBond)) return 1;
             if (a.totalH() >= 1 || a.degree() == 3) return 2;   // pyrrole-type
             if (piRingBond(m, i, ringBond)) return 1;  // lowercase aromatic n
             return std::nullopt;

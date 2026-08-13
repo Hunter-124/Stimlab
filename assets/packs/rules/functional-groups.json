@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "id": "functional-groups",
+  "title": "Functional-group perception rules",
+  "description": "The substructure queries behind chem::FunctionalGroups. Every flag the pharmacology, ADMET and stability heuristics key on is one SMARTS pattern here, so a group definition can be read, argued with and corrected without a rebuild. The `key` of each entry must name a bool member of chem::FunctionalGroups; an unknown key or a malformed SMARTS is reported by key (chem::groupPackErrors()) rather than silently leaving the flag false, because a flag that is false because its rule failed to parse is indistinguishable from a flag that is honestly false.",
+  "groups": [
+    {
+      "key": "aromaticRing",
+      "smarts": "[a;R]",
+      "label": "aromatic ring",
+      "note": "Any atom perceived aromatic by chem::perceiveAromaticity and lying in an SSSR ring."
+    },
+    {
+      "key": "phenol",
+      "smarts": "c[OX2H]",
+      "label": "phenol",
+      "note": "Hydroxyl on an aromatic carbon. X2H excludes the phenolate (-O with no H) and any ether oxygen."
+    },
+    {
+      "key": "catechol",
+      "smarts": "[OX2H]c:c[OX2H]",
+      "label": "catechol",
+      "note": "Two hydroxyls on adjacent aromatic carbons - the ortho-dihydroxy motif that is oxidised to an ortho-quinone and O-methylated by COMT. Written on the aromatic bond rather than as a benzene ring so a hydroxylated non-six-membered arene is not missed."
+    },
+    {
+      "key": "ester",
+      "smarts": "[#6X3](=[OX1])[OX2H0][#6]",
+      "label": "ester",
+      "note": "Acyl carbon bearing a second, substituted oxygen. H0 separates it from the carboxylic acid; the trailing [#6] excludes an anhydride-style or carboxylate oxygen with no carbon on the far side."
+    },
+    {
+      "key": "carboxylicAcid",
+      "smarts": "[$([#6X3](=[OX1])[OX2H1]),$([#6X3](=[OX1])[OX1-])]",
+      "label": "carboxylic acid",
+      "note": "Acyl-hydroxyl, protonated or as the carboxylate anion: -COOH and -COO- are the same functional group at two pH values, and the ionisation state of a drawn structure is an artefact of how the SMILES was written, not chemistry. Both are matched so a zwitterion such as L-carnitine is not read as having no acid at all."
+    },
+    {
+      "key": "amide",
+      "smarts": "[#6X3](=[OX1])[#7]",
+      "label": "amide",
+      "note": "Any nitrogen on an acyl carbon, which is what the hydrolysis and basicity heuristics mean by amide (it covers carbamates, ureas and lactams as well)."
+    },
+    {
+      "key": "ketone",
+      "smarts": "[#6][#6X3](=[OX1])[#6]",
+      "label": "ketone",
+      "note": "Carbonyl flanked by two carbons. Having both substituents be carbon rules out the acid, ester and amide cases by valence."
+    },
+    {
+      "key": "arylKetone",
+      "smarts": "c[#6X3](=[OX1])[#6]",
+      "label": "aryl ketone",
+      "note": "Ketone with at least one aromatic substituent - the conjugated chromophore behind the photolysis and thermal penalties."
+    },
+    {
+      "key": "aldehyde",
+      "smarts": "[#6][#6X3H1]=[OX1]",
+      "label": "aldehyde",
+      "note": "Carbonyl carbon carrying exactly one hydrogen and one carbon."
+    },
+    {
+      "key": "ether",
+      "smarts": "[OD2;H0;!$(O[#6X3]=[OX1])]",
+      "label": "ether",
+      "note": "Divalent aliphatic oxygen bridging two heavy atoms and not part of an ester/carbonate. Uppercase O excludes the aromatic oxygen of furan; the recursive exclusion is what stops every ester also reading as an ether."
+    },
+    {
+      "key": "methylenedioxy",
+      "smarts": "c[OD2][CX4][OD2]",
+      "label": "methylenedioxy",
+      "note": "Acetal carbon bridging two oxygens, one of them on an arene - the 3,4-methylenedioxy bridge of MDMA/MDA/MDPV, whose CYP2D6 demethylenation is the point of the flag."
+    },
+    {
+      "key": "primaryAmine",
+      "smarts": "[ND1;H2;!$(N[#6]=[OX1])]",
+      "label": "primary amine",
+      "note": "Terminal -NH2 that is not an amide nitrogen. Includes an aniline, which is a primary amine even though it is not basic."
+    },
+    {
+      "key": "secondaryAmine",
+      "smarts": "[ND2;!H0;!$(N[#6]=[OX1])]",
+      "label": "secondary amine",
+      "note": "Aliphatic nitrogen with two heavy neighbours and at least one hydrogen, excluding amide nitrogens."
+    },
+    {
+      "key": "tertiaryAmine",
+      "smarts": "[NX3;D3;H0;!$(N[#6]=[OX1]);!$(N=*)]",
+      "label": "tertiary amine",
+      "note": "Three heavy neighbours and no hydrogen. !$(N=*) is what keeps a nitro group - also three-connected and hydrogen-free - out of the amine classes."
+    },
+    {
+      "key": "basicAmine",
+      "smarts": "[NX3;!$(N[#6]=[OX1]);!$(N=*);!$(N#*);!$(Nc);!$(N[#16](=[OX1])=[OX1])]",
+      "label": "basic amine",
+      "note": "Any sp3 nitrogen that is actually basic: not an amide, not an imine or nitro nitrogen, not a nitrile, not an aniline (whose lone pair is delocalised into the ring, pKa ~4.6 versus ~10.6 for an alkylamine), not a sulfonamide nitrogen (whose N-H is acidic, pKa ~10 as an ACID, and whose conjugate acid pKa is around 0), and not itself aromatic. This is the flag the pH-partition and lysosomal-trapping heuristics key on, so a non-basic nitrogen in it would be a wrong answer, not a conservative one."
+    },
+    {
+      "key": "nitrile",
+      "smarts": "[NX1]#[#6]",
+      "label": "nitrile",
+      "note": "Terminal nitrogen triple-bonded to carbon."
+    },
+    {
+      "key": "nitro",
+      "smarts": "[$([NX3](=[OX1])=[OX1]),$([NX3+](=[OX1])[OX1-])]",
+      "label": "nitro",
+      "note": "Both the neutral pentavalent and the charge-separated depiction, because SMILES in the wild uses either."
+    },
+    {
+      "key": "halogen",
+      "smarts": "[F,Cl,Br,I]",
+      "label": "halogen",
+      "note": "Fluorine, chlorine, bromine or iodine anywhere in the structure."
+    },
+    {
+      "key": "sulfoxide",
+      "smarts": "[#16;!$([#16](=[OX1])=[OX1])]=[OX1]",
+      "label": "sulfoxide",
+      "note": "Exactly one sulfur-oxygen double bond; the recursive exclusion is what separates it from the sulfone."
+    },
+    {
+      "key": "sulfone",
+      "smarts": "[#16](=[OX1])=[OX1]",
+      "label": "sulfone",
+      "note": "Two sulfur-oxygen double bonds."
+    },
+    {
+      "key": "phenethylamine",
+      "smarts": "c[C][C][NX3;!$(N[#6]=[OX1])]",
+      "label": "phenethylamine core",
+      "note": "Ar-C-C-N: an aromatic ring two aliphatic carbons from a non-amide nitrogen. Substitution on either carbon or on the nitrogen is allowed, so amphetamine, methamphetamine, MDMA, tyramine and serotonin all carry the core; a benzylamine (Ar-C-N, one carbon short) does not."
+    },
+    {
+      "key": "catecholamine",
+      "smarts": "[NX3;!$(N[#6]=[OX1])][C][C]c1ccc([OX2H])c([OX2H])c1",
+      "label": "catecholamine",
+      "note": "A phenethylamine core on a 3,4-dihydroxyphenyl ring - dopamine, noradrenaline, adrenaline, isoprenaline. The catechol has to be on the same ring the ethylamine hangs off; an unrelated catechol elsewhere in the molecule does not make a compound a catecholamine."
+    },
+    {
+      "key": "anilide",
+      "smarts": "[NX3;!$(N=*)](c)[#6X3]=[OX1]",
+      "label": "anilide",
+      "note": "Nitrogen carrying both an aromatic ring and an acyl group - the acetaminophen/phenacetin motif whose CYP oxidation gives a quinone-imine (NAPQI-type) electrophile."
+    },
+    {
+      "key": "maoLabileAmine",
+      "smarts": "[$([ND1;H2]),$([ND1;H3]),$([ND2;H1]),$([ND2;H2]);!R;!$(N[#6]=[OX1])][CH2;!R][C]c",
+      "label": "MAO-labile amine",
+      "note": "A primary or secondary amine on an UNSUBSTITUTED, acyclic alpha methylene of an arylethyl chain: the substrate shape monoamine oxidase actually deaminates. Four look-alikes are excluded by construction. (1) alpha-METHYL amines of the amphetamine type: the alpha carbon is a CH, not a CH2, so [CH2] fails - this is precisely why amphetamine survives first pass and phenethylamine does not. (2) an N-METHYL substituent such as methamphetamine's: a terminal CH3 has three hydrogens, so it cannot be taken for the alpha methylene, and methamphetamine's real alpha carbon is still a CH. (3) RING amines - the piperidine of methylphenidate, the pyrrolidine of MDPV, the tropane of cocaine, the pyrrolidine of nicotine: !R on both the nitrogen and the alpha carbon rejects them. (4) AMIDE nitrogens, which are not amines at all. The trailing [C]c requires the arylethyl chain, so this flag no longer has to be ANDed with phenethylamine at the call site."
+    }
+  ]
+}

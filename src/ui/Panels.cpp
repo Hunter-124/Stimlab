@@ -17,11 +17,16 @@
 #include <implot.h>
 
 #include "bio/Structure.h"
+#include "chem/Canonical.h"
+#include "chem/Rings.h"
+#include "chem/Aromaticity.h"
 #include "chem/Descriptors.h"
+#include "chem/Perceive.h"
 #include "chem/Embed3D.h"
 #include "chem/Smiles.h"
 #include "core/AppPaths.h"
 #include "core/Manifest.h"
+#include "modules/Metabolites.h"
 #include "modules/docking/Presets.h"
 #include "modules/docking/Provisioning.h"
 #include "modules/docking/ReceptorPrep.h"
@@ -567,7 +572,7 @@ void structureWorkbench(AppShell& shell) {
     if (m.id != lastId) {
         lastId = m.id;
         conf = chem::Conformer{};
-        if (auto parsed = chem::parseSmiles(m.smiles)) conf = chem::embed3D(*parsed);
+        if (auto parsed = chem::parsePerceived(m.smiles)) conf = chem::embed3D(*parsed);
     }
 
     if (ImGui::BeginTable("idprop", 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable)) {
@@ -661,7 +666,7 @@ void moleculeInput(AppShell& shell) {
 
     if (analyze || lastSmiles != smilesBuf) {
         lastSmiles = smilesBuf;
-        auto parsed = chem::parseSmiles(smilesBuf);
+        auto parsed = chem::parsePerceived(smilesBuf);
         if (parsed && !parsed->empty()) {
             valid = true;
             preview = Molecule{};
@@ -853,6 +858,60 @@ void metabolism(AppShell& shell) {
             ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted(e.name.c_str());
             ImGui::TableSetColumnIndex(1); verdictText(e.verdict);
             ImGui::TableSetColumnIndex(2); ImGui::TextWrapped("%s", e.detail.c_str());
+        }
+        ImGui::EndTable();
+    }
+}
+
+// ------------------------------------------------------------ Structural Alerts
+// The banner is fixed and unconditional. Everything in this panel is a LIABILITY
+// FLAG: a substructure the literature has associated with reactive-metabolite
+// formation. Nothing here is a toxicity verdict, and the "no alerts matched" case
+// is stated as the non-claim it is rather than as a clean bill of health.
+void alerts(AppShell& shell) {
+    const Molecule m = shell.currentMolecule();
+    if (!shell.services().alerts) return;
+    const AlertReport r = shell.services().alerts->screen(m);
+
+    ImGui::TextColored(theme::verdictColor(static_cast<int>(Verdict::Warn)),
+                       "LIABILITY FLAGS, NOT A TOXICITY VERDICT");
+    ImGui::TextWrapped(
+        "A flag means the matched substructure has been ASSOCIATED with reactive-metabolite "
+        "formation in the medicinal-chemistry literature. It does not say this compound is "
+        "toxic, and it is not a prediction that bioactivation occurs: that depends on the "
+        "enzymes present, the competing clearance routes, the dose and the detoxication "
+        "capacity, none of which a substructure knows. Widely used marketed drugs match "
+        "several of these alerts.");
+    ImGui::Separator();
+
+    ImGui::TextWrapped("%s", r.summary.c_str());
+
+    if (r.flags.empty()) {
+        ImGui::Spacing();
+        ImGui::TextWrapped(
+            "No alert matched. Read that literally: it means none of the motifs in this short, "
+            "in-house pack is present. It is NOT a safety claim, and it says nothing about "
+            "motifs the pack does not list.");
+        return;
+    }
+
+    ImGui::Spacing();
+    if (ImGui::BeginTable("alerts", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("Flag", ImGuiTableColumnFlags_WidthFixed, 250.0f);
+        ImGui::TableSetupColumn("Level", ImGuiTableColumnFlags_WidthFixed, 60.0f);
+        ImGui::TableSetupColumn("Atoms", ImGuiTableColumnFlags_WidthFixed, 50.0f);
+        ImGui::TableSetupColumn("Metabolic route it is associated with, and the source");
+        ImGui::TableHeadersRow();
+        for (const auto& f : r.flags) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0); ImGui::TextWrapped("%s", f.label.c_str());
+            ImGui::TableSetColumnIndex(1); verdictText(f.severity);
+            ImGui::TableSetColumnIndex(2); ImGui::Text("%d", f.atomCount);
+            ImGui::TableSetColumnIndex(3);
+            ImGui::TextWrapped("%s", f.mechanism.c_str());
+            // The citation travels with the flag: an alert whose source is hidden is
+            // indistinguishable from an invented rule.
+            ImGui::TextDisabled("%s", f.citation.c_str());
         }
         ImGui::EndTable();
     }
@@ -1168,6 +1227,76 @@ void sequenceCompare(AppShell& shell) {
     ImGui::TextColored(theme::provenanceColor(Provenance::Measured),
                        "Aligned columns: %d", r.alignedLength);
     if (!r.note.empty()) ImGui::TextWrapped("%s", r.note.c_str());
+}
+
+// ------------------------------------------------------- Known Metabolites
+// Facts only. Every row here came from a citable source, which is the entire
+// reason the table is coloured Measured; nothing on this surface is enumerated,
+// and the note at the bottom says why in numbers.
+void metabolites(AppShell& shell) {
+    Services& s = shell.services();
+    if (!s.metabolismFacts) return;
+    const Molecule m = shell.currentMolecule();
+    const MetabolismReport r = s.metabolismFacts->known(m);
+
+    theme::sectionHeader("CURATED, CITED BIOTRANSFORMATIONS");
+    ImGui::TextWrapped("%s", r.summary.c_str());
+    ImGui::Spacing();
+
+    if (!r.known.empty() &&
+        ImGui::BeginTable("metabolite-facts", 5,
+                          ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                              ImGuiTableFlags_Resizable)) {
+        ImGui::TableSetupColumn("Metabolite", ImGuiTableColumnFlags_WidthFixed, 210.0f);
+        ImGui::TableSetupColumn("Enzyme", ImGuiTableColumnFlags_WidthFixed, 190.0f);
+        ImGui::TableSetupColumn("Reaction", ImGuiTableColumnFlags_WidthFixed, 230.0f);
+        ImGui::TableSetupColumn("Significance");
+        ImGui::TableSetupColumn("Citation", ImGuiTableColumnFlags_WidthFixed, 260.0f);
+        ImGui::TableHeadersRow();
+        const ImVec4 measured = theme::provenanceColor(Provenance::Measured);
+        for (const auto& f : r.known) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextColored(measured, "%s", f.metaboliteName.c_str());
+            // A structure is shown only where the pack authored one: an omitted
+            // SMILES means the structure was not certain, and inventing one to fill
+            // the cell would be exactly the fabrication this panel exists to avoid.
+            if (!f.metaboliteSmiles.empty()) {
+                ImGui::TextDisabled("%s", f.metaboliteSmiles.c_str());
+            } else {
+                ImGui::TextDisabled("(structure not authored)");
+            }
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextColored(measured, "%s", f.enzyme.c_str());
+            if (f.polymorphic) {
+                ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic),
+                                   "polymorphic enzyme");
+                ImGui::TextWrapped("Genotype changes this route's flux, so the exposure differs "
+                                   "between phenotypes rather than being one number.");
+            }
+            ImGui::TableSetColumnIndex(2);
+            ImGui::TextWrapped("%s", f.reaction.c_str());
+            ImGui::TableSetColumnIndex(3);
+            ImGui::TextWrapped("%s", f.significance.c_str());
+            ImGui::TableSetColumnIndex(4);
+            ImGui::TextWrapped("%s", f.citation.c_str());
+        }
+        ImGui::EndTable();
+        ImGui::Spacing();
+        ImGui::TextColored(theme::provenanceColor(Provenance::Measured),
+                           "Every row above is %s - a characterised transformation with the "
+                           "reference attached.", provenanceLabel(Provenance::Measured));
+    }
+
+    // ALWAYS rendered, with or without facts: absence of a curated entry must never
+    // read as absence of metabolism.
+    ImGui::Spacing();
+    theme::sectionHeader("COVERAGE");
+    ImGui::TextWrapped("%s", r.coverageNote.c_str());
+
+    ImGui::Spacing();
+    theme::sectionHeader("WHY NOTHING HERE IS ENUMERATED");
+    ImGui::TextWrapped("%s", metaboliteNoEnumerationNote());
 }
 
 // ------------------------------------------------------ Protein Structure
@@ -1618,7 +1747,7 @@ void docking(AppShell& shell) {
         dockPocket = chem::Conformer{};
         if (poseSel < static_cast<int>(d.poses.size()) && !d.poses[poseSel].ligand.empty())
             dockConf = d.poses[poseSel].ligand;
-        else if (auto parsed = chem::parseSmiles(m.smiles))
+        else if (auto parsed = chem::parsePerceived(m.smiles))
             dockConf = chem::embed3D(*parsed);
         // Overlay the receptor pocket only for a REAL dock (the pose shares the
         // receptor's coordinate frame); the descriptor estimate is not receptor-aligned.
@@ -2292,81 +2421,40 @@ void sketchSeedPea(Sketch& sk, float canvasH) {
 }
 
 // Serialise the sketch graph to SMILES (spanning-tree DFS + ring-closure digits).
+// The sketch canvas is a hand-built graph, so it has no parser run behind it: the
+// implicit hydrogens have to be assigned explicitly, and then the ONE canonical
+// writer produces the string. This used to be 76 lines of bespoke SMILES emission
+// living in a panel file, which meant a drawn structure and a typed structure could
+// produce different strings for the same molecule - so nothing downstream could
+// compare, cache or deduplicate them.
 std::string sketchToSmiles(const Sketch& sk) {
     const int n = static_cast<int>(sk.atoms.size());
     if (n == 0) return "";
-    const int nb = static_cast<int>(sk.bonds.size());
 
-    std::vector<std::vector<std::pair<int, int>>> adj(n);  // (neighbor, bondIdx)
-    for (int bi = 0; bi < nb; ++bi) {
-        const auto& b = sk.bonds[bi];
+    chem::Molecule m;
+    m.atoms.resize(static_cast<std::size_t>(n));
+    for (int i = 0; i < n; ++i) m.atoms[static_cast<std::size_t>(i)].z = sk.atoms[i].z;
+
+    for (const auto& b : sk.bonds) {
         if (b.a < 0 || b.a >= n || b.b < 0 || b.b >= n || b.a == b.b) continue;
-        adj[b.a].push_back({b.b, bi});
-        adj[b.b].push_back({b.a, bi});
+        chem::Bond nb;
+        nb.a = b.a;
+        nb.b = b.b;
+        nb.aromatic = b.aromatic;
+        nb.order = b.aromatic ? 1.5 : static_cast<double>(b.order);
+        const int idx = static_cast<int>(m.bonds.size());
+        m.bonds.push_back(nb);
+        m.atoms[static_cast<std::size_t>(b.a)].nbr.push_back(b.b);
+        m.atoms[static_cast<std::size_t>(b.b)].nbr.push_back(b.a);
+        m.atoms[static_cast<std::size_t>(b.a)].bonds.push_back(idx);
+        m.atoms[static_cast<std::size_t>(b.b)].bonds.push_back(idx);
     }
-    std::vector<char> arom(n, 0);
-    for (const auto& b : sk.bonds)
-        if (b.aromatic && b.a >= 0 && b.a < n && b.b >= 0 && b.b < n) { arom[b.a] = 1; arom[b.b] = 1; }
 
-    std::vector<char> visited(n, 0), treeBond(nb, 0), ringBond(nb, 0);
-    std::vector<std::vector<std::pair<int, int>>> ringTok(n);  // (digit, bondIdx)
-    int nextDigit = 1;
-    std::function<void(int, int)> findRings = [&](int u, int parentBond) {
-        visited[u] = 1;
-        for (auto [v, bi] : adj[u]) {
-            if (bi == parentBond) continue;
-            if (!visited[v]) { treeBond[bi] = 1; findRings(v, bi); }
-            else if (!ringBond[bi] && !treeBond[bi]) {
-                ringBond[bi] = 1;
-                const int d = nextDigit++;
-                ringTok[u].push_back({d, bi});
-                ringTok[v].push_back({d, bi});
-            }
-        }
-    };
-    for (int i = 0; i < n; ++i)
-        if (!visited[i]) findRings(i, -1);
-
-    auto digitTok = [](int d) -> std::string {
-        if (d < 10) return std::string(1, static_cast<char>('0' + d));
-        char b[8]; std::snprintf(b, sizeof b, "%%%02d", d); return b;
-    };
-    auto bondSym = [&](int bi) -> std::string {
-        if (sk.bonds[bi].aromatic) return "";
-        if (sk.bonds[bi].order == 2) return "=";
-        if (sk.bonds[bi].order == 3) return "#";
-        return "";
-    };
-    auto atomTok = [&](int u) -> std::string {
-        const char* sym = chem::symbolByZ(sk.atoms[u].z);
-        std::string s = sym ? sym : "C";
-        if (arom[u] && s.size() == 1)
-            s[0] = static_cast<char>(std::tolower(static_cast<unsigned char>(s[0])));
-        return s;
-    };
-
-    std::vector<char> emitted(n, 0);
-    std::string out;
-    std::function<void(int)> emit = [&](int u) {
-        emitted[u] = 1;
-        out += atomTok(u);
-        for (auto [d, bi] : ringTok[u]) { out += bondSym(bi); out += digitTok(d); }
-        std::vector<std::pair<int, int>> kids;
-        for (auto [v, bi] : adj[u])
-            if (treeBond[bi] && !emitted[v]) kids.push_back({v, bi});
-        for (size_t k = 0; k < kids.size(); ++k) {
-            const int v = kids[k].first, bi = kids[k].second;
-            if (emitted[v]) continue;
-            const bool last = (k + 1 == kids.size());
-            if (!last) out += "(";
-            out += bondSym(bi);
-            emit(v);
-            if (!last) out += ")";
-        }
-    };
-    for (int i = 0; i < n; ++i)
-        if (!emitted[i]) { if (!out.empty()) out += "."; emit(i); }
-    return out;
+    chem::assignImplicitHydrogens(m);
+    const chem::RingInfo rings = chem::perceiveRings(m);
+    chem::annotateRings(m, rings);
+    chem::perceiveAromaticity(m, rings);
+    return chem::canonicalSmiles(m);
 }
 
 // Draw the sketch toolbar + canvas. Returns true when the connectivity (not just
@@ -2669,12 +2757,12 @@ void analogExplorer(AppShell& shell) {
             const std::string ring =
                 catechol ? "c1ccc(O)c(O)c1" : (mdoxy ? "c1ccc2OCOc2c1" : "c1ccccc1");
             c.smiles = ring + "CC(N)C" + (ester ? "OC(=O)C" : "") + (arylKetone ? "C(=O)c1ccccc1" : "");
-            if (auto pm = chem::parseSmiles(c.smiles)) { c.formula = chem::molecularFormula(*pm); }
+            if (auto pm = chem::parsePerceived(c.smiles)) { c.formula = chem::molecularFormula(*pm); }
             haveGraph = true;
         } else {
             c.smiles = sketch.smiles;
             c.drugClass = "User-drawn structure";
-            if (auto pm = chem::parseSmiles(c.smiles); pm && !pm->empty()) {
+            if (auto pm = chem::parsePerceived(c.smiles); pm && !pm->empty()) {
                 c.formula = chem::molecularFormula(*pm);
                 c.molWeight = chem::molecularWeight(*pm);
                 c.logP = chem::crippenLogP(*pm);
@@ -2693,7 +2781,7 @@ void analogExplorer(AppShell& shell) {
             if (c.smiles != aeConfKey) {
                 aeConfKey = c.smiles;
                 aeConf = chem::Conformer{};
-                if (auto pm = chem::parseSmiles(c.smiles)) aeConf = chem::embed3D(*pm);
+                if (auto pm = chem::parsePerceived(c.smiles)) aeConf = chem::embed3D(*pm);
             }
             if (!molViewer3D(shell, aeConf, "ae:" + c.smiles, aeViewer, 220.0f))
                 moleculeSchematic(c, ImVec2(320, 200));
@@ -2709,7 +2797,7 @@ void analogExplorer(AppShell& shell) {
                 act.name = (mode == 1) ? "Drawn analog" : "Modeled analog";
                 act.legalStatus = "(unscheduled / unknown)";
                 act.notes = "Created in the Analog Explorer.";
-                if (auto pm = chem::parseSmiles(act.smiles)) {
+                if (auto pm = chem::parsePerceived(act.smiles)) {
                     act.formula = chem::molecularFormula(*pm);
                     act.molWeight = chem::molecularWeight(*pm);
                     act.logP = chem::crippenLogP(*pm);

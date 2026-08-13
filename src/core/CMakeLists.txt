@@ -1,6 +1,7 @@
 # ---- biocad_core : foundation (paths, logging, errors, hashing, events) ----
 add_library(biocad_core STATIC
   AppPaths.cpp
+  Assets.cpp
   Log.cpp
   Config.cpp
   Secrets.cpp

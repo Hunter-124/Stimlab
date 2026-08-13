@@ -38,6 +38,13 @@
 //   N/P with a ring double bond and no ring H         | 1 | pyridine-type: the lone
 //                                                     |   | pair is in the sigma
 //                                                     |   | plane, not the pi system
+//   N(+)/P(+) in a pi ring bond                       | 1 | pyridinium / thiazolium /
+//                                                     |   | isoquinolinium: the cation
+//                                                     |   | has no lone pair left to
+//                                                     |   | donate, so it is a
+//                                                     |   | pyridine-type centre even
+//                                                     |   | when it carries three
+//                                                     |   | sigma bonds (N-methyl)
 //   N/P with an H, or three sigma connections, and    | 2 | pyrrole-type: the lone
 //     only single/aromatic ring bonds                 |   | pair completes the sextet
 //   N(-) amide/azolate anion                          | 2 | filled p orbital

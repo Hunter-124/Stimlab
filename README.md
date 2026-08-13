@@ -109,6 +109,20 @@ Preparation, provisioning and docking run off the UI thread. Details, including 
 for adding a module, are in [docs/architecture.md](docs/architecture.md); the engine
 provisioning, receptor-prep and scoring story is in [docs/docking.md](docs/docking.md).
 
+### Documentation
+
+| Document | What it covers |
+|---|---|
+| [docs/architecture.md](docs/architecture.md) | Layers, the `Services` compile-time DI seam, the job system and DAG cache, thread discipline |
+| [docs/provenance.md](docs/provenance.md) | The five provenance tiers, the `Quantity` type, and why a `Heuristic` cannot carry a unit |
+| [docs/cheminformatics.md](docs/cheminformatics.md) | The in-house chem engine: why there is no RDKit, SSSR rings, graph aromaticity, canonical SMILES and `graphHash`, the SMARTS parser and VF2 matcher, measured descriptor fidelity, and what the engine still cannot do |
+| [docs/packs.md](docs/packs.md) | Pack JSON schema, resolution order, and how to author one |
+| [docs/docking.md](docs/docking.md) | Engine locate/provision order, receptor prep, PDBQT, the box marker, what a Vina score is and is not |
+| [docs/pkpd.md](docs/pkpd.md) | Dose-response fits, Cheng-Prusoff, Schild, the PK engine and occupancy |
+| [docs/protein.md](docs/protein.md) | Structure and sequence I/O, alignment, superposition, structure scoring |
+| [docs/data-sources.md](docs/data-sources.md) | Every external service, its endpoint, its licence, and what may be cached or committed |
+| [docs/limitations.md](docs/limitations.md) | The do-not-ship list, descriptor fidelity, and the honesty rules |
+
 ## Quick start
 
 BioCAD is built and supported on **Windows x64**. Install Visual Studio 2022 Build Tools
@@ -205,7 +219,7 @@ src/
 └── workflow/   DAG execution and job scheduling
 
 assets/packs/   built-in compound and target catalogs
-docs/           architecture, provenance, packs, docking, pkpd, protein, data sources, limits
+docs/           architecture, provenance, cheminformatics, packs, docking, pkpd, protein, data sources, limits
 tests/          Catch2 suite
 scripts/        build, CI, packaging, signing, capture helpers
 ```

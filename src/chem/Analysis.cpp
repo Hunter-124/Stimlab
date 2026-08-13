@@ -2,155 +2,179 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <fstream>
+#include <optional>
+#include <string>
+#include <unordered_map>
 #include <vector>
+
+#include <nlohmann/json.hpp>
+
+#include "chem/Smarts.h"
+#include "core/Assets.h"
 
 namespace biocad::chem {
 
 namespace {
-
-bool dbondTo(const Molecule& m, int atom, int z) {
-    for (int bi : m.atoms[atom].bonds) {
-        const Bond& b = m.bonds[bi];
-        if (b.order == 2.0 && m.atoms[b.other(atom)].z == z) return true;
-    }
-    return false;
-}
-
-bool isCarbonyl(const Molecule& m, int c) {
-    return m.atoms[c].z == 6 && dbondTo(m, c, 8);
-}
-
-bool aromaticNeighbor(const Molecule& m, int atom) {
-    for (int nb : m.atoms[atom].nbr)
-        if (m.atoms[nb].aromatic) return true;
-    return false;
-}
-
-// Does aromatic carbon `c` carry a hydroxyl (-OH) substituent?
-bool ringCarbonHasOH(const Molecule& m, int c) {
-    if (!(m.atoms[c].z == 6 && m.atoms[c].aromatic)) return false;
-    for (int nb : m.atoms[c].nbr) {
-        const Atom& o = m.atoms[nb];
-        if (o.z == 8 && !o.aromatic && o.degree() == 1 && o.totalH() >= 1) return true;
-    }
-    return false;
-}
 
 std::uint64_t mix(std::uint64_t h, std::uint64_t v) {
     h ^= v + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
     return h;
 }
 
+// The pack's `key` names a member of FunctionalGroups, so a rule can only ever
+// set the flag it claims to define and an unknown key is an error instead of a
+// silently ignored line.
+using Flag = bool FunctionalGroups::*;
+
+const std::unordered_map<std::string, Flag>& flagsByKey() {
+    static const std::unordered_map<std::string, Flag> kFlags = {
+        {"aromaticRing", &FunctionalGroups::aromaticRing},
+        {"phenol", &FunctionalGroups::phenol},
+        {"catechol", &FunctionalGroups::catechol},
+        {"ester", &FunctionalGroups::ester},
+        {"carboxylicAcid", &FunctionalGroups::carboxylicAcid},
+        {"amide", &FunctionalGroups::amide},
+        {"ketone", &FunctionalGroups::ketone},
+        {"arylKetone", &FunctionalGroups::arylKetone},
+        {"aldehyde", &FunctionalGroups::aldehyde},
+        {"ether", &FunctionalGroups::ether},
+        {"methylenedioxy", &FunctionalGroups::methylenedioxy},
+        {"primaryAmine", &FunctionalGroups::primaryAmine},
+        {"secondaryAmine", &FunctionalGroups::secondaryAmine},
+        {"tertiaryAmine", &FunctionalGroups::tertiaryAmine},
+        {"basicAmine", &FunctionalGroups::basicAmine},
+        {"nitrile", &FunctionalGroups::nitrile},
+        {"nitro", &FunctionalGroups::nitro},
+        {"halogen", &FunctionalGroups::halogen},
+        {"sulfoxide", &FunctionalGroups::sulfoxide},
+        {"sulfone", &FunctionalGroups::sulfone},
+        {"phenethylamine", &FunctionalGroups::phenethylamine},
+        {"catecholamine", &FunctionalGroups::catecholamine},
+        {"anilide", &FunctionalGroups::anilide},
+        {"maoLabileAmine", &FunctionalGroups::maoLabileAmine},
+    };
+    return kFlags;
+}
+
+struct GroupRule {
+    std::string   key;
+    SmartsPattern pattern;
+    Flag          flag = nullptr;
+};
+
+struct GroupRules {
+    std::vector<GroupRule>   rules;
+    std::vector<std::string> errors;
+};
+
+GroupRules loadGroupRules() {
+    GroupRules out;
+    const auto packs = core::assetDir("packs");
+    if (packs.empty()) {
+        out.errors.push_back(
+            "functional-groups: no asset tree found - expected "
+            "assets/packs/rules/functional-groups.json beside the executable. No functional "
+            "group can be perceived.");
+        return out;
+    }
+    const auto path = packs / "rules" / "functional-groups.json";
+    std::ifstream in(path);
+    if (!in) {
+        out.errors.push_back("functional-groups: rule pack not found at " + path.string() +
+                             " - no functional group can be perceived");
+        return out;
+    }
+
+    nlohmann::json j;
+    try {
+        in >> j;
+    } catch (const std::exception& e) {
+        out.errors.push_back("functional-groups: " + path.string() + " is not valid JSON: " +
+                             e.what());
+        return out;
+    }
+
+    const int version = j.value("schemaVersion", 0);
+    if (version != 1) {
+        out.errors.push_back("functional-groups: unsupported schemaVersion " +
+                             std::to_string(version) + " in " + path.string() +
+                             " (this build understands 1)");
+        return out;
+    }
+    const auto groups = j.find("groups");
+    if (groups == j.end() || !groups->is_array()) {
+        out.errors.push_back("functional-groups: " + path.string() +
+                             " has no \"groups\" array");
+        return out;
+    }
+
+    for (const auto& g : *groups) {
+        const std::string key = g.value("key", std::string{});
+        const std::string smarts = g.value("smarts", std::string{});
+        if (key.empty()) {
+            out.errors.push_back("functional-groups: a rule has no \"key\"");
+            continue;
+        }
+        const auto flag = flagsByKey().find(key);
+        if (flag == flagsByKey().end()) {
+            out.errors.push_back("functional-groups: unknown group key \"" + key +
+                                 "\" (no such flag in chem::FunctionalGroups)");
+            continue;
+        }
+        if (std::any_of(out.rules.begin(), out.rules.end(),
+                        [&](const GroupRule& r) { return r.key == key; })) {
+            out.errors.push_back("functional-groups: duplicate group key \"" + key +
+                                 "\" - which definition wins would be arbitrary");
+            continue;
+        }
+        if (smarts.empty()) {
+            out.errors.push_back("functional-groups: group \"" + key + "\" has no \"smarts\"");
+            continue;
+        }
+        std::string error;
+        auto pattern = parseSmarts(smarts, &error);
+        if (!pattern) {
+            out.errors.push_back("functional-groups: group \"" + key + "\" has malformed SMARTS \"" +
+                                 smarts + "\": " + error);
+            continue;
+        }
+        out.rules.push_back(GroupRule{key, std::move(*pattern), flag->second});
+    }
+
+    for (const auto& [key, flag] : flagsByKey()) {
+        (void)flag;
+        if (std::none_of(out.rules.begin(), out.rules.end(),
+                         [&](const GroupRule& r) { return r.key == key; })) {
+            out.errors.push_back("functional-groups: no rule defines \"" + key +
+                                 "\" - that flag is always false in this run");
+        }
+    }
+    return out;
+}
+
+// Parsed once per process: parsing 24 SMARTS patterns for every molecule would
+// dominate the cost of perception, and the pack cannot change under a live run.
+const GroupRules& groupRules() {
+    static const GroupRules kRules = loadGroupRules();
+    return kRules;
+}
+
 }  // namespace
+
+const std::vector<std::string>& groupPackErrors() { return groupRules().errors; }
 
 FunctionalGroups detectGroups(const Molecule& m) {
     FunctionalGroups g;
-    const int n = static_cast<int>(m.atoms.size());
+    if (m.atoms.empty()) return g;
 
-    for (int i = 0; i < n; ++i) {
-        const Atom& a = m.atoms[i];
-        if (a.aromatic) g.aromaticRing = true;
-        if (a.z == 9 || a.z == 17 || a.z == 35 || a.z == 53) g.halogen = true;
-
-        // Carbonyl-centered groups.
-        if (isCarbonyl(m, i)) {
-            bool singleO = false, singleOwithH = false, toN = false;
-            int arylC = 0, alkylC = 0, hOnC = a.totalH();
-            for (int nb : a.nbr) {
-                const Atom& x = m.atoms[nb];
-                // skip the =O itself (double bond)
-                bool isCarbonylO = false;
-                for (int bi : a.bonds)
-                    if (m.bonds[bi].other(i) == nb && m.bonds[bi].order == 2.0) isCarbonylO = true;
-                if (isCarbonylO) continue;
-                if (x.z == 8) { singleO = true; if (x.totalH() >= 1) singleOwithH = true; }
-                else if (x.z == 7) toN = true;
-                else if (x.z == 6) { if (x.aromatic) ++arylC; else ++alkylC; }
-            }
-            if (singleOwithH) g.carboxylicAcid = true;
-            else if (singleO) g.ester = true;
-            if (toN) g.amide = true;
-            if (!singleO && !toN) {
-                if (arylC >= 1) g.arylKetone = true;
-                if (arylC + alkylC >= 2) g.ketone = true;
-                if (hOnC >= 1 && (arylC + alkylC) == 1) g.aldehyde = true;
-            }
-        }
-
-        // Ether / methylenedioxy (O with two single C neighbors).
-        if (a.z == 8 && !a.aromatic && a.degree() == 2 && a.totalH() == 0) {
-            bool carbonylAdjacent = false;
-            for (int nb : a.nbr) if (isCarbonyl(m, nb)) carbonylAdjacent = true;
-            if (!carbonylAdjacent) g.ether = true;
-        }
-
-        // Nitrogen classes.
-        if (a.z == 7 && !a.aromatic) {
-            bool amideN = false;
-            for (int nb : a.nbr) if (isCarbonyl(m, nb)) amideN = true;
-            if (dbondTo(m, i, 8) && a.charge >= 0 && a.degree() >= 2) g.nitro =
-                (a.degree() == 3);  // crude N(=O)-O
-            if (!amideN) {
-                const int h = a.totalH();
-                if (a.degree() == 1 && h >= 2) g.primaryAmine = true;
-                else if (a.degree() == 2 && h >= 1) g.secondaryAmine = true;
-                else if (a.degree() == 3 && h == 0) g.tertiaryAmine = true;
-                if (a.totalH() >= 0 && a.degree() >= 1) g.basicAmine = true;
-            }
-        }
-        if (a.z == 7) {
-            // nitrile
-            for (int bi : a.bonds) if (m.bonds[bi].order == 3.0) g.nitrile = true;
-        }
-
-        // Sulfur oxidation state.
-        if (a.z == 16 && dbondTo(m, i, 8)) {
-            int doubleO = 0;
-            for (int bi : a.bonds)
-                if (m.bonds[bi].order == 2.0 && m.atoms[m.bonds[bi].other(i)].z == 8) ++doubleO;
-            if (doubleO >= 2) g.sulfone = true; else g.sulfoxide = true;
-        }
+    // Rings and aromaticity once for the whole rule sweep, and on a copy: callers
+    // hand us whatever parseSmiles produced, aromatic patterns need perception,
+    // and perception must not be a side effect of asking a question.
+    const PreparedMolecule prepared = prepareMolecule(m);
+    for (const GroupRule& rule : groupRules().rules) {
+        if (matches(rule.pattern, prepared.mol, prepared.rings)) g.*(rule.flag) = true;
     }
-
-    // Phenol & catechol.
-    for (int i = 0; i < n; ++i) {
-        if (ringCarbonHasOH(m, i)) {
-            g.phenol = true;
-            for (int nb : m.atoms[i].nbr)
-                if (m.atoms[nb].aromatic && ringCarbonHasOH(m, nb)) g.catechol = true;
-        }
-    }
-
-    // Methylenedioxy: a CH2 carbon bonded to two ether oxygens that touch an arene.
-    for (int i = 0; i < n; ++i) {
-        const Atom& a = m.atoms[i];
-        if (a.z != 6 || a.aromatic) continue;
-        int oCount = 0; bool arene = false;
-        for (int nb : a.nbr) {
-            const Atom& o = m.atoms[nb];
-            if (o.z == 8 && o.degree() == 2) { ++oCount; if (aromaticNeighbor(m, nb)) arene = true; }
-        }
-        if (oCount >= 2 && arene) g.methylenedioxy = true;
-    }
-
-    // Phenethylamine core: Ar-C-C-N (non-amide amine two carbons from an arene).
-    for (int nIdx = 0; nIdx < n && !g.phenethylamine; ++nIdx) {
-        const Atom& na = m.atoms[nIdx];
-        if (na.z != 7 || na.aromatic) continue;
-        bool amideN = false;
-        for (int nb : na.nbr) if (isCarbonyl(m, nb)) amideN = true;
-        if (amideN) continue;
-        for (int c1 : na.nbr) {
-            if (m.atoms[c1].z != 6 || m.atoms[c1].aromatic) continue;
-            for (int c2 : m.atoms[c1].nbr) {
-                if (c2 == nIdx || m.atoms[c2].z != 6) continue;
-                if (m.atoms[c2].aromatic) { g.phenethylamine = true; break; }
-                for (int c3 : m.atoms[c2].nbr)
-                    if (c3 != c1 && m.atoms[c3].z == 6 && m.atoms[c3].aromatic) g.phenethylamine = true;
-            }
-        }
-    }
-    g.catecholamine = g.catechol && g.phenethylamine;
     return g;
 }
 

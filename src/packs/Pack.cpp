@@ -9,14 +9,8 @@
 #include <utility>
 
 #include "core/AppPaths.h"
+#include "core/Assets.h"
 #include "core/Error.h"
-
-#if defined(_WIN32)
-#  ifndef WIN32_LEAN_AND_MEAN
-#    define WIN32_LEAN_AND_MEAN
-#  endif
-#  include <windows.h>
-#endif
 
 namespace biocad::packs {
 namespace {
@@ -222,22 +216,9 @@ LoadReport loadFrom(const std::filesystem::path& dir, bool builtin) {
 }
 
 std::filesystem::path builtinPackDir() {
-    std::error_code ec;
-#if defined(_WIN32)
-    wchar_t buf[MAX_PATH]{};
-    if (GetModuleFileNameW(nullptr, buf, MAX_PATH) > 0) {
-        const auto exeDir = std::filesystem::path(buf).parent_path();
-        // Shipped layout: assets/packs beside the exe.
-        if (std::filesystem::is_directory(exeDir / "assets" / "packs", ec)) {
-            return exeDir / "assets" / "packs";
-        }
-        // Dev layout: build/<preset>/bin/BioCAD.exe with the source tree three up.
-        const auto devDir = exeDir.parent_path().parent_path().parent_path() / "assets" / "packs";
-        if (std::filesystem::is_directory(devDir, ec)) return devDir;
-    }
-#endif
-    if (std::filesystem::is_directory("assets/packs", ec)) return "assets/packs";
-    return {};
+    // One asset resolver for the whole app (see core/Assets.h): the chem rule
+    // packs and this catalog loader must never disagree about where assets/ is.
+    return core::assetDir("packs");
 }
 
 LoadReport loadBuiltin() {

@@ -23,6 +23,8 @@ void analogExplorer(AppShell& shell);
 void stability(AppShell& shell);
 void absorption(AppShell& shell);
 void metabolism(AppShell& shell);
+void alerts(AppShell& shell);
+void metabolites(AppShell& shell);
 void pkpd(AppShell& shell);
 void sequenceCompare(AppShell& shell);
 void proteinStructure(AppShell& shell);

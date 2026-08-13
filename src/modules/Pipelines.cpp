@@ -4,6 +4,7 @@
 #include <string>
 
 #include "chem/Embed3D.h"
+#include "chem/Perceive.h"
 #include "chem/Smiles.h"
 #include "data/Domain.h"
 #include "modules/docking/EngineLocator.h"
@@ -38,7 +39,7 @@ Dag buildDockingPipeline(const std::string& ligandSmiles, const std::string& tar
     ligand.module = "ligand_prep";
     ligand.params = ligandSmiles;
     ligand.run = [ligandSmiles](const NodeInputs&, const CancelToken&) {
-        auto g = chem::parseSmiles(ligandSmiles);
+        auto g = chem::parsePerceived(ligandSmiles);
         if (!g) return NodeResult::failure("could not parse SMILES");
         const chem::Conformer conf = chem::embed3D(*g);
         if (conf.empty()) return NodeResult::failure("3D embedding produced no atoms");

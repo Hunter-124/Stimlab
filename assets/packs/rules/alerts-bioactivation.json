@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "id": "alerts-bioactivation",
+  "title": "Metabolic-bioactivation structural alerts",
+  "framing": "LIABILITY FLAG ONLY. A match means this substructure has been associated with reactive-metabolite formation in the medicinal-chemistry literature. It is NOT a statement that the compound is toxic, and it is not a prediction that bioactivation occurs: whether it does depends on the enzymes present, the competing clearance routes, the dose and the detoxication capacity, none of which a substructure knows. Marketed, widely used drugs match several of these alerts.",
+  "notice": "PAINS (Baell & Holloway), Brenk, and the ChEMBL-derived Glaxo/Dundee/BMS/Inpharmatica/SureChEMBL alert sets are DELIBERATELY NOT bundled in this pack. Those SMARTS collections are redistributed under BSD-3 (RDKit FilterCatalog data) and CC BY-SA 3.0 (ChEMBL-derived sets); shipping them inside an Apache-2.0 product requires a separately-licensed pack plus a NOTICE entry, and getting that attribution wrong is a real legal problem rather than a cosmetic one. If those sets are wanted later they belong in their own pack file carrying their own licence header. The alerts below are authored in-house from the metabolic-bioactivation literature, where no machine-readable SMARTS set exists to copy in the first place.",
+  "conceptSource": "Stepan AF, Walker DP, Bauman J, Price DA, Baillie TA, Kalgutkar AS, Aleo MD. Structural alert/reactive metabolite concept as applied in medicinal chemistry to mitigate the risk of idiosyncratic drug toxicity: a perspective based on the critical examination of trends in the top 200 drugs marketed in the United States. Chem Res Toxicol. 2011;24(9):1345-1410. doi:10.1021/tx200168d",
+  "alerts": [
+    {
+      "key": "para-aminophenol",
+      "smarts": "[OX2H1]c1ccc([NX3;H1,H2])cc1",
+      "label": "para-Aminophenol / anilide (quinone-imine former)",
+      "mechanism": "CYP oxidation of the 4-aminophenol motif gives a quinone imine (the acetaminophen/NAPQI case), an electrophile trapped by glutathione and by protein thiols once glutathione is depleted.",
+      "citation": "Stepan et al. 2011, Chem Res Toxicol 24:1345-1410, doi:10.1021/tx200168d",
+      "severity": "warn"
+    },
+    {
+      "key": "para-alkoxyaniline",
+      "smarts": "[CX4][OX2]c1ccc([NX3;!$([N+]);!$(N=*)])cc1",
+      "label": "para-Alkoxyaniline (quinone-imine former after O-dealkylation)",
+      "mechanism": "O-dealkylation unmasks a para-aminophenol, which is then oxidised to a quinone imine; this is the phenacetin route to the same electrophile as acetaminophen.",
+      "citation": "Stepan et al. 2011, Chem Res Toxicol 24:1345-1410, doi:10.1021/tx200168d",
+      "severity": "warn"
+    },
+    {
+      "key": "catechol",
+      "smarts": "[OX2H1]c1ccccc1[OX2H1]",
+      "label": "Catechol (ortho-dihydroxyarene, quinone former)",
+      "mechanism": "Two-electron oxidation gives an ortho-quinone that redox-cycles and alkylates thiols; the same motif is also the COMT substrate that dominates catecholamine clearance.",
+      "citation": "Stepan et al. 2011, Chem Res Toxicol 24:1345-1410, doi:10.1021/tx200168d",
+      "severity": "warn"
+    },
+    {
+      "key": "hydroquinone",
+      "smarts": "[OX2H1]c1ccc([OX2H1])cc1",
+      "label": "Hydroquinone (para-dihydroxyarene, quinone former)",
+      "mechanism": "Oxidation gives a para-quinone; like the catechol it redox-cycles, producing both an electrophile and oxidative stress.",
+      "citation": "Stepan et al. 2011, Chem Res Toxicol 24:1345-1410, doi:10.1021/tx200168d",
+      "severity": "warn"
+    },
+    {
+      "key": "nitroaromatic",
+      "smarts": "a[$([NX3](=[OX1])=[OX1]),$([NX3+](=[OX1])[OX1-])]",
+      "label": "Nitroaromatic",
+      "mechanism": "Nitroreduction proceeds through nitroso and N-hydroxylamine intermediates that bind protein and can redox-cycle; gut-flora and mammalian nitroreductases both do it.",
+      "citation": "Stepan et al. 2011, Chem Res Toxicol 24:1345-1410, doi:10.1021/tx200168d",
+      "severity": "warn"
+    },
+    {
+      "key": "primary-aniline",
+      "smarts": "[NX3;H2;!$(N=*)]c",
+      "label": "Primary aromatic amine (aniline)",
+      "mechanism": "N-oxidation gives hydroxylamine and nitroso species; ring oxidation of the corresponding aminophenol gives a quinone imine. Both electrophiles are protein-reactive.",
+      "citation": "Stepan et al. 2011, Chem Res Toxicol 24:1345-1410, doi:10.1021/tx200168d",
+      "severity": "warn"
+    },
+    {
+      "key": "thiophene",
+      "smarts": "c1ccsc1",
+      "label": "Thiophene",
+      "mechanism": "CYP oxidation gives an S-oxide or a thiophene epoxide, both Michael-type electrophiles. Many marketed drugs carry this ring, so the flag records a route, not an outcome.",
+      "citation": "Stepan et al. 2011, Chem Res Toxicol 24:1345-1410, doi:10.1021/tx200168d",
+      "severity": "info"
+    },
+    {
+      "key": "furan",
+      "smarts": "c1ccoc1",
+      "label": "Furan",
+      "mechanism": "CYP oxidation gives an epoxide that opens to a reactive cis-enedione, which cross-links protein nucleophiles.",
+      "citation": "Stepan et al. 2011, Chem Res Toxicol 24:1345-1410, doi:10.1021/tx200168d",
+      "severity": "info"
+    },
+    {
+      "key": "terminal-alkyne",
+      "smarts": "[CX2;H1]#[CX2]",
+      "label": "Terminal alkyne",
+      "mechanism": "CYP oxidation of the terminal carbon gives a ketene or an oxirene that acylates the enzyme, which is the classic mechanism-based CYP inactivation motif.",
+      "citation": "Stepan et al. 2011, Chem Res Toxicol 24:1345-1410, doi:10.1021/tx200168d",
+      "severity": "info"
+    },
+    {
+      "key": "hydrazine",
+      "smarts": "[NX3;!$(N=*);!$(N#*)][NX3;!$(N=*);!$(N#*)]",
+      "label": "Hydrazine / hydrazide (N-N single bond)",
+      "mechanism": "Oxidative N-N cleavage gives diazenes and carbon-centred radicals; the acetylhydrazine route from isoniazid is the reference case.",
+      "citation": "Stepan et al. 2011, Chem Res Toxicol 24:1345-1410, doi:10.1021/tx200168d",
+      "severity": "warn"
+    },
+    {
+      "key": "epoxide",
+      "smarts": "[CX4]1[OX2][CX4]1",
+      "label": "Epoxide (already electrophilic)",
+      "mechanism": "A strained oxirane alkylates thiol and amine nucleophiles directly; no metabolic activation is required, only failure of epoxide hydrolase and glutathione to intercept it.",
+      "citation": "Stepan et al. 2011, Chem Res Toxicol 24:1345-1410, doi:10.1021/tx200168d",
+      "severity": "warn"
+    },
+    {
+      "key": "michael-acceptor",
+      "smarts": "[CX3]=[CX3][CX3]=[OX1]",
+      "label": "Michael acceptor (alpha,beta-unsaturated carbonyl)",
+      "mechanism": "The beta carbon is attacked directly by glutathione and by protein cysteines; this is intrinsic reactivity, not bioactivation, and it is also how covalent inhibitors are designed on purpose.",
+      "citation": "Stepan et al. 2011, Chem Res Toxicol 24:1345-1410, doi:10.1021/tx200168d",
+      "severity": "warn"
+    },
+    {
+      "key": "acyl-glucuronide-precursor",
+      "smarts": "[OX2H1][CX3](=[OX1])[#6;$(*~a),$(*~*~a)]",
+      "label": "Carboxylic acid on a lipophilic scaffold (acyl glucuronide precursor)",
+      "mechanism": "Glucuronidation of the acid gives an acyl glucuronide that transacylates and glycates protein; the 1-O-acyl migration rate, and therefore the liability, rises with scaffold lipophilicity and alpha-substitution.",
+      "citation": "Stepan et al. 2011, Chem Res Toxicol 24:1345-1410, doi:10.1021/tx200168d",
+      "severity": "warn"
+    },
+    {
+      "key": "thiourea",
+      "smarts": "[NX3][CX3](=[SX1])[NX3]",
+      "label": "Thiourea / thioamide",
+      "mechanism": "Flavin monooxygenase and CYP S-oxidation give sulfenic and sulfinic acids that oxidise and cross-link protein thiols.",
+      "citation": "Stepan et al. 2011, Chem Res Toxicol 24:1345-1410, doi:10.1021/tx200168d",
+      "severity": "warn"
+    },
+    {
+      "key": "alpha-haloamide",
+      "smarts": "[F,Cl,Br,I][CX4][CX3](=[OX1])[NX3]",
+      "label": "alpha-Haloamide",
+      "mechanism": "The activated carbon is displaced by thiols directly, so the amide alkylates glutathione and protein cysteines without any enzymatic step.",
+      "citation": "Stepan et al. 2011, Chem Res Toxicol 24:1345-1410, doi:10.1021/tx200168d",
+      "severity": "warn"
+    }
+  ]
+}

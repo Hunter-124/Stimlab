@@ -10,8 +10,11 @@
 #include "chem/Analysis.h"
 #include "chem/Descriptors.h"
 #include "chem/Embed3D.h"
+#include "chem/Perceive.h"
 #include "chem/Smiles.h"
+#include "modules/AlertsModule.h"
 #include "modules/BioModules.h"
+#include "modules/Metabolites.h"
 #include "modules/docking/Backends.h"
 #include "modules/docking/Presets.h"
 #include "modules/docking/ReceptorPrep.h"
@@ -33,12 +36,17 @@ double clampd(double v, double lo, double hi) { return std::max(lo, std::min(hi,
 // %APPDATA%/BioCAD/packs overlay). There is no hard-coded catalog: the domain is
 // whatever the packs say it is.
 
-// The real engine always recomputes descriptors from the SMILES: any property a
-// pack authored is metadata for the pack browser, never a substitute for running
-// the in-house chem engine.
+// The real engine always recomputes descriptors from the SMILES: a pack authors
+// identity, never numbers.
+//
+// Ring and aromaticity perception MUST run first. Several descriptors branch on
+// Atom::aromatic, and parseSmiles only sets it for lowercase input, so without this
+// the SAME molecule scores differently depending on how it was spelled - caffeine's
+// TPSA measured 56.22 A^2 from the Kekule spelling against 60.26 A^2 perceived.
+// A descriptor that depends on the spelling of its input is not a descriptor.
 Molecule computeMolecule(const packs::PackCompound& c) {
     Molecule m = c.molecule();
-    if (auto pm = chem::parseSmiles(c.smiles)) {
+    if (auto pm = chem::parsePerceived(c.smiles)) {
         m.formula = chem::molecularFormula(*pm);
         m.molWeight = chem::molecularWeight(*pm);
         m.logP = chem::crippenLogP(*pm);
@@ -51,66 +59,8 @@ Molecule computeMolecule(const packs::PackCompound& c) {
 }
 
 chem::FunctionalGroups groupsOf(const Molecule& m) {
-    if (auto pm = chem::parseSmiles(m.smiles)) return chem::detectGroups(*pm);
+    if (auto pm = chem::parsePerceived(m.smiles)) return chem::detectGroups(*pm);
     return {};
-}
-
-bool hasAnilide(const Molecule& m) {
-    auto pm = chem::parseSmiles(m.smiles);
-    if (!pm) return false;
-    for (size_t i = 0; i < pm->atoms.size(); ++i) {
-        const auto& a = pm->atoms[i];
-        if (a.z != 7) continue;
-        bool amide = false, aryl = false;
-        for (int nb : a.nbr) {
-            const auto& x = pm->atoms[nb];
-            if (x.z == 6 && x.aromatic) aryl = true;
-            if (x.z == 6) {
-                for (int b2 : x.bonds)
-                    if (pm->bonds[b2].order == 2.0 && pm->atoms[pm->bonds[b2].other(nb)].z == 8)
-                        amide = true;
-            }
-        }
-        if (amide && aryl) return true;
-    }
-    return false;
-}
-
-// A flexible-chain primary/secondary amine whose alpha carbon is an unsubstituted
-// methylene (-CH2-) is readily deaminated by monoamine oxidase, so it carries a
-// heavy presystemic-metabolism burden. The strict tests below pick out exactly the
-// MAO-vulnerable beta-phenethylamine class while excluding the look-alikes:
-//   * alpha-METHYL amines (amphetamine-type): the alpha carbon is a CH (1 H), not
-//     a CH2, so it is MAO-resistant and not flagged.
-//   * N-METHYL substituents (e.g. methamphetamine's N-CH3): a terminal CH3 has 3 H,
-//     not 2, so the methyl neighbour does not count as the alpha methylene.
-//   * RING amines (piperidine/pyrrolidine/tropane in methylphenidate, MDPV, cocaine,
-//     nicotine): the nitrogen and its alpha carbons are in a ring and are excluded.
-// Combined with the phenethylamine flag at the call site so only Ar-C-C-N amines
-// reach here.
-bool hasMaoLabileAmine(const Molecule& m) {
-    auto pm = chem::parseSmiles(m.smiles);
-    if (!pm) return false;
-    for (const auto& a : pm->atoms) {
-        if (a.z != 7 || a.aromatic || a.inRing) continue;
-        bool amideN = false;  // skip nitrogens bonded to a carbonyl carbon
-        for (int nb : a.nbr) {
-            const auto& x = pm->atoms[nb];
-            if (x.z != 6) continue;
-            for (int b2 : x.bonds)
-                if (pm->bonds[b2].order == 2.0 && pm->atoms[pm->bonds[b2].other(nb)].z == 8) amideN = true;
-        }
-        if (amideN) continue;
-        const int h = a.totalH(), deg = a.degree();
-        const bool primaryOrSecondary = (deg == 1 && h >= 2) || (deg == 2 && h >= 1);
-        if (!primaryOrSecondary) continue;
-        for (int nb : a.nbr) {
-            const auto& c = pm->atoms[nb];
-            // alpha carbon must be an acyclic methylene (-CH2-), i.e. exactly 2 H
-            if (c.z == 6 && !c.aromatic && !c.inRing && c.totalH() == 2) return true;
-        }
-    }
-    return false;
 }
 
 // ----------------------------------------------------------------- stability
@@ -203,7 +153,7 @@ AbsorptionReport realAbsorption(const Molecule& m) {
     L.amide = g.amide;
     L.arylKetone = g.arylKetone;
     L.methylenedioxy = g.methylenedioxy;
-    L.maoLabileAmine = g.phenethylamine && hasMaoLabileAmine(m);
+    L.maoLabileAmine = g.maoLabileAmine;
     const auto bio = chem::predictBioavailability(mw, logP, tpsa, m.hbd, L);
 
     r.hiaPct = bio.hiaPct;
@@ -261,7 +211,7 @@ AdmetReport realAdmet(const Molecule& m) {
         add("MAO substrate", Verdict::Warn, "Catecholamine - oxidative deamination by MAO.");
         add("Catechol autoxidation", Verdict::Warn, "Forms reactive ortho-quinones.");
     }
-    if (f.phenol && hasAnilide(m)) {
+    if (f.phenol && f.anilide) {
         add("Bioactivation -> quinone-imine (NAPQI-type)", Verdict::Danger,
             "Para-aminophenol/anilide - CYP oxidation to a reactive electrophile; glutathione-depleting.");
     }
@@ -315,7 +265,7 @@ public:
     explicit RealSimilarity(const std::vector<Molecule>& lib) : lib_(lib) {
         for (const auto& m : lib_) {
             std::vector<std::uint32_t> fp, fp1;
-            if (auto pm = chem::parseSmiles(m.smiles)) {
+            if (auto pm = chem::parsePerceived(m.smiles)) {
                 fp = chem::morganFingerprint(*pm, 2);
                 fp1 = chem::morganFingerprint(*pm, 1);
             }
@@ -327,7 +277,7 @@ public:
         SimilarityReport r;
         r.moleculeId = m.id;
         std::vector<std::uint32_t> q, q1;
-        if (auto pm = chem::parseSmiles(m.smiles)) {
+        if (auto pm = chem::parsePerceived(m.smiles)) {
             q = chem::morganFingerprint(*pm, 2);
             q1 = chem::morganFingerprint(*pm, 1);
         }
@@ -410,7 +360,10 @@ public:
             }
         }
 
-        auto graph = chem::parseSmiles(m.smiles);
+        // Perceived, not merely parsed: the PDBQT writer types atoms by aromaticity
+        // and the descriptor fallback scores on the same flags, so an unperceived
+        // Kekule ligand would dock and score differently from its aromatic spelling.
+        auto graph = chem::parsePerceived(m.smiles);
         if (!graph) {
             DockJobResult r;
             r.engine = "none"; r.provenance = Provenance::Heuristic; r.targetId = tgt.id;
@@ -510,6 +463,10 @@ struct RealBackend::Impl {
     pkpd::RealPharmacodynamics pharmacodynamics;
     RealSequence sequence;
     RealStructure structure;
+    // Curated facts only: this member never enumerates a metabolite hypothesis.
+    RealMetabolismFacts metabolismFacts;
+    // Liability flags only: no branch here can produce a toxicity verdict.
+    RealAlerts alerts;
 };
 
 RealBackend::RealBackend() : impl_(std::make_unique<Impl>()) {}
@@ -528,6 +485,8 @@ Services RealBackend::services() {
     s.pharmacodynamics = &impl_->pharmacodynamics;
     s.sequence = &impl_->sequence;
     s.structure = &impl_->structure;
+    s.metabolismFacts = &impl_->metabolismFacts;
+    s.alerts = &impl_->alerts;
     return s;
 }
 

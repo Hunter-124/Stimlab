@@ -1,7 +1,14 @@
 // chem/Analysis.h - functional-group perception + Morgan fingerprint similarity.
+//
+// Group perception is DATA, not code: every flag below is one SMARTS pattern in
+// assets/packs/rules/functional-groups.json, keyed by the member name. A group
+// definition can therefore be read, cited and corrected without a rebuild, and
+// the definitions are testable in isolation instead of being buried in bespoke
+// graph walks.
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "chem/Molecule.h"
@@ -31,10 +38,19 @@ struct FunctionalGroups {
     bool sulfoxide = false;
     bool sulfone = false;
     bool phenethylamine = false;  // Ar-C-C-N core
-    bool catecholamine = false;   // catechol + phenethylamine
+    bool catecholamine = false;   // phenethylamine core on a 3,4-dihydroxyphenyl ring
+    bool anilide = false;         // N carrying both an arene and an acyl group (NAPQI-type)
+    bool maoLabileAmine = false;  // primary/secondary amine on an unsubstituted alpha CH2
 };
 
 FunctionalGroups detectGroups(const Molecule& m);
+
+// Rules that failed to load: a missing pack, an unknown group key, or a SMARTS
+// that would not parse, each naming itself. A flag left false because its rule
+// is broken is indistinguishable from a flag that is honestly false, so the
+// breakage has to be surfaced rather than swallowed. Non-empty means some flag
+// in FunctionalGroups is permanently false in this run.
+const std::vector<std::string>& groupPackErrors();
 
 // Circular (Morgan/ECFP-like) fingerprint -> sorted unique 32-bit features.
 std::vector<std::uint32_t> morganFingerprint(const Molecule& m, int radius = 2);

@@ -17,8 +17,20 @@ int    rotatableBondCount(const Molecule& m);       // Veber definition
 int    ringCount(const Molecule& m);                // SSSR size (cyclomatic number)
 int    aromaticAtomCount(const Molecule& m);
 double fractionCsp3(const Molecule& m);             // 0..1
-double tpsa(const Molecule& m);                     // Ertl 2000 topological PSA (A^2)
-double crippenLogP(const Molecule& m);              // Wildman-Crippen-style estimate
+// Ertl 2000 topological polar surface area (A^2), summed over N and O only.
+//
+// That is the convention every published TPSA threshold assumes (Veber <=140 A^2
+// for oral bioavailability, the ~<=90 A^2 rule of thumb for CNS penetration), so
+// it is the default. Ertl also tabulates sulfur and phosphorus; that sum is a
+// DIFFERENT number, not a better one - the two conventions differ by 62 A^2 on
+// famotidine, which straddles the Veber cutoff - so it gets its own function and
+// any readout must state which one it used.
+double tpsa(const Molecule& m);
+double tpsaIncludingSulfurAndPhosphorus(const Molecule& m);
+// Wildman-Crippen logP; delegates to chem::crippen() (chem/Crippen.h), which
+// carries the citation and the method's ~0.67 log-unit RMS error. Returns 0.0
+// if the descriptor pack is missing - call chem::crippen() to see that.
+double crippenLogP(const Molecule& m);
 int    formalCharge(const Molecule& m);
 int    heavyAtomCount(const Molecule& m);
 

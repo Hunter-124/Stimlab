@@ -16,6 +16,7 @@
 #include "agent/WebTools.h"
 #include "bio/Structure.h"
 #include "chem/Descriptors.h"
+#include "chem/Perceive.h"
 #include "chem/Smiles.h"
 #include "core/Config.h"
 #include "core/Secrets.h"
@@ -86,6 +87,10 @@ AppShell::AppShell(Services services) : svc_(services) {
          "Permeability, oral bioavailability, blood-brain-barrier partition, and efflux.", "Predict"},
         {"Metabolism", "Metabolism (ADMET)",
          "Metabolic routes, risky metabolites, drug interactions, and safety flags (hERG).", "Predict"},
+        {"Metabolites", "Known Metabolites",
+         "Curated, cited biotransformations for the selected compound. Facts only: no hypothetical metabolite is enumerated here.", "Predict"},
+        {"Alerts", "Structural Alerts",
+         "Liability flags: substructures literature-associated with reactive-metabolite formation. Not a toxicity verdict.", "Predict"},
         {"PkPd", "PK / PD",
          "Exposure scenarios: concentration-time and target-occupancy curves under stated assumptions.", "Predict"},
         {"Sequence", "Sequence Compare",
@@ -540,7 +545,7 @@ std::optional<Molecule> AppShell::resolveAgentCompound(const std::string& arg) c
             if (lower(m.id) == q || lower(m.name) == q) return m;
     }
     // Treat the argument as a raw SMILES and analyze it on the fly.
-    if (auto g = chem::parseSmiles(arg)) {
+    if (auto g = chem::parsePerceived(arg)) {
         Molecule m;
         m.id = "__agent__";
         m.name = arg;
@@ -615,6 +620,43 @@ void AppShell::registerAgentServiceTools() {
                     arr.push_back({{"endpoint", e.name}, {"verdict", verdictLabel(e.verdict)},
                                    {"detail", e.detail}});
                 return {json{{"overall", verdictLabel(r.overall)}, {"endpoints", arr}}.dump(), false};
+            }));
+    }
+
+    // screen_structural_alerts: bioactivation liability flags, never a verdict.
+    {
+        json schema = {{"type", "object"}, {"properties", compoundProp()}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "screen_structural_alerts",
+            "Screen a compound for structural alerts associated with metabolic bioactivation "
+            "(quinone-imine formers, nitroaromatics, anilines, thiophenes, furans, terminal "
+            "alkynes, hydrazines, epoxides, Michael acceptors, acyl-glucuronide precursors, "
+            "thioureas, alpha-haloamides) and return each match with its mechanism and citation. "
+            "These are LIABILITY FLAGS, NOT a toxicity verdict: a flag means the matched "
+            "substructure has been ASSOCIATED in the literature with reactive-metabolite "
+            "formation, not that this compound is toxic or that bioactivation occurs. Many "
+            "widely used marketed drugs match several alerts. An empty result means no motif in "
+            "this short in-house pack matched, which is not a safety claim. Do not convert this "
+            "output into a safety conclusion, a risk score, or advice about taking anything.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.alerts) return {"Structural-alert service unavailable.", true};
+                const auto mo = resolveAgentCompound(args.value("compound", ""));
+                if (!mo) return {"Could not resolve a compound from that argument.", true};
+                const auto r = svc_.alerts->screen(*mo);
+                json arr = json::array();
+                for (const auto& f : r.flags)
+                    arr.push_back({{"flag", f.label},
+                                   {"level", verdictLabel(f.severity)},
+                                   {"mechanism", f.mechanism},
+                                   {"citation", f.citation},
+                                   {"matchedAtoms", f.atomCount}});
+                return {json{{"compound", mo->name},
+                             {"framing", "liability flags associated with reactive-metabolite "
+                                         "formation; not a toxicity verdict"},
+                             {"flags", arr},
+                             {"summary", r.summary}}
+                            .dump(),
+                        false};
             }));
     }
 
@@ -791,6 +833,52 @@ void AppShell::registerAgentServiceTools() {
                           {"note", r.note}};
                 if (local) j["eValue"] = r.eValue;
                 return {j.dump(), false};
+            }));
+    }
+
+    // ---- Curated metabolite facts. Retrieval, never enumeration: the tool cannot
+    // produce a hypothesis, so the model has nothing plausible-but-unfounded to
+    // quote back to the user.
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"compound", {{"type", "string"},
+                            {"description", "Compound id or name from the library, e.g. "
+                                            "\"acetaminophen\" or \"MDMA\"."}}}}},
+            {"required", json::array({"compound"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "known_metabolites",
+            "Return the CURATED, CITED biotransformations BioCAD ships for a compound: the "
+            "metabolite, the responsible enzyme, the reaction, why it matters, and a real "
+            "reference for each. It returns FACTS ONLY and never enumerated hypotheses - "
+            "rule-based metabolite prediction was independently benchmarked at 1.1-29% "
+            "precision and 14.7-28.3% sensitivity (Boyce et al. 2022, Comput Toxicol "
+            "21:100208), so BioCAD does not generate candidate metabolites at all. An empty "
+            "list means BioCAD has no curated entry for that compound; it does NOT mean the "
+            "compound has no metabolites, and you must not present it that way - quote the "
+            "returned coverageNote instead.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.metabolismFacts) return {"Metabolism facts service unavailable.", true};
+                const auto mo = resolveAgentCompound(args.value("compound", ""));
+                if (!mo) return {"Could not resolve a compound from that argument.", true};
+                const MetabolismReport r = svc_.metabolismFacts->known(*mo);
+                json facts = json::array();
+                for (const auto& f : r.known) {
+                    json e = {{"metabolite", f.metaboliteName}, {"enzyme", f.enzyme},
+                              {"reaction", f.reaction}, {"significance", f.significance},
+                              {"citation", f.citation}, {"polymorphicEnzyme", f.polymorphic},
+                              {"provenance", provenanceLabel(Provenance::Measured)}};
+                    if (!f.metaboliteSmiles.empty()) e["smiles"] = f.metaboliteSmiles;
+                    facts.push_back(std::move(e));
+                }
+                return {json{{"compound", mo->id}, {"name", mo->name},
+                             {"curatedFacts", facts}, {"summary", r.summary},
+                             {"coverageNote", r.coverageNote},
+                             {"enumeration", "none - this tool never enumerates hypothetical "
+                                             "metabolites"}}
+                            .dump(),
+                        false};
             }));
     }
 
@@ -1461,6 +1549,8 @@ void AppShell::drawContent() {
         else if (panel == "Stability")   panels::stability(*this);
         else if (panel == "Absorption")  panels::absorption(*this);
         else if (panel == "Metabolism")  panels::metabolism(*this);
+        else if (panel == "Alerts")      panels::alerts(*this);
+        else if (panel == "Metabolites") panels::metabolites(*this);
         else if (panel == "PkPd")        panels::pkpd(*this);
         else if (panel == "Sequence")    panels::sequenceCompare(*this);
         else if (panel == "Structure3D") panels::proteinStructure(*this);

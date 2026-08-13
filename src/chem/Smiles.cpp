@@ -68,22 +68,37 @@ void perceiveRings(Molecule& m) {
     }
 }
 
-void computeImplicitH(Molecule& m) {
+}  // namespace
+
+void assignImplicitHydrogens(Molecule& m) {
     for (auto& a : m.atoms) {
         if (a.bracket) continue;  // explicit H already known
         double sob = 0.0;
-        for (int bi : a.bonds) sob += m.bonds[bi].order;
+        // An aromatic bond is not "1.5 bonds" for valence purposes. Counting it
+        // as 1.5 gave thiophene's sulfur sum 3, which promoted it to the S(IV)
+        // valence and invented an implicit hydrogen on it - so c1ccsc1 and its
+        // Kekule form C1=CSC=C1 described different molecules. Instead each
+        // aromatic bond counts as one sigma bond, and the single pi bond that an
+        // aromatic carbon or a pyridine-type nitrogen must contribute is added
+        // once. Pyrrole-type NH is spelled [nH] in SMILES, so it never reaches
+        // this branch.
+        for (int bi : a.bonds) sob += m.bonds[bi].aromatic ? 1.0 : m.bonds[bi].order;
+        if (a.aromatic && (a.z == 6 || a.z == 7)) sob += 1.0;
         const long sobR = std::lround(sob);
         const auto vals = valenceList(a.z, a.charge);
         if (vals.empty()) { a.implicitH = 0; continue; }
+        // Aromatic atoms never expand to a higher standard valence to soak up
+        // hydrogens: a lowercase atom in a ring is already saturated by its ring.
+        if (a.aromatic) {
+            a.implicitH = static_cast<int>(std::max(0L, static_cast<long>(vals.front()) - sobR));
+            continue;
+        }
         int target = vals.back();
         for (int v : vals)
             if (v >= sobR) { target = v; break; }
         a.implicitH = static_cast<int>(std::max(0L, target - sobR));
     }
 }
-
-}  // namespace
 
 std::optional<Molecule> parseSmiles(std::string_view s) {
     Molecule m;
@@ -226,7 +241,7 @@ std::optional<Molecule> parseSmiles(std::string_view s) {
 
     if (m.atoms.empty()) return std::nullopt;
     perceiveRings(m);
-    computeImplicitH(m);
+    assignImplicitHydrogens(m);
     return m;
 }
 

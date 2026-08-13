@@ -1,0 +1,288 @@
+{
+  "schemaVersion": 1,
+  "id": "metabolism-facts",
+  "title": "Curated, cited biotransformations",
+  "description": "KNOWN metabolic transformations for compounds in the shipped library, each with a real citation. This pack is deliberately NOT a rule set and nothing here is enumerated: the independent EPA cross-tool benchmark of rule-based metabolite predictors (Boyce et al. 2022, Computational Toxicology 21:100208) measured precision of 1.1-29% and sensitivity of 14.7-28.3% across SyGMa, Meteor, BioTransformer, TIMES, the OECD QSAR Toolbox and CTS, so one established transformation with a reference is worth more than a hundred hypotheses. A metabolite SMILES is present only where the structure is certain; a stereocentre known to matter is noted in `significance` rather than guessed in the SMILES.",
+  "facts": [
+    {
+      "parentId": "codeine",
+      "metaboliteName": "Morphine",
+      "metaboliteSmiles": "CN1CCC23C4C1CC5=C2C(=C(C=C5)O)OC3C(C=C4)O",
+      "enzyme": "CYP2D6",
+      "reaction": "O-demethylation at the 3-position",
+      "significance": "Codeine is a prodrug: essentially all of its opioid analgesia comes from morphine, so CYP2D6 activity determines the effect. Only about 5-10% of a codeine dose takes this route; glucuronidation to codeine-6-glucuronide dominates by mass.",
+      "citation": "Crews et al., CPIC Guideline for CYP2D6, OPRM1 and COMT Genotypes and Select Opioid Therapy, Clinical Pharmacology & Therapeutics 2021",
+      "polymorphic": true
+    },
+    {
+      "parentId": "codeine",
+      "metaboliteName": "Norcodeine",
+      "metaboliteSmiles": "",
+      "enzyme": "CYP3A4",
+      "reaction": "N-demethylation",
+      "significance": "A quantitatively major but pharmacologically minor route: it consumes codeine without producing analgesia, so a CYP3A4 inducer shifts flux away from morphine.",
+      "citation": "Goodman & Gilman's The Pharmacological Basis of Therapeutics, 13th edition, 2018, opioid analgesics chapter",
+      "polymorphic": false
+    },
+    {
+      "parentId": "tramadol",
+      "metaboliteName": "O-desmethyltramadol (M1)",
+      "metaboliteSmiles": "CN(C)CC1CCCCC1(C2=CC(=CC=C2)O)O",
+      "enzyme": "CYP2D6",
+      "reaction": "O-demethylation of the aryl methyl ether",
+      "significance": "M1 carries the mu-opioid activity, roughly 200-fold more potent at the mu receptor than the parent; the parent itself supplies the monoamine-reuptake component. Poor metabolisers get little analgesia, ultrarapid metabolisers get an exaggerated opioid effect.",
+      "citation": "Crews et al., CPIC Guideline for CYP2D6, OPRM1 and COMT Genotypes and Select Opioid Therapy, Clinical Pharmacology & Therapeutics 2021",
+      "polymorphic": true
+    },
+    {
+      "parentId": "tramadol",
+      "metaboliteName": "N-desmethyltramadol (M2)",
+      "metaboliteSmiles": "CNCC1CCCCC1(C2=CC(=CC=C2)OC)O",
+      "enzyme": "CYP3A4/CYP2B6",
+      "reaction": "N-demethylation",
+      "significance": "Opioid-inactive; it competes with the CYP2D6 route, so it is the reason a CYP3A4 inducer reduces tramadol analgesia.",
+      "citation": "Goodman & Gilman's The Pharmacological Basis of Therapeutics, 13th edition, 2018, opioid analgesics chapter",
+      "polymorphic": false
+    },
+    {
+      "parentId": "lisdexamfetamine",
+      "metaboliteName": "Dextroamphetamine",
+      "metaboliteSmiles": "CC(Cc1ccccc1)N",
+      "enzyme": "Red-blood-cell peptidases (not CYP)",
+      "reaction": "Enzymatic hydrolysis of the L-lysine amide bond",
+      "significance": "Lisdexamfetamine is an inactive prodrug; the entire stimulant effect is dextroamphetamine. Because the hydrolysis happens in erythrocytes rather than on a CYP, the conversion is not subject to the CYP inhibition or induction interactions that affect most prodrugs, and it is rate-limited rather than dose-dumping. The metabolite is the d-enantiomer; the SMILES above omits the stereocentre.",
+      "citation": "Pennick, Absorption of lisdexamfetamine dimesylate and its enzymatic conversion to d-amphetamine, Neuropsychiatric Disease and Treatment 2010;6:317-327",
+      "polymorphic": false
+    },
+    {
+      "parentId": "acetaminophen",
+      "metaboliteName": "NAPQI (N-acetyl-p-benzoquinone imine)",
+      "metaboliteSmiles": "CC(=O)N=C1C=CC(=O)C=C1",
+      "enzyme": "CYP2E1/CYP3A4 (CYP1A2, CYP2D6 minor)",
+      "reaction": "Two-electron oxidation to a reactive quinone imine",
+      "significance": "The hepatotoxic species, and the reason acetaminophen overdose is treated with N-acetylcysteine. Normally under 10% of a dose and immediately conjugated by glutathione; once glutathione is depleted NAPQI arylates cellular protein thiols. This is a LIABILITY, not a toxicity prediction: the dose, glutathione status and ethanol/CYP2E1 induction decide the outcome.",
+      "citation": "Mitchell et al., Acetaminophen-induced hepatic necrosis IV: protective role of glutathione, Journal of Pharmacology and Experimental Therapeutics 1973;187:211-217",
+      "polymorphic": false
+    },
+    {
+      "parentId": "acetaminophen",
+      "metaboliteName": "Acetaminophen glucuronide",
+      "metaboliteSmiles": "",
+      "enzyme": "UGT1A1/UGT1A6/UGT1A9",
+      "reaction": "Phenolic O-glucuronidation",
+      "significance": "The dominant clearance route in adults (roughly half to two-thirds of a therapeutic dose), pharmacologically inert and renally excreted. Saturation of this route in overdose is what pushes flux onto CYP2E1 and NAPQI.",
+      "citation": "Goodman & Gilman's The Pharmacological Basis of Therapeutics, 13th edition, 2018, acetaminophen section",
+      "polymorphic": false
+    },
+    {
+      "parentId": "acetaminophen",
+      "metaboliteName": "Acetaminophen sulfate",
+      "metaboliteSmiles": "",
+      "enzyme": "SULT1A1/SULT1A3",
+      "reaction": "Phenolic O-sulfation",
+      "significance": "The second inert conjugation route and the predominant one in young children. It saturates at low doses because the PAPS sulfate donor pool is small, which is why sulfation is a capacity-limited, not a first-order, escape route.",
+      "citation": "Goodman & Gilman's The Pharmacological Basis of Therapeutics, 13th edition, 2018, acetaminophen section",
+      "polymorphic": false
+    },
+    {
+      "parentId": "amphetamine",
+      "metaboliteName": "4-Hydroxyamphetamine",
+      "metaboliteSmiles": "CC(N)Cc1ccc(O)cc1",
+      "enzyme": "CYP2D6",
+      "reaction": "Aromatic para-hydroxylation",
+      "significance": "A minor route in humans (a few percent of a dose) that is further beta-hydroxylated to 4-hydroxynorephedrine. Amphetamine clearance is dominated by unchanged renal excretion, which is strongly urine-pH dependent, so CYP2D6 status matters far less here than it does for codeine or tramadol.",
+      "citation": "Dring, Smith and Williams, The metabolic fate of amphetamine in man and other species, Biochemical Journal 1970;116:425-435",
+      "polymorphic": true
+    },
+    {
+      "parentId": "amphetamine",
+      "metaboliteName": "Phenylacetone (phenylpropan-2-one)",
+      "metaboliteSmiles": "CC(=O)Cc1ccccc1",
+      "enzyme": "CYP2C-mediated oxidative deamination",
+      "reaction": "Oxidative deamination of the side-chain amine to the ketone",
+      "significance": "Terminates stimulant activity; it is oxidised onward to benzoic acid and excreted as hippuric acid, which is the classic urinary end point of amphetamine metabolism. Listed here as the metabolic fate of a dose, not as a chemical route to anything.",
+      "citation": "Dring, Smith and Williams, The metabolic fate of amphetamine in man and other species, Biochemical Journal 1970;116:425-435",
+      "polymorphic": false
+    },
+    {
+      "parentId": "methamphetamine",
+      "metaboliteName": "Amphetamine",
+      "metaboliteSmiles": "CC(Cc1ccccc1)N",
+      "enzyme": "CYP2D6",
+      "reaction": "N-demethylation",
+      "significance": "An ACTIVE metabolite: methamphetamine's effect is its own plus that of the amphetamine it generates, and the pair is the reason amphetamine in a urine screen does not distinguish the two exposures without the parent. Roughly 15% of a dose.",
+      "citation": "Cruickshank and Dyer, A review of the clinical pharmacology of methamphetamine, Addiction 2009;104:1085-1099",
+      "polymorphic": true
+    },
+    {
+      "parentId": "methamphetamine",
+      "metaboliteName": "4-Hydroxymethamphetamine",
+      "metaboliteSmiles": "CNC(C)Cc1ccc(O)cc1",
+      "enzyme": "CYP2D6",
+      "reaction": "Aromatic para-hydroxylation",
+      "significance": "A minor oxidative route; like amphetamine, methamphetamine is cleared substantially as unchanged drug in urine, and that fraction rises sharply as urine is acidified.",
+      "citation": "Cruickshank and Dyer, A review of the clinical pharmacology of methamphetamine, Addiction 2009;104:1085-1099",
+      "polymorphic": true
+    },
+    {
+      "parentId": "mdma",
+      "metaboliteName": "MDA (3,4-methylenedioxyamphetamine)",
+      "metaboliteSmiles": "CC(N)Cc1ccc2OCOc2c1",
+      "enzyme": "CYP2B6 (CYP2D6, CYP3A4 contributing)",
+      "reaction": "N-demethylation",
+      "significance": "A psychoactive metabolite in its own right, so part of an MDMA exposure is an MDA exposure. It is the minor of the two primary routes; demethylenation to HMMA carries more of the dose.",
+      "citation": "de la Torre et al., Human pharmacology of MDMA: pharmacokinetics, metabolism and disposition, Therapeutic Drug Monitoring 2004;26:137-144",
+      "polymorphic": false
+    },
+    {
+      "parentId": "mdma",
+      "metaboliteName": "HMMA (4-hydroxy-3-methoxymethamphetamine)",
+      "metaboliteSmiles": "CNC(C)Cc1ccc(O)c(OC)c1",
+      "enzyme": "CYP2D6 (then COMT)",
+      "reaction": "Demethylenation of the methylenedioxy ring to the catechol HHMA, then COMT O-methylation",
+      "significance": "The main route, and the origin of MDMA's nonlinear pharmacokinetics: MDMA is a mechanism-based inhibitor of the CYP2D6 that clears it, so this pathway autoinhibits and plasma concentrations rise more than dose-proportionally. HMMA is excreted mostly as its glucuronide or sulfate.",
+      "citation": "de la Torre et al., Human pharmacology of MDMA: pharmacokinetics, metabolism and disposition, Therapeutic Drug Monitoring 2004;26:137-144",
+      "polymorphic": true
+    },
+    {
+      "parentId": "cocaine",
+      "metaboliteName": "Benzoylecgonine",
+      "metaboliteSmiles": "CN1C2CCC1C(C(=O)O)C(C2)OC(=O)c1ccccc1",
+      "enzyme": "Spontaneous (pH-dependent) and carboxylesterase-1 hydrolysis",
+      "reaction": "Hydrolysis of the methyl ester",
+      "significance": "The major urinary metabolite and the analyte cocaine immunoassays actually detect; its much longer half-life than the parent is why a screen is positive for days. Largely inactive at the monoamine transporters.",
+      "citation": "Goodman & Gilman's The Pharmacological Basis of Therapeutics, 13th edition, 2018, cocaine section",
+      "polymorphic": false
+    },
+    {
+      "parentId": "cocaine",
+      "metaboliteName": "Ecgonine methyl ester",
+      "metaboliteSmiles": "CN1C2CCC1C(C(=O)OC)C(O)C2",
+      "enzyme": "Butyrylcholinesterase (plasma pseudocholinesterase) and hepatic carboxylesterase-2",
+      "reaction": "Hydrolysis of the benzoyl ester",
+      "significance": "The second hydrolytic route and the reason butyrylcholinesterase deficiency raises cocaine exposure and toxicity risk. Distinguishing these two hydrolyses matters clinically because only one of them is enzyme-capacity limited.",
+      "citation": "Goodman & Gilman's The Pharmacological Basis of Therapeutics, 13th edition, 2018, cocaine section",
+      "polymorphic": false
+    },
+    {
+      "parentId": "caffeine",
+      "metaboliteName": "Paraxanthine (1,7-dimethylxanthine)",
+      "metaboliteSmiles": "CN1C=NC2=C1C(=O)N(C)C(=O)N2",
+      "enzyme": "CYP1A2",
+      "reaction": "N3-demethylation",
+      "significance": "About 80% of caffeine clearance goes through this single step, which is why the caffeine/paraxanthine ratio is used as an in vivo CYP1A2 probe and why CYP1A2 inhibitors (fluvoxamine, ciprofloxacin, oral contraceptives) markedly prolong caffeine half-life while smoking, a CYP1A2 inducer, shortens it. Paraxanthine is itself pharmacologically active.",
+      "citation": "Thorn et al., PharmGKB summary: caffeine pathway, Pharmacogenetics and Genomics 2012;22:389-395",
+      "polymorphic": false
+    },
+    {
+      "parentId": "caffeine",
+      "metaboliteName": "Theobromine (3,7-dimethylxanthine)",
+      "metaboliteSmiles": "Cn1cnc2c1c(=O)[nH]c(=O)n2C",
+      "enzyme": "CYP1A2",
+      "reaction": "N1-demethylation",
+      "significance": "A minor route, roughly a tenth of caffeine clearance; it is the same compound that dominates cocoa exposure, so a caffeine dose and a chocolate dose converge on one metabolite pool.",
+      "citation": "Thorn et al., PharmGKB summary: caffeine pathway, Pharmacogenetics and Genomics 2012;22:389-395",
+      "polymorphic": false
+    },
+    {
+      "parentId": "caffeine",
+      "metaboliteName": "Theophylline (1,3-dimethylxanthine)",
+      "metaboliteSmiles": "Cn1c(=O)c2[nH]cnc2n(C)c1=O",
+      "enzyme": "CYP1A2",
+      "reaction": "N7-demethylation",
+      "significance": "The smallest of the three demethylation routes (a few percent), but notable because it produces a drug with a narrow therapeutic index from a dietary compound.",
+      "citation": "Thorn et al., PharmGKB summary: caffeine pathway, Pharmacogenetics and Genomics 2012;22:389-395",
+      "polymorphic": false
+    },
+    {
+      "parentId": "theophylline",
+      "metaboliteName": "1-Methylxanthine",
+      "metaboliteSmiles": "CN1C(=O)NC2=C(N=CN2)C1=O",
+      "enzyme": "CYP1A2 (then xanthine oxidase)",
+      "reaction": "N3-demethylation, followed by xanthine-oxidase oxidation to 1-methyluric acid",
+      "significance": "Theophylline clearance is capacity-limited over the therapeutic range, so the CYP1A2 dependence of this step plus the narrow therapeutic index is what makes theophylline interactions dangerous rather than merely measurable. Allopurinol blocks the downstream xanthine-oxidase step.",
+      "citation": "Goodman & Gilman's The Pharmacological Basis of Therapeutics, 13th edition, 2018, methylxanthines section",
+      "polymorphic": false
+    },
+    {
+      "parentId": "ibuprofen",
+      "metaboliteName": "Ibuprofen acyl glucuronide",
+      "metaboliteSmiles": "",
+      "enzyme": "UGT2B7 (UGT1A9 contributing)",
+      "reaction": "Acyl glucuronidation of the carboxylic acid",
+      "significance": "The main clearance route, and a reactive-metabolite liability rather than an inert conjugate: acyl glucuronides transacylate protein and migrate intramolecularly, which is the mechanism implicated in NSAID idiosyncratic hepatotoxicity. Flagged as a liability, never as a toxicity verdict.",
+      "citation": "Bailey and Dickinson, Acyl glucuronide reactivity in perspective, Chemico-Biological Interactions 2003;145:117-137",
+      "polymorphic": false
+    },
+    {
+      "parentId": "ibuprofen",
+      "metaboliteName": "2-Hydroxyibuprofen and carboxyibuprofen",
+      "metaboliteSmiles": "",
+      "enzyme": "CYP2C9 (CYP2C8 contributing)",
+      "reaction": "Isobutyl side-chain hydroxylation and further oxidation",
+      "significance": "The oxidative route that makes ibuprofen exposure CYP2C9-genotype dependent; poor metabolisers show substantially higher AUC.",
+      "citation": "Theken et al., CPIC Guideline for CYP2C9 and Nonsteroidal Anti-inflammatory Drugs, Clinical Pharmacology & Therapeutics 2020;108:191-200",
+      "polymorphic": true
+    },
+    {
+      "parentId": "nicotine",
+      "metaboliteName": "Cotinine",
+      "metaboliteSmiles": "CN1C(=O)CCC1c1cccnc1",
+      "enzyme": "CYP2A6 (via the iminium ion, then aldehyde oxidase)",
+      "reaction": "5'-oxidation to the nicotine-delta-1'(5')-iminium ion, then oxidation to the lactam",
+      "significance": "Roughly 70-80% of nicotine goes this way, and cotinine's long half-life relative to nicotine makes it the standard biomarker of tobacco exposure. CYP2A6 is highly polymorphic, and slow metabolisers smoke less and quit more easily, which is one of the better-established pharmacogenetic behavioural associations.",
+      "citation": "Benowitz, Hukkanen and Jacob, Nicotine chemistry, metabolism, kinetics and biomarkers, Handbook of Experimental Pharmacology 2009;192:29-60",
+      "polymorphic": true
+    },
+    {
+      "parentId": "dextromethorphan",
+      "metaboliteName": "Dextrorphan",
+      "metaboliteSmiles": "",
+      "enzyme": "CYP2D6",
+      "reaction": "O-demethylation",
+      "significance": "Dextromethorphan/dextrorphan is THE classic CYP2D6 probe pair, which is why this compound appears in interaction studies far more often than as an antitussive. Dextrorphan is a more potent NMDA channel blocker than the parent, so CYP2D6 status changes the character of the exposure and not just its size.",
+      "citation": "Goodman & Gilman's The Pharmacological Basis of Therapeutics, 13th edition, 2018, antitussives section",
+      "polymorphic": true
+    },
+    {
+      "parentId": "aspirin",
+      "metaboliteName": "Salicylic acid",
+      "metaboliteSmiles": "OC(=O)c1ccccc1O",
+      "enzyme": "Plasma and hepatic carboxylesterases (spontaneous hydrolysis contributing)",
+      "reaction": "Hydrolysis of the acetate ester",
+      "significance": "Aspirin's own half-life is roughly 15-20 minutes, so systemic exposure is essentially salicylate; the irreversible COX acetylation happens before that, which is why a once-daily antiplatelet dose works despite the parent disappearing in minutes. Salicylate elimination is capacity-limited, so its half-life lengthens with dose.",
+      "citation": "Goodman & Gilman's The Pharmacological Basis of Therapeutics, 13th edition, 2018, salicylates section",
+      "polymorphic": false
+    },
+    {
+      "parentId": "methylphenidate",
+      "metaboliteName": "Ritalinic acid",
+      "metaboliteSmiles": "",
+      "enzyme": "Carboxylesterase-1 (CES1)",
+      "reaction": "Hydrolysis of the methyl ester",
+      "significance": "Over 80% of a methylphenidate dose ends up as this inactive acid, and the enzyme is CES1 rather than a CYP - so methylphenidate is largely free of CYP-mediated interactions, and CES1 variants, not CYP2D6, are what alter its exposure.",
+      "citation": "Markowitz and Patrick, The clinical pharmacokinetics of amphetamines utilized in the treatment of ADHD, Journal of Child and Adolescent Psychopharmacology 2017;27:678-689",
+      "polymorphic": false
+    },
+    {
+      "parentId": "bupropion",
+      "metaboliteName": "Hydroxybupropion",
+      "metaboliteSmiles": "",
+      "enzyme": "CYP2B6",
+      "reaction": "Oxidative cyclisation of the tert-butyl group to the morpholinol",
+      "significance": "An active metabolite that circulates at many times the parent concentration, so most of a bupropion exposure's effect is not bupropion. Bupropion is simultaneously a strong CYP2D6 inhibitor, which is the interaction that matters clinically.",
+      "citation": "Goodman & Gilman's The Pharmacological Basis of Therapeutics, 13th edition, 2018, antidepressants chapter",
+      "polymorphic": false
+    },
+    {
+      "parentId": "atomoxetine",
+      "metaboliteName": "4-Hydroxyatomoxetine",
+      "metaboliteSmiles": "",
+      "enzyme": "CYP2D6",
+      "reaction": "Aromatic para-hydroxylation, then rapid O-glucuronidation",
+      "significance": "Equipotent with the parent but cleared so fast that it contributes little; the clinically important consequence is the parent's own exposure, which is about ten-fold higher in CYP2D6 poor metabolisers - one of the few labelled CYP2D6 dose considerations.",
+      "citation": "Brown et al., CPIC Guideline for CYP2D6 and Atomoxetine Therapy, Clinical Pharmacology & Therapeutics 2019;106:94-102",
+      "polymorphic": true
+    }
+  ]
+}
