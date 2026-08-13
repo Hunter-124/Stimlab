@@ -1,0 +1,11 @@
+// core/Version.h - generated from src/core/Version.h.in by CMake.
+// project(BioCAD VERSION x.y.z) in the top-level CMakeLists.txt is the single
+// source of truth for the application version; do not hard-code it elsewhere.
+#pragma once
+
+namespace biocad {
+
+inline constexpr const char* kBioCadVersion = "@PROJECT_VERSION@";
+inline constexpr const char* kBioCadVersionShort = "@PROJECT_VERSION_MAJOR@.@PROJECT_VERSION_MINOR@";
+
+}  // namespace biocad

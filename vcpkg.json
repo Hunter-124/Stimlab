@@ -1,8 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg/master/scripts/vcpkg.schema.json",
-  "name": "stimlab",
-  "version": "0.1.0",
-  "description": "StimLab - native CNS-stimulant computational drug-discovery suite (docking, ADMET, similarity, legal-analog, AI agent).",
+  "name": "biocad",
+  "version": "0.2.0",
+  "description": "BioCAD - native workstation for molecular, protein, and pharmacological analysis (docking, ADMET, similarity, legal-analog, AI agent).",
   "dependencies": [
     "nlohmann-json",
     "spdlog",
@@ -26,7 +26,7 @@
   ],
   "features": {
     "science": {
-      "description": "Networked extras (Phase D agent): libcurl for the Anthropic LLM provider. curl[ssl] resolves to Windows-native Schannel TLS here (the port's ssl feature pulls sspi on Windows), so there is no OpenSSL build. NOTE: there is intentionally no rdkit - StimLab has its own in-house cheminformatics engine in src/chem (rdkit is not a port in this vcpkg registry).",
+      "description": "Networked extras (Phase D agent): libcurl for the Anthropic LLM provider. curl[ssl] resolves to Windows-native Schannel TLS here (the port's ssl feature pulls sspi on Windows), so there is no OpenSSL build. NOTE: there is intentionally no rdkit - BioCAD has its own in-house cheminformatics engine in src/chem (rdkit is not a port in this vcpkg registry).",
       "dependencies": [
         {
           "name": "curl",

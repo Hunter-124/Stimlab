@@ -6,7 +6,7 @@
 
 #include "chem/Molecule.h"
 
-namespace stimlab::chem {
+namespace biocad::chem {
 
 // Structural liabilities / motifs the pharmacology heuristics key on.
 struct FunctionalGroups {
@@ -42,4 +42,4 @@ std::vector<std::uint32_t> morganFingerprint(const Molecule& m, int radius = 2);
 // Tanimoto coefficient over two sorted unique feature sets (0..1).
 double tanimoto(const std::vector<std::uint32_t>& a, const std::vector<std::uint32_t>& b);
 
-}  // namespace stimlab::chem
+}  // namespace biocad::chem

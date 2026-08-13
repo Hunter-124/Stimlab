@@ -10,7 +10,7 @@
 
 #include "contracts/ILlmProvider.h"
 
-namespace stimlab::agent {
+namespace biocad::agent {
 
 class MockProvider : public ILlmProvider {
 public:
@@ -21,4 +21,4 @@ public:
     LlmResponse send(const LlmRequest& req, const StreamCallback& onText) const override;
 };
 
-}  // namespace stimlab::agent
+}  // namespace biocad::agent

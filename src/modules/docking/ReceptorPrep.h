@@ -2,7 +2,7 @@
 //
 // Turns a Protein Data Bank structure into a Vina-ready RIGID receptor PDBQT, with
 // NO RDKit and NO hard OpenBabel linkage. Two paths, both producing the same
-// cached artifact under %APPDATA%/StimLab/runtime/receptors/<id>.pdbqt:
+// cached artifact under %APPDATA%/BioCAD/runtime/receptors/<id>.pdbqt:
 //
 //   1. Built-in writer (always available): pdbToRigidReceptor() parses PDB
 //      ATOM/HETATM records, strips waters + crystallization additives + the
@@ -31,10 +31,10 @@
 
 #include "contracts/IDockingBackend.h"
 
-namespace stimlab::docking {
+namespace biocad::docking {
 
 // The directory prepared receptor PDBQTs (and their fetched source PDBs) live in:
-// %APPDATA%/StimLab/runtime/receptors.
+// %APPDATA%/BioCAD/runtime/receptors.
 std::filesystem::path receptorsDir();
 
 // Result of the built-in PDB -> rigid receptor PDBQT conversion.
@@ -79,7 +79,7 @@ struct ReceptorPrepResult {
     bool        usedObabel = false;
     int         atomCount = 0;
 
-    // Structure-frame box center recovered from the prepared receptor's STIMLAB_BOX
+    // Structure-frame box center recovered from the prepared receptor's BIOCAD_BOX
     // remark (see receptorBoxFromPdb). When hasBox is true the docking module
     // overrides the preset center with this so the box overlaps the real receptor.
     double cx = 0.0, cy = 0.0, cz = 0.0;
@@ -96,4 +96,4 @@ ReceptorPrepResult ensureReceptor(const ReceptorTarget& target, bool allowDownlo
 // (No network, no preparation - used on the hot docking path.)
 ReceptorPrepResult locatePreparedReceptor(const std::string& targetId);
 
-}  // namespace stimlab::docking
+}  // namespace biocad::docking

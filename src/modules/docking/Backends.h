@@ -28,7 +28,7 @@
 #include "contracts/IDockingBackend.h"
 #include "modules/docking/EngineLocator.h"
 
-namespace stimlab::docking {
+namespace biocad::docking {
 
 class EstimateBackend final : public IDockingBackend {
 public:
@@ -61,4 +61,4 @@ public:
                        const ReceptorTarget& target) const override;
 };
 
-}  // namespace stimlab::docking
+}  // namespace biocad::docking

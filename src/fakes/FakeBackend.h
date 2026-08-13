@@ -7,7 +7,7 @@
 
 #include "contracts/Services.h"
 
-namespace stimlab {
+namespace biocad {
 
 class FakeBackend {
 public:
@@ -24,4 +24,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace stimlab
+}  // namespace biocad

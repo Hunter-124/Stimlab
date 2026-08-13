@@ -18,7 +18,7 @@
 
 #include <nlohmann/json.hpp>
 
-namespace stimlab {
+namespace biocad {
 
 // How a tool advertises itself to the LLM provider (Anthropic `tools[]` entry).
 struct ToolSpec {
@@ -51,4 +51,4 @@ public:
     virtual ToolResult  dispatch(const std::string& name, const nlohmann::json& args) const = 0;
 };
 
-}  // namespace stimlab
+}  // namespace biocad

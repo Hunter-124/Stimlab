@@ -10,7 +10,7 @@
 #include "chem/Descriptors.h"
 #include "chem/Smiles.h"
 
-using namespace stimlab::chem;
+using namespace biocad::chem;
 using Catch::Matchers::WithinAbs;
 
 namespace {

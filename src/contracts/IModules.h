@@ -14,7 +14,7 @@
 #include "contracts/IDockingBackend.h"
 #include "data/Domain.h"
 
-namespace stimlab {
+namespace biocad {
 
 // Curated compound library (defaults + user imports).
 class ILibrary {
@@ -87,4 +87,4 @@ public:
     virtual void record(const RunRecord&) {}
 };
 
-}  // namespace stimlab
+}  // namespace biocad

@@ -5,9 +5,9 @@
 
 #include <spdlog/spdlog.h>  // re-exported so call sites can use spdlog::info(...) etc.
 
-namespace stimlab::log {
+namespace biocad::log {
 
 void init(bool installCrashHandler = true);
 void shutdown();
 
-}  // namespace stimlab::log
+}  // namespace biocad::log

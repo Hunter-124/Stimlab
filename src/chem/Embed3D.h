@@ -15,7 +15,7 @@
 
 #include "chem/Molecule.h"
 
-namespace stimlab::chem {
+namespace biocad::chem {
 
 struct Vec3 {
     double x = 0.0, y = 0.0, z = 0.0;
@@ -45,4 +45,4 @@ double vdwRadius(int z);        // van-der-Waals radius (clash term + spacefill 
 // Conformer for an empty molecule; never produces NaN/Inf coordinates.
 Conformer embed3D(const Molecule& m, unsigned seed = 0x5715ABu);
 
-}  // namespace stimlab::chem
+}  // namespace biocad::chem

@@ -5,7 +5,7 @@
 #include <cctype>
 #include <utility>
 
-namespace stimlab::agent {
+namespace biocad::agent {
 namespace {
 
 std::string toLower(std::string s) {
@@ -96,7 +96,7 @@ std::pair<std::string, std::string> routePanel(const std::string& q) {
         return {"Settings", "the Settings panel - AI provider/key, compute mode and storage paths."};
     return {"Dashboard",
             "the Dashboard - library size, recent runs and a snapshot of the selected compound. "
-            "StimLab predicts what a compound IS and DOES; it does not provide synthesis guidance."};
+            "BioCAD predicts what a compound IS and DOES; it does not provide synthesis guidance."};
 }
 
 void streamOut(const StreamCallback& onText, const std::string& text) {
@@ -129,7 +129,7 @@ LlmResponse MockProvider::send(const LlmRequest& req, const StreamCallback& onTe
     if (mentionsSynthesis(q)) {
         std::string txt =
             "I can't help with making, synthesizing, or manufacturing substances - that is outside "
-            "what StimLab does. I can analyze what a compound IS and DOES: structure and properties, "
+            "what BioCAD does. I can analyze what a compound IS and DOES: structure and properties, "
             "molecular stability, absorption/PK, ADMET/metabolism, target binding (docking), "
             "similarity to known substances, and legal-analog scoring.";
         streamOut(onText, txt);
@@ -161,4 +161,4 @@ LlmResponse MockProvider::send(const LlmRequest& req, const StreamCallback& onTe
     return r;
 }
 
-}  // namespace stimlab::agent
+}  // namespace biocad::agent

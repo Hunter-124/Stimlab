@@ -12,7 +12,7 @@
 
 #include "contracts/IAgentTools.h"
 
-namespace stimlab::agent {
+namespace biocad::agent {
 
 class FunctionTool : public ITool {
 public:
@@ -43,4 +43,4 @@ private:
     std::vector<std::unique_ptr<ITool>> tools_;
 };
 
-}  // namespace stimlab::agent
+}  // namespace biocad::agent

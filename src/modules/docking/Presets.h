@@ -18,7 +18,7 @@
 
 #include "contracts/IDockingBackend.h"
 
-namespace stimlab::docking {
+namespace biocad::docking {
 
 // The full built-in table of 29 CNS receptor presets. Deterministic; never empty.
 const std::vector<ReceptorTarget>& cnsPresets();
@@ -36,4 +36,4 @@ std::vector<std::string> presetNames();
 // remaining presets happens on demand; this keeps first-launch provisioning bounded.
 std::vector<ReceptorTarget> headlinePresets();
 
-}  // namespace stimlab::docking
+}  // namespace biocad::docking

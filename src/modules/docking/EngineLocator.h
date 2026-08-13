@@ -1,7 +1,7 @@
 // modules/docking/EngineLocator.h - find (or best-effort provision) docking exes.
 //
 // Locates AutoDock Vina (vina.exe / vina_*.exe), smina (smina.exe / smina_*.exe)
-// and Open Babel (obabel.exe) under %APPDATA%/StimLab/runtime/engines and then on
+// and Open Babel (obabel.exe) under %APPDATA%/BioCAD/runtime/engines and then on
 // PATH. Also exposes an OPTIONAL, non-blocking provisioner that downloads the
 // official Vina Windows binary via a PowerShell Invoke-WebRequest + Get-FileHash
 // SHA-256 verification into the engines dir. Provisioning never blocks startup and
@@ -15,7 +15,7 @@
 #include <optional>
 #include <string>
 
-namespace stimlab::docking {
+namespace biocad::docking {
 
 // Which engine to look for / provision.
 //   Vina/Smina - CPU AutoDock Vina / smina (flexible-ligand, the accurate path).
@@ -37,10 +37,10 @@ enum class ComputeMode { Auto, Gpu, Cpu };
 void                      setComputeMode(ComputeMode m);
 [[nodiscard]] ComputeMode computeMode();
 
-// The directory engine binaries live in: %APPDATA%/StimLab/runtime/engines.
+// The directory engine binaries live in: %APPDATA%/BioCAD/runtime/engines.
 std::filesystem::path enginesDir();
 
-// The Vina-GPU OpenCL engine's own subfolder: %APPDATA%/StimLab/runtime/engines/vina-gpu.
+// The Vina-GPU OpenCL engine's own subfolder: %APPDATA%/BioCAD/runtime/engines/vina-gpu.
 // It needs companion files beside the exe (Kernel2_Opt.bin + the OpenCL kernel source),
 // so it gets a folder of its own rather than sitting loose in engines/.
 std::filesystem::path vinaGpuDir();
@@ -64,7 +64,7 @@ struct ProvisionResult {
 // size sanity-check + optional SHA-256 verify; on any failure returns fetched=false
 // with a note. `allowDownload` must be true to touch the network (default false =
 // locate-only). The expected SHA-256 is resolved at runtime (first non-empty of:
-// env STIMLAB_VINA_SHA256, a `vina.sha256` file in the engines dir, the compile-time
+// env BIOCAD_VINA_SHA256, a `vina.sha256` file in the engines dir, the compile-time
 // pin) so a user can pin integrity WITHOUT a rebuild; the published file size is
 // always checked so an HTML error page can never masquerade as the binary.
 ProvisionResult ensureVina(bool allowDownload = false);
@@ -91,4 +91,4 @@ ProvisionResult ensureObabel();
 // binary will be cryptographically verified or only size-checked.
 std::string expectedVinaSha256();
 
-}  // namespace stimlab::docking
+}  // namespace biocad::docking

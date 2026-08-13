@@ -1,4 +1,4 @@
-# ci.ps1 - local continuous integration for StimLab.
+# ci.ps1 - local continuous integration for BioCAD.
 #
 # Builds + ctests the shipping presets and produces the release zip, exactly as the
 # GitHub Actions workflow (.github/workflows/ci.yml) does - so "green locally" ==
@@ -13,11 +13,12 @@ param(
     [switch]$Science,
     [switch]$Sign,
     [switch]$NoPackage,
-    [string]$Version = "0.1.0"
+    [string]$Version = ""
 )
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
+if (-not $Version) { $Version = & "$PSScriptRoot\version.ps1" }
 
 # The shipping presets: the fast dynamic dev build and the static single-exe release.
 # -Science adds the static build that also bundles the live agent + web tools (curl).
@@ -25,7 +26,7 @@ $presets = @("windows", "windows-static")
 if ($Science) { $presets += "windows-science-static" }
 
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host " StimLab CI  |  presets: $($presets -join ', ')" -ForegroundColor Cyan
+Write-Host " BioCAD CI  |  presets: $($presets -join ', ')" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 
 foreach ($p in $presets) {
@@ -45,12 +46,12 @@ if (-not $NoPackage) {
 
     if ($Sign) {
         # Optional Authenticode signing. A clean no-op (exit 0) when no cert is configured.
-        & "$root\scripts\sign.ps1" -Exe (Join-Path $root "dist\StimLab-$Version-win-x64\StimLab.exe")
+        & "$root\scripts\sign.ps1" -Exe (Join-Path $root "dist\BioCAD-$Version-win-x64\BioCAD.exe")
         if ($LASTEXITCODE -ne 0) { Write-Host "[ci] signing FAILED (exit $LASTEXITCODE)" -ForegroundColor Red; exit $LASTEXITCODE }
     }
 }
 
 Write-Host "`n------------------------------------------------------------" -ForegroundColor Green
 Write-Host " CI OK  |  presets green: $($presets -join ', ')" -ForegroundColor Green
-if (-not $NoPackage) { Write-Host "   zip: $(Join-Path $root "dist\StimLab-$Version-win-x64.zip")" }
+if (-not $NoPackage) { Write-Host "   zip: $(Join-Path $root "dist\BioCAD-$Version-win-x64.zip")" }
 Write-Host "------------------------------------------------------------" -ForegroundColor Green

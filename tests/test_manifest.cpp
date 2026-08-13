@@ -6,12 +6,12 @@
 
 #include "core/Manifest.h"
 
-using namespace stimlab;
+using namespace biocad;
 namespace fs = std::filesystem;
 
 namespace {
 fs::path scratch(const char* tag) {
-    return fs::temp_directory_path() / (std::string("stimlab_mf_") + tag);
+    return fs::temp_directory_path() / (std::string("biocad_mf_") + tag);
 }
 void writeText(const fs::path& p, const std::string& s) {
     std::ofstream o(p, std::ios::binary);

@@ -1,4 +1,4 @@
-# make-icon.ps1 - generate the StimLab app icon (src/app/StimLab.ico).
+# make-icon.ps1 - generate the BioCAD app icon (src/app/BioCAD.ico).
 #
 # Draws the brand mark (a molecule ring on an indigo->violet gradient squircle) at
 # several sizes with GDI+, then packs them into a multi-resolution .ico (32-bit BGRA
@@ -6,7 +6,7 @@
 #
 #   .\scripts\make-icon.ps1
 param(
-    [string]$Out = "$PSScriptRoot\..\src\app\StimLab.ico"
+    [string]$Out = "$PSScriptRoot\..\src\app\BioCAD.ico"
 )
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Drawing

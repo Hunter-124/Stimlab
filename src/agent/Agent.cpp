@@ -2,7 +2,7 @@
 
 #include <utility>
 
-namespace stimlab::agent {
+namespace biocad::agent {
 namespace {
 
 constexpr int kMaxToolIterations = 8;
@@ -244,4 +244,4 @@ void Agent::processTurn(bool threaded) {
         {TranscriptEntry::Kind::System, "(stopped: reached the tool-call limit for one turn)"});
 }
 
-}  // namespace stimlab::agent
+}  // namespace biocad::agent

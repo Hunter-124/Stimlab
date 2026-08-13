@@ -17,6 +17,7 @@
 #include "chem/Smiles.h"
 #include "core/Config.h"
 #include "core/Secrets.h"
+#include "core/Version.h"
 #include "modules/Pipelines.h"
 #include "modules/docking/EngineLocator.h"
 #include "modules/docking/Presets.h"
@@ -28,7 +29,7 @@
 #include "workflow/Dag.h"
 #include "workflow/JobSystem.h"
 
-namespace stimlab {
+namespace biocad {
 
 namespace {
 // Config keys for the persisted agent settings.
@@ -462,7 +463,7 @@ void AppShell::buildAgent() {
     {
         json schema = {{"type", "object"}, {"properties", json::object()}};
         registry_->add(std::make_unique<FunctionTool>(
-            "list_panels", "List every StimLab panel with its id and what it shows.", schema,
+            "list_panels", "List every BioCAD panel with its id and what it shows.", schema,
             [this](const json&) -> ToolResult {
                 json arr = json::array();
                 for (const auto& p : panels_)
@@ -490,14 +491,14 @@ void AppShell::buildAgent() {
             }));
     }
 
-    // what_can_stimlab_do: the capability / scope summary.
+    // describe_capabilities: the capability / scope summary.
     {
         json schema = {{"type", "object"}, {"properties", json::object()}};
         registry_->add(std::make_unique<FunctionTool>(
-            "what_can_stimlab_do",
-            "Summarize what StimLab can and cannot do (its capabilities and its safety scope).",
+            "describe_capabilities",
+            "Summarize what BioCAD can and cannot do (its capabilities and its safety scope).",
             schema, [](const json&) -> ToolResult {
-                return {"StimLab predicts what a CNS-stimulant compound IS and DOES: structure and "
+                return {"BioCAD predicts what a CNS-stimulant compound IS and DOES: structure and "
                         "physicochemical properties, molecular stability, absorption/PK, "
                         "ADMET/metabolism, target binding affinity (docking), similarity to known "
                         "substances, and legal-analog scoring. It does NOT and will not provide "
@@ -963,11 +964,11 @@ void AppShell::drawMainMenuBar() {
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Help")) {
-            if (ImGui::MenuItem("About StimLab")) state_.showAbout = true;
+            if (ImGui::MenuItem("About BioCAD")) state_.showAbout = true;
             ImGui::EndMenu();
         }
         ImGui::Separator();
-        ImGui::TextDisabled("StimLab");
+        ImGui::TextDisabled("BioCAD");
         ImGui::EndMainMenuBar();
     }
 }
@@ -978,7 +979,7 @@ void AppShell::drawNavigator() {
         ImGui::Dummy(ImVec2(0, 4));
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kPrimaryBright));
         theme::pushTitle();
-        ImGui::TextUnformatted("StimLab");
+        ImGui::TextUnformatted("BioCAD");
         theme::popFont();
         ImGui::PopStyleColor();
         ImGui::SameLine();
@@ -1150,7 +1151,7 @@ void AppShell::drawContent() {
 void AppShell::drawAssistant() {
     if (ImGui::Begin("Assistant", nullptr, kPaneFlags)) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kAccent2));
-        ImGui::TextUnformatted("StimLab Assistant");
+        ImGui::TextUnformatted("BioCAD Assistant");
         ImGui::PopStyleColor();
 
         const agent::AgentSnapshot snap = agent_ ? agent_->snapshot() : agent::AgentSnapshot{};
@@ -1185,7 +1186,7 @@ void AppShell::drawAssistant() {
         static const QP kQuick[] = {
             {"How do I change the docking target?", "How do I change the docking target?"},
             {"Where is absorption / bioavailability?", "Where do I see absorption and bioavailability?"},
-            {"What can StimLab do?", "What can StimLab do?"},
+            {"What can BioCAD do?", "What can BioCAD do?"},
             {"Tell me about the selected compound", "Tell me about the currently selected compound."},
         };
         for (const auto& q : kQuick) {
@@ -1337,12 +1338,13 @@ void AppShell::drawCommandPalette() {
 
 void AppShell::drawAboutModal() {
     if (state_.showAbout) {
-        ImGui::OpenPopup("About StimLab");
+        ImGui::OpenPopup("About BioCAD");
         state_.showAbout = false;
     }
     ImGui::SetNextWindowSize(ImVec2(520, 0), ImGuiCond_Appearing);
-    if (ImGui::BeginPopupModal("About StimLab", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextUnformatted("StimLab - native CNS-stimulant analysis suite");
+    if (ImGui::BeginPopupModal("About BioCAD", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("BioCAD %s - native workstation for molecular, protein, and pharmacological analysis",
+                    kBioCadVersion);
         ImGui::TextDisabled("In-house cheminformatics engine - 3D viewer, real docking backends, SQLite.");
         ImGui::Separator();
         ImGui::TextWrapped(
@@ -1361,4 +1363,4 @@ void AppShell::drawAboutModal() {
     }
 }
 
-}  // namespace stimlab
+}  // namespace biocad

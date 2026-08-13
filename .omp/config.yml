@@ -1,0 +1,9 @@
+modelRoles: 
+  smol: anthropic/claude-sonnet-5
+  slow: openai-codex/gpt-5.6-sol
+  vision: kimi-code/k3
+  plan: anthropic/claude-opus-5
+  designer: anthropic/claude-opus-5
+  commit: anthropic/claude-sonnet-5
+  tiny: anthropic/claude-sonnet-5
+  task: anthropic/claude-opus-5

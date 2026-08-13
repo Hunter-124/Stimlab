@@ -2,7 +2,7 @@
 
 #include <utility>
 
-namespace stimlab::agent {
+namespace biocad::agent {
 
 FunctionTool::FunctionTool(std::string name, std::string description, nlohmann::json schema,
                            Handler handler)
@@ -44,4 +44,4 @@ ToolResult ToolRegistry::dispatch(const std::string& name, const nlohmann::json&
     return {"unknown tool: " + name, true};
 }
 
-}  // namespace stimlab::agent
+}  // namespace biocad::agent

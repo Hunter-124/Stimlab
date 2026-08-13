@@ -1,12 +1,12 @@
-# capture-window.ps1 - launch StimLab, screenshot its window, kill it.
+# capture-window.ps1 - launch BioCAD, screenshot its window, kill it.
 # DX11 swapchains don't reliably honor PrintWindow, so we foreground the window
 # and BitBlt the on-screen region. computer-use can't see the uninstalled exe;
 # this gives an agent a PNG to Read.
 #
-#   .\scripts\capture-window.ps1 -Exe build\windows\bin\StimLab.exe -Out out.png -Panel Settings
+#   .\scripts\capture-window.ps1 -Exe build\windows\bin\BioCAD.exe -Out out.png -Panel Settings
 param(
-    [string]$Exe = "build\windows\bin\StimLab.exe",
-    [string]$Out = "stimlab.png",
+    [string]$Exe = "build\windows\bin\BioCAD.exe",
+    [string]$Out = "biocad.png",
     [string]$Panel = "",
     [string]$Molecule = "",
     [int]$WaitMs = 3500
@@ -28,8 +28,8 @@ public static class W {
 }
 "@
 
-if ($Panel)    { $env:STIMLAB_PANEL = $Panel }
-if ($Molecule) { $env:STIMLAB_MOLECULE = $Molecule }
+if ($Panel)    { $env:BIOCAD_PANEL = $Panel }
+if ($Molecule) { $env:BIOCAD_MOLECULE = $Molecule }
 
 $proc = Start-Process -FilePath $Exe -PassThru
 try {
@@ -42,7 +42,7 @@ try {
         if ($hwnd -ne [IntPtr]::Zero) { break }
         Start-Sleep -Milliseconds 500
     }
-    if ($hwnd -eq [IntPtr]::Zero) { throw "StimLab window not found" }
+    if ($hwnd -eq [IntPtr]::Zero) { throw "BioCAD window not found" }
     [W]::ShowWindow($hwnd, 9) | Out-Null      # SW_RESTORE
     # Force topmost so it sits above other (non-topmost) windows - SetForegroundWindow
     # can't always steal focus, which leaves the window occluded for the BitBlt.
@@ -65,6 +65,6 @@ try {
 }
 finally {
     if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
-    Remove-Item Env:STIMLAB_PANEL -ErrorAction SilentlyContinue
-    Remove-Item Env:STIMLAB_MOLECULE -ErrorAction SilentlyContinue
+    Remove-Item Env:BIOCAD_PANEL -ErrorAction SilentlyContinue
+    Remove-Item Env:BIOCAD_MOLECULE -ErrorAction SilentlyContinue
 }

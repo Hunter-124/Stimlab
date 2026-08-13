@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <filesystem>
+#include <fstream>
 #include <string>
 
 #include "core/AppPaths.h"
@@ -11,7 +12,7 @@
 #include "core/Secrets.h"
 #include "data/Domain.h"
 
-using namespace stimlab;
+using namespace biocad;
 
 TEST_CASE("Hash is deterministic and fixed width", "[core][hash]") {
     REQUIRE(hashHex("amphetamine") == hashHex("amphetamine"));
@@ -52,7 +53,7 @@ TEST_CASE("EventBus delivers typed events", "[core][events]") {
 }
 
 TEST_CASE("Config round-trips through disk", "[core][config]") {
-    const auto file = std::filesystem::temp_directory_path() / "stimlab_test_config.json";
+    const auto file = std::filesystem::temp_directory_path() / "biocad_test_config.json";
     std::error_code ec;
     std::filesystem::remove(file, ec);
     {
@@ -73,11 +74,47 @@ TEST_CASE("Config round-trips through disk", "[core][config]") {
     std::filesystem::remove(file, ec);
 }
 
-TEST_CASE("AppPaths resolves a StimLab root", "[core][paths]") {
+TEST_CASE("AppPaths resolves a BioCAD root", "[core][paths]") {
     const auto& root = AppPaths::instance().root();
     REQUIRE_FALSE(root.empty());
-    REQUIRE(root.filename().string() == "StimLab");
-    REQUIRE(AppPaths::instance().db().filename().string() == "stimlab.db");
+    REQUIRE(root.filename().string() == "BioCAD");
+    REQUIRE(AppPaths::instance().db().filename().string() == "biocad.db");
+}
+
+TEST_CASE("AppPaths migrates a legacy StimLab root exactly once", "[core][paths]") {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const auto base = fs::temp_directory_path() / "biocad_migration_test";
+    fs::remove_all(base, ec);
+    const auto legacy = base / "StimLab";
+    const auto target = base / "BioCAD";
+
+    fs::create_directories(legacy / "runtime" / "receptors", ec);
+    fs::create_directories(legacy / "logs", ec);
+    std::ofstream(legacy / "stimlab.db") << "db";
+    std::ofstream(legacy / "logs" / "stimlab.log") << "log";
+    std::ofstream(legacy / "runtime" / "receptors" / "x.pdbqt") << "receptor";
+    std::ofstream(legacy / "runtime" / "vina.exe") << "engine";
+
+    const AppPaths paths(target);
+    REQUIRE(paths.ensureLayout());
+
+    REQUIRE(fs::exists(target));
+    REQUIRE_FALSE(fs::exists(legacy));
+    REQUIRE(fs::exists(target / "biocad.db"));
+    REQUIRE_FALSE(fs::exists(target / "stimlab.db"));
+    REQUIRE(fs::exists(target / "logs" / "biocad.log"));
+    REQUIRE(fs::exists(target / "runtime" / "vina.exe"));
+    REQUIRE_FALSE(fs::exists(target / "runtime" / "receptors"));
+
+    // Second call is a no-op: the root now exists, so nothing is moved or deleted.
+    fs::create_directories(base / "StimLab", ec);
+    std::ofstream(base / "StimLab" / "stimlab.db") << "second";
+    REQUIRE_FALSE(paths.migrateLegacyRoot());
+    REQUIRE(fs::exists(base / "StimLab" / "stimlab.db"));
+    REQUIRE(fs::exists(target / "runtime" / "vina.exe"));
+
+    fs::remove_all(base, ec);
 }
 
 TEST_CASE("Secrets round-trip (DPAPI on Windows, base64 elsewhere)", "[core][secrets]") {

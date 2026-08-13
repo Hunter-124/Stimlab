@@ -1,5 +1,5 @@
-# ---- stimlab_modules : REAL analysis backend (chem-engine backed) ----
-add_library(stimlab_modules STATIC
+# ---- biocad_modules : REAL analysis backend (chem-engine backed) ----
+add_library(biocad_modules STATIC
   RealBackend.cpp
   Pipelines.cpp
   docking/Presets.cpp
@@ -11,25 +11,25 @@ add_library(stimlab_modules STATIC
   docking/Backends.cpp
 )
 
-target_include_directories(stimlab_modules PUBLIC
+target_include_directories(biocad_modules PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/..
 )
 
-target_link_libraries(stimlab_modules PUBLIC
-  stimlab_contracts
-  stimlab_data
-  stimlab_chem
-  stimlab_core
-  stimlab_storage
-  stimlab_workflow
+target_link_libraries(biocad_modules PUBLIC
+  biocad_contracts
+  biocad_data
+  biocad_chem
+  biocad_core
+  biocad_storage
+  biocad_workflow
 )
 
-target_compile_features(stimlab_modules PUBLIC cxx_std_20)
+target_compile_features(biocad_modules PUBLIC cxx_std_20)
 
 # First-party CUDA GPU docking backend (CudaBackend.cpp host + CudaScore.cu kernel),
 # compiled only in the CUDA build. The kernel is pure POD so nvcc never sees C++20.
-if(STIMLAB_ENABLE_CUDA)
-  target_sources(stimlab_modules PRIVATE
+if(BIOCAD_ENABLE_CUDA)
+  target_sources(biocad_modules PRIVATE
     docking/CudaBackend.cpp
     docking/CudaScore.cu)
   # Link the CUDA runtime that MATCHES the C runtime: the static cudart for the fully
@@ -38,8 +38,8 @@ if(STIMLAB_ENABLE_CUDA)
   # encodes static vs dynamic; CUDA::cudart_static is itself built against the static CRT,
   # so it pairs with the /MT host the windows-cuda-static preset selects.
   if(VCPKG_TARGET_TRIPLET MATCHES "static")
-    target_link_libraries(stimlab_modules PUBLIC CUDA::cudart_static)
+    target_link_libraries(biocad_modules PUBLIC CUDA::cudart_static)
   else()
-    target_link_libraries(stimlab_modules PUBLIC CUDA::cudart)
+    target_link_libraries(biocad_modules PUBLIC CUDA::cudart)
   endif()
 endif()

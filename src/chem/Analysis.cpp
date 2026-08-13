@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace stimlab::chem {
+namespace biocad::chem {
 
 namespace {
 
@@ -208,4 +208,4 @@ double tanimoto(const std::vector<std::uint32_t>& a, const std::vector<std::uint
     return uni > 0 ? static_cast<double>(inter) / uni : 0.0;
 }
 
-}  // namespace stimlab::chem
+}  // namespace biocad::chem

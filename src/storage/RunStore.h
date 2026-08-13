@@ -1,6 +1,6 @@
 // storage/RunStore.h - SQLite-backed run history (Phase D, WP-4 persistence).
 //
-// Persists analysis runs to %APPDATA%/StimLab/stimlab.db (WAL mode) so the Runs
+// Persists analysis runs to %APPDATA%/BioCAD/biocad.db (WAL mode) so the Runs
 // panel survives restarts. Implements the frozen IRunStore contract (recent() +
 // the Phase-D record() hook). A path-taking constructor lets tests use a scratch
 // database instead of the real profile.
@@ -16,11 +16,11 @@
 
 #include "contracts/IModules.h"
 
-namespace stimlab {
+namespace biocad {
 
 class SqliteRunStore final : public IRunStore {
 public:
-    SqliteRunStore();                                       // %APPDATA%/StimLab/stimlab.db
+    SqliteRunStore();                                       // %APPDATA%/BioCAD/biocad.db
     explicit SqliteRunStore(std::filesystem::path dbPath);  // explicit DB (tests)
     ~SqliteRunStore() override;
     SqliteRunStore(const SqliteRunStore&) = delete;
@@ -39,4 +39,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace stimlab
+}  // namespace biocad

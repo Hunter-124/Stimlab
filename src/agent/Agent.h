@@ -25,7 +25,7 @@
 #include "contracts/IAgentTools.h"
 #include "contracts/ILlmProvider.h"
 
-namespace stimlab::agent {
+namespace biocad::agent {
 
 enum class AgentMode { Autopilot, AskFirst };
 enum class AgentStatus { Idle, Running, AwaitingApproval, Done, Error };
@@ -108,4 +108,4 @@ private:
     std::atomic<bool>  threadDone_{false};
 };
 
-}  // namespace stimlab::agent
+}  // namespace biocad::agent

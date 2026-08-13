@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cctype>
 
-namespace stimlab::docking {
+namespace biocad::docking {
 namespace {
 
 std::string lower(std::string s) {
@@ -122,4 +122,4 @@ std::vector<ReceptorTarget> headlinePresets() {
     return v;
 }
 
-}  // namespace stimlab::docking
+}  // namespace biocad::docking

@@ -9,7 +9,7 @@
 
 #include <Eigen/Dense>
 
-namespace stimlab::chem {
+namespace biocad::chem {
 namespace {
 
 // --------------------------------------------------------------- element data
@@ -356,4 +356,4 @@ Conformer embed3D(const Molecule& m, unsigned seed) {
     return out;
 }
 
-}  // namespace stimlab::chem
+}  // namespace biocad::chem

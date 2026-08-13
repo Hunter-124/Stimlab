@@ -8,7 +8,7 @@
 
 #include "chem/AdmetModel.h"
 
-namespace stimlab {
+namespace biocad {
 namespace {
 
 bool contains(std::string_view hay, std::string_view needle) {
@@ -511,4 +511,4 @@ Services FakeBackend::services() {
     return s;
 }
 
-}  // namespace stimlab
+}  // namespace biocad

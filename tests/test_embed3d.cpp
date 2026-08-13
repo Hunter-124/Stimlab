@@ -9,7 +9,7 @@
 #include "chem/Smiles.h"
 #include "modules/RealBackend.h"
 
-using namespace stimlab::chem;
+using namespace biocad::chem;
 using Catch::Matchers::WithinAbs;
 
 namespace {
@@ -80,7 +80,7 @@ TEST_CASE("Embed3D leaves no atom overlaps", "[chem][embed]") {
 }
 
 TEST_CASE("Embed3D embeds every library compound without NaN", "[chem][embed][library]") {
-    stimlab::RealBackend backend;
+    biocad::RealBackend backend;
     auto svc = backend.services();
     REQUIRE(svc.library->count() >= 28);
 

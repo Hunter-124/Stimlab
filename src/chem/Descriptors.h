@@ -7,7 +7,7 @@
 
 #include "chem/Molecule.h"
 
-namespace stimlab::chem {
+namespace biocad::chem {
 
 std::string molecularFormula(const Molecule& m);   // Hill system, includes H
 double molecularWeight(const Molecule& m);          // average mass, g/mol
@@ -22,4 +22,4 @@ double crippenLogP(const Molecule& m);              // Wildman-Crippen-style est
 int    formalCharge(const Molecule& m);
 int    heavyAtomCount(const Molecule& m);
 
-}  // namespace stimlab::chem
+}  // namespace biocad::chem

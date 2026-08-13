@@ -28,7 +28,7 @@
 #include "ui/Theme.h"
 #include "workflow/Dag.h"
 
-namespace stimlab::panels {
+namespace biocad::panels {
 namespace {
 
 std::string f2(double v) { char b[40]; std::snprintf(b, sizeof b, "%.2f", v); return b; }
@@ -352,7 +352,7 @@ bool molViewer3D(AppShell& shell, const chem::Conformer& conf, const std::string
 std::string buildReportMarkdown(Services& s, const Molecule& m) {
     std::string o;
     auto line = [&](const std::string& x) { o += x; o += "\n"; };
-    line("# StimLab report - " + m.name);
+    line("# BioCAD report - " + m.name);
     line("");
     line("## Identity");
     line("- SMILES: " + m.smiles);
@@ -620,7 +620,7 @@ void moleculeInput(AppShell& shell) {
     static std::string lastSmiles;
 
     ImGui::TextWrapped(
-        "Enter any SMILES to analyze an arbitrary structure with the full StimLab engine "
+        "Enter any SMILES to analyze an arbitrary structure with the full BioCAD engine "
         "(descriptors, 3D embedding, ADMET, similarity, docking). Analysis only - no synthesis "
         "guidance.");
     ImGui::Spacing();
@@ -963,7 +963,7 @@ void docking(AppShell& shell) {
             ImGui::TextDisabled("%s", prov.status().c_str());
         }
         ImGui::TextDisabled("Downloads vina.exe (size-checked) + prepares receptor PDBQTs from RCSB "
-                            "under %%APPDATA%%/StimLab/runtime. Headline = DAT/NET/SERT/TAAR1; any "
+                            "under %%APPDATA%%/BioCAD/runtime. Headline = DAT/NET/SERT/TAAR1; any "
                             "other target prepares on demand. Best-effort; needs network.");
     }
     ImGui::Spacing();
@@ -1166,9 +1166,9 @@ void docking(AppShell& shell) {
                 dockPocket.empty() ? nullptr : &dockPocket);
     if (!dockPocket.empty())
         ImGui::TextDisabled("Receptor binding pocket shown (muted); toggle with the Receptor checkbox.");
-    // Screenshot/automation hook (mirrors STIMLAB_PANEL/TARGET): scroll the pose viewer
+    // Screenshot/automation hook (mirrors BIOCAD_PANEL/TARGET): scroll the pose viewer
     // into view for capture tooling. Harmless in normal use.
-    static const bool kScroll3d = std::getenv("STIMLAB_DOCK_SCROLL3D") != nullptr;
+    static const bool kScroll3d = std::getenv("BIOCAD_DOCK_SCROLL3D") != nullptr;
     if (kScroll3d) ImGui::SetScrollHereY(1.0f);
 
     ImGui::Spacing();
@@ -1348,7 +1348,7 @@ void workflows(AppShell& shell) {
     }
     ImGui::Spacing();
     ImGui::TextDisabled("Nodes are cached by hash(module, version, inputs) under "
-                        "%%APPDATA%%/StimLab/cache. Analysis only - no synthesis content.");
+                        "%%APPDATA%%/BioCAD/cache. Analysis only - no synthesis content.");
 }
 
 // --------------------------------------------------------------------- Library
@@ -1400,7 +1400,7 @@ void runs(AppShell& shell) {
     Services& s = shell.services();
     if (!s.runs) return;
     const auto rows = s.runs->recent();
-    ImGui::TextDisabled("%zu run(s) - persisted to SQLite under %%APPDATA%%/StimLab/stimlab.db",
+    ImGui::TextDisabled("%zu run(s) - persisted to SQLite under %%APPDATA%%/BioCAD/biocad.db",
                         rows.size());
     ImGui::Spacing();
     if (ImGui::BeginTable("runs", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
@@ -1430,7 +1430,7 @@ void presets(AppShell& shell) {
     ImGui::TextWrapped(
         "CNS target presets used for docking/pharmacology. The full set of 29 curated presets "
         "(each with a real PDB reference + a binding-site box) is a built-in C++ table; receptor "
-        "PDBQTs are prepared on demand into %APPDATA%/StimLab/runtime/receptors.");
+        "PDBQTs are prepared on demand into %APPDATA%/BioCAD/runtime/receptors.");
     ImGui::Separator();
     if (s.docking) {
         for (const auto& t : s.docking->targets()) ImGui::BulletText("%s", t.c_str());
@@ -1514,7 +1514,7 @@ void settings(AppShell& shell) {
     computeChanged |= ImGui::RadioButton("GPU", &compute, 1); ImGui::SameLine();
     computeChanged |= ImGui::RadioButton("CPU", &compute, 2);
     if (computeChanged) shell.setComputeMode(compute);
-#ifdef STIMLAB_HAVE_CUDA
+#ifdef BIOCAD_HAVE_CUDA
     ImGui::TextWrapped("Auto: AutoDock Vina (CPU) first, then the GPU engines. GPU: Vina-GPU "
                        "(OpenCL - the real Vina search on the GPU) when provisioned, else the "
                        "first-party CUDA rigid-grid dock on this NVIDIA GPU. CPU: Vina/smina only.");
@@ -1547,7 +1547,7 @@ void settings(AppShell& shell) {
     ImGui::Spacing();
 
     theme::sectionHeader("Storage");
-    ImGui::TextWrapped("All state lives under %%APPDATA%%/StimLab (db, artifacts, runtime, presets, logs).");
+    ImGui::TextWrapped("All state lives under %%APPDATA%%/BioCAD (db, artifacts, runtime, presets, logs).");
     ImGui::Spacing();
 
     theme::sectionHeader("Runtime (self-provisioned components)");
@@ -2009,10 +2009,10 @@ void analogExplorer(AppShell& shell) {
     static std::string   aeConfKey;
     static chem::Conformer aeConf;
 
-    // Screenshot/automation hook (mirrors STIMLAB_PANEL/TARGET): STIMLAB_ANALOG_DRAW
+    // Screenshot/automation hook (mirrors BIOCAD_PANEL/TARGET): BIOCAD_ANALOG_DRAW
     // opens straight to the sketcher seeded with a phenethylamine core. Harmless in
     // normal use; only the capture tooling sets it.
-    static const bool kAutoDraw = std::getenv("STIMLAB_ANALOG_DRAW") != nullptr;
+    static const bool kAutoDraw = std::getenv("BIOCAD_ANALOG_DRAW") != nullptr;
     static bool autoDrawApplied = false;
     if (kAutoDraw && !autoDrawApplied && sketch.atoms.empty()) sketchSeedPea(sketch, 300.0f);
 
@@ -2240,4 +2240,4 @@ void analogExplorer(AppShell& shell) {
     }
 }
 
-}  // namespace stimlab::panels
+}  // namespace biocad::panels

@@ -5,11 +5,11 @@
 
 #include "storage/RunStore.h"
 
-using namespace stimlab;
+using namespace biocad;
 
 namespace {
 std::filesystem::path scratchDb(const char* tag) {
-    auto p = std::filesystem::temp_directory_path() / (std::string("stimlab_test_") + tag + ".db");
+    auto p = std::filesystem::temp_directory_path() / (std::string("biocad_test_") + tag + ".db");
     std::error_code ec;
     std::filesystem::remove(p, ec);
     std::filesystem::remove(std::filesystem::path(p.string() + "-wal"), ec);

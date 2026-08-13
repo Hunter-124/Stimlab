@@ -13,7 +13,7 @@
 
 #include <nlohmann/json.hpp>
 
-namespace stimlab {
+namespace biocad {
 
 // ---------------------------------------------------------------------------
 // Shared verdict scale used by ADMET / absorption / safety flags.
@@ -198,4 +198,4 @@ struct RunRecord {
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(RunRecord, id, kind, subject, status, createdAt, summary)
 
-}  // namespace stimlab
+}  // namespace biocad

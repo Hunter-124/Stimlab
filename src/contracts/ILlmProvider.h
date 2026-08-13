@@ -20,7 +20,7 @@
 
 #include "contracts/IAgentTools.h"  // ToolSpec
 
-namespace stimlab {
+namespace biocad {
 
 enum class ChatRole { System, User, Assistant, Tool };
 
@@ -87,4 +87,4 @@ public:
     virtual LlmResponse send(const LlmRequest& req, const StreamCallback& onText) const = 0;
 };
 
-}  // namespace stimlab
+}  // namespace biocad

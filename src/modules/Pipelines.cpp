@@ -9,7 +9,7 @@
 #include "modules/docking/EngineLocator.h"
 #include "modules/docking/ReceptorPrep.h"
 
-namespace stimlab::workflow {
+namespace biocad::workflow {
 
 namespace {
 std::string f2(double v) {
@@ -82,4 +82,4 @@ Dag buildDockingPipeline(const std::string& ligandSmiles, const std::string& tar
     return dag;
 }
 
-}  // namespace stimlab::workflow
+}  // namespace biocad::workflow

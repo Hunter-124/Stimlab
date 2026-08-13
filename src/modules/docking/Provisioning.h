@@ -20,10 +20,10 @@
 #include "contracts/IDockingBackend.h"
 #include "core/Manifest.h"
 
-namespace stimlab::docking {
+namespace biocad::docking {
 
 // Record the currently-provisioned engine binaries + prepared receptors into
-// %APPDATA%/StimLab/manifest.json (the self-heal source of truth). Called after a
+// %APPDATA%/BioCAD/manifest.json (the self-heal source of truth). Called after a
 // successful provision.
 void writeRuntimeManifest();
 
@@ -66,4 +66,4 @@ private:
     std::string        status_{"Docking engine not provisioned yet."};
 };
 
-}  // namespace stimlab::docking
+}  // namespace biocad::docking

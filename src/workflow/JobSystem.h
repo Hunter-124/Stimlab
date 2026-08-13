@@ -23,7 +23,7 @@
 #include <thread>
 #include <vector>
 
-namespace stimlab::workflow {
+namespace biocad::workflow {
 
 // A shared cooperative cancellation flag. Copies share one atomic, so the UI can
 // cancel a run that node functions (which captured a copy) observe via cancelled().
@@ -66,4 +66,4 @@ private:
     bool                                   stop_ = false;
 };
 
-}  // namespace stimlab::workflow
+}  // namespace biocad::workflow

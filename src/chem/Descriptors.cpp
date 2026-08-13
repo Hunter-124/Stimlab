@@ -5,7 +5,7 @@
 #include <numeric>
 #include <vector>
 
-namespace stimlab::chem {
+namespace biocad::chem {
 
 namespace {
 
@@ -308,4 +308,4 @@ double crippenLogP(const Molecule& m) {
     return logp;
 }
 
-}  // namespace stimlab::chem
+}  // namespace biocad::chem

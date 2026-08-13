@@ -5,7 +5,7 @@
 // target that is handed to ImGui via ImGui::Image(). Uses GPU instancing: one
 // low-poly UV-sphere mesh drawn per atom and one unit cylinder mesh drawn per
 // bond, each with a per-instance transform + color. With the ~60-atom molecules
-// in the StimLab library this trivially holds 60fps.
+// in the BioCAD library this trivially holds 60fps.
 //
 // The CPU scene-building (buildMolScene / cpkColor) is deliberately split out as
 // pure functions so it is unit-testable without a D3D device. MolViewport::draw()
@@ -33,7 +33,7 @@ struct ID3D11InputLayout;
 struct ID3D11RasterizerState;
 struct ID3D11DepthStencilState;
 
-namespace stimlab::render {
+namespace biocad::render {
 
 // ----------------------------------------------------------------------------
 // CPU-side scene representation (GPU-agnostic, unit-testable).
@@ -165,4 +165,4 @@ private:
     bool ensureBondInstCapacity(unsigned count);
 };
 
-}  // namespace stimlab::render
+}  // namespace biocad::render

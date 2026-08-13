@@ -1,19 +1,19 @@
-# StimLab
+# BioCAD
 
 **A native Windows workstation for computational drug discovery.**
 
-StimLab brings ligand and receptor preparation, molecular analysis, docking, ADMET screening, reusable workflows, and an in-app assistant into one C++20 desktop application. It is designed around CNS-research use cases while keeping targets and presets configurable rather than hard-coded.
+BioCAD brings ligand and receptor preparation, molecular analysis, docking, ADMET screening, reusable workflows, and an in-app assistant into one C++20 desktop application. It is designed around CNS-research use cases while keeping targets and presets configurable rather than hard-coded.
 
 > **Research software notice**
-> StimLab is intended for lawful research and educational use. Computational predictions are hypotheses—not clinical, safety, efficacy, or regulatory conclusions—and must be validated by qualified professionals and appropriate experimental methods.
+> BioCAD is intended for lawful research and educational use. Computational predictions are hypotheses—not clinical, safety, efficacy, or regulatory conclusions—and must be validated by qualified professionals and appropriate experimental methods.
 
-## Why StimLab
+## Why BioCAD
 
 - **Native and self-contained** — a Win32/DX11 desktop application with SQLite-backed local state; release builds can be packaged as a single portable executable.
 - **Real docking paths** — provisions and invokes AutoDock Vina for flexible CPU docking, with Vina-GPU/OpenCL and a native CUDA rigid-body backend available for GPU workflows.
 - **Practical molecular tooling** — SMILES parsing, 3D embedding, descriptors, similarity, structural alerts, property screening, and a 3D molecular viewport.
 - **Reproducible workflows** — a cancellable, content-cached DAG engine models preparation and docking pipelines without blocking the UI.
-- **Local-first data** — projects, artifacts, logs, engine runtimes, and configuration live under `%APPDATA%\StimLab`.
+- **Local-first data** — projects, artifacts, logs, engine runtimes, and configuration live under `%APPDATA%\BioCAD`.
 - **Optional assistant and web tools** — multi-provider LLM support, encrypted API-key storage through Windows DPAPI, and optional web retrieval in science-enabled builds.
 
 ## Capabilities
@@ -30,7 +30,7 @@ StimLab brings ligand and receptor preparation, molecular analysis, docking, ADM
 
 ## Architecture
 
-StimLab keeps interactive work responsive by separating presentation, services, and native engines in a single process:
+BioCAD keeps interactive work responsive by separating presentation, services, and native engines in a single process:
 
 ```text
 ┌───────────────────────────────────────────────────────────────────────────┐
@@ -54,7 +54,7 @@ Long-running preparation, provisioning, and docking jobs run off the UI thread. 
 
 ### Prerequisites
 
-StimLab is built and supported on **Windows x64**. Install:
+BioCAD is built and supported on **Windows x64**. Install:
 
 - Visual Studio 2022 Build Tools with the MSVC v143 C++ toolchain and Windows SDK
 - CMake 3.27 or newer and Ninja
@@ -78,7 +78,7 @@ The repository uses vcpkg manifest mode. Configure and build through the supplie
 .\build.ps1 -Release -Science
 ```
 
-The development executable is produced at `build\windows\bin\StimLab.exe`. Static release presets produce an executable that does not require the Visual C++ redistributable beside it.
+The development executable is produced at `build\windows\bin\BioCAD.exe`. Static release presets produce an executable that does not require the Visual C++ redistributable beside it.
 
 ### CMake presets
 
@@ -104,18 +104,18 @@ ctest --preset windows --output-on-failure
 The executable exposes a headless acceptance path that provisions the required assets and runs one docking job:
 
 ```powershell
-.\build\windows\bin\StimLab.exe --selftest-dock --smiles "CC(N)Cc1ccccc1" --target DAT --compute cpu
+.\build\windows\bin\BioCAD.exe --selftest-dock --smiles "CC(N)Cc1ccccc1" --target DAT --compute cpu
 ```
 
-`--compute` accepts `auto`, `cpu`, or `gpu`. A zero exit code means a real docking engine completed the run; exit code `2` means StimLab returned its explicitly labeled descriptor estimate instead. First-run provisioning requires network access and stores downloaded runtime components under `%APPDATA%\StimLab`.
+`--compute` accepts `auto`, `cpu`, or `gpu`. A zero exit code means a real docking engine completed the run; exit code `2` means BioCAD returned its explicitly labeled descriptor estimate instead. First-run provisioning requires network access and stores downloaded runtime components under `%APPDATA%\BioCAD`.
 
 ## Local data and runtime layout
 
-StimLab keeps mutable state outside the installation directory:
+BioCAD keeps mutable state outside the installation directory:
 
 ```text
-%APPDATA%\StimLab\
-├── stimlab.db       # projects, molecules, receptors, runs, settings
+%APPDATA%\BioCAD\
+├── biocad.db       # projects, molecules, receptors, runs, settings
 ├── artifacts\       # content-addressed structures, poses, and reports
 ├── runtime\         # provisioned engines, runtimes, and models
 ├── presets\         # shipped presets plus user overrides

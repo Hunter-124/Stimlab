@@ -1,8 +1,8 @@
-# dev-build.ps1 - reproducible StimLab build wrapper.
+# dev-build.ps1 - reproducible BioCAD build wrapper.
 #
 # Auto-detects the toolchain so it works across machines (no hardcoded user paths):
 #   * Visual Studio (vcvars64.bat) via vswhere, with sensible fallbacks.
-#   * A bootstrapped vcpkg via $STIMLAB_VCPKG_ROOT / $VCPKG_ROOT / common locations.
+#   * A bootstrapped vcpkg via $BIOCAD_VCPKG_ROOT / $VCPKG_ROOT / common locations.
 #   * The VS-bundled CMake + Ninja are put on PATH (the Ninja generator needs ninja,
 #     and plain vcvars64.bat does not add the CommonExtensions CMake/Ninja).
 #
@@ -17,7 +17,7 @@
 #   .\scripts\dev-build.ps1 windows-science      # Phase C preset (RDKit/curl)
 #   .\scripts\dev-build.ps1 -ConfigureOnly       # configure only
 #
-# Overrides (env): STIMLAB_VCVARS (path to vcvars64.bat), STIMLAB_VCPKG_ROOT (vcpkg dir).
+# Overrides (env): BIOCAD_VCVARS (path to vcvars64.bat), BIOCAD_VCPKG_ROOT (vcpkg dir).
 
 param(
     [string]$Preset = "windows",
@@ -28,7 +28,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 function Find-Vcvars {
-    if ($env:STIMLAB_VCVARS -and (Test-Path $env:STIMLAB_VCVARS)) { return $env:STIMLAB_VCVARS }
+    if ($env:BIOCAD_VCVARS -and (Test-Path $env:BIOCAD_VCVARS)) { return $env:BIOCAD_VCVARS }
     $vswhere = "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
     if (Test-Path $vswhere) {
         $vs = & $vswhere -latest -products * `
@@ -47,12 +47,12 @@ function Find-Vcvars {
         "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
     )
     foreach ($f in $fallbacks) { if (Test-Path $f) { return $f } }
-    throw "Could not find vcvars64.bat. Install the Visual Studio 'Desktop development with C++' workload, or set STIMLAB_VCVARS."
+    throw "Could not find vcvars64.bat. Install the Visual Studio 'Desktop development with C++' workload, or set BIOCAD_VCVARS."
 }
 
 function Find-VcpkgRoot {
     $candidates = @()
-    if ($env:STIMLAB_VCPKG_ROOT) { $candidates += $env:STIMLAB_VCPKG_ROOT }
+    if ($env:BIOCAD_VCPKG_ROOT) { $candidates += $env:BIOCAD_VCPKG_ROOT }
     if ($env:VCPKG_ROOT)         { $candidates += $env:VCPKG_ROOT }
     $candidates += @(
         (Join-Path $env:USERPROFILE "vcpkg"),
@@ -65,7 +65,7 @@ function Find-VcpkgRoot {
             return (Resolve-Path $c).Path
         }
     }
-    throw "Could not find a bootstrapped vcpkg (checked STIMLAB_VCPKG_ROOT, VCPKG_ROOT and common paths). Clone + bootstrap vcpkg, then set STIMLAB_VCPKG_ROOT."
+    throw "Could not find a bootstrapped vcpkg (checked BIOCAD_VCPKG_ROOT, VCPKG_ROOT and common paths). Clone + bootstrap vcpkg, then set BIOCAD_VCPKG_ROOT."
 }
 
 $Vcvars    = Find-Vcvars

@@ -31,14 +31,14 @@
 #include "ui/AppShell.h"
 #include "ui/Theme.h"
 
-// App icon resource id (see src/app/StimLab.rc, compiled into the exe).
+// App icon resource id (see src/app/BioCAD.rc, compiled into the exe).
 #define IDI_APPICON 101
 
 // Forward decl from imgui_impl_win32 (handles input/message translation).
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 
 namespace {
-stimlab::Dx11Device* g_device = nullptr;
+biocad::Dx11Device* g_device = nullptr;
 
 std::string wToUtf8(const std::wstring& w) {
     if (w.empty()) return {};
@@ -54,7 +54,7 @@ std::string wToUtf8(const std::wstring& w) {
 // Exit code 0 = a real engine dock succeeded; 2 = fell back to the descriptor
 // estimate; other = setup error. This is the WP-3 acceptance gate made runnable.
 int runHeadlessDock(const std::string& smiles, const std::string& target, const std::string& compute) {
-    using namespace stimlab;
+    using namespace biocad;
     AppPaths::instance().ensureLayout();
     log::init();
 
@@ -70,7 +70,7 @@ int runHeadlessDock(const std::string& smiles, const std::string& target, const 
         spdlog::info("[selftest-dock] {}", s);
     };
 
-    emit("== StimLab docking selftest (real-engine acceptance) ==");
+    emit("== BioCAD docking selftest (real-engine acceptance) ==");
     emit("ligand : " + smiles);
     emit("target : " + target);
 
@@ -178,13 +178,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         if (selftest) return runHeadlessDock(smiles, target, compute);
     }
 
-    stimlab::AppPaths::instance().ensureLayout();
-    stimlab::log::init();
-    spdlog::info("StimLab starting (real chem engine + 3D viewer + docking + workflows + agent)");
+    biocad::AppPaths::instance().ensureLayout();
+    biocad::log::init();
+    spdlog::info("BioCAD starting (real chem engine + 3D viewer + docking + workflows + agent)");
 
     // Self-heal the provisioned runtime: delete any corrupt engine/receptor so it is
     // re-fetched on the next provision (manifest.json is the source of truth).
-    if (const auto st = stimlab::docking::selfHealManifest(); st.total > 0) {
+    if (const auto st = biocad::docking::selfHealManifest(); st.total > 0) {
         spdlog::info("Runtime manifest: {}/{} components verified ({} missing, {} corrupt-healed)",
                      st.present, st.total, st.missing.size(), st.corrupt.size());
     }
@@ -203,10 +203,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     wc.hIconSm = static_cast<HICON>(LoadImageW(hInstance, MAKEINTRESOURCEW(IDI_APPICON), IMAGE_ICON,
                                                GetSystemMetrics(SM_CXSMICON),
                                                GetSystemMetrics(SM_CYSMICON), LR_SHARED));
-    wc.lpszClassName = L"StimLabWindow";
+    wc.lpszClassName = L"BioCADWindow";
     RegisterClassExW(&wc);
 
-    HWND hwnd = CreateWindowExW(0, wc.lpszClassName, L"StimLab",
+    HWND hwnd = CreateWindowExW(0, wc.lpszClassName, L"BioCAD",
                                 WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 1480, 920,
                                 nullptr, nullptr, hInstance, nullptr);
     if (!hwnd) {
@@ -214,10 +214,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         return 1;
     }
 
-    stimlab::Dx11Device device;
+    biocad::Dx11Device device;
     if (!device.init(hwnd)) {
         spdlog::error("DirectX 11 device init failed");
-        MessageBoxW(hwnd, L"Failed to initialize DirectX 11.", L"StimLab", MB_OK | MB_ICONERROR);
+        MessageBoxW(hwnd, L"Failed to initialize DirectX 11.", L"BioCAD", MB_OK | MB_ICONERROR);
         return 1;
     }
     g_device = &device;
@@ -232,7 +232,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
-    static std::string iniPath = (stimlab::AppPaths::instance().root() / "imgui.ini").string();
+    static std::string iniPath = (biocad::AppPaths::instance().root() / "imgui.ini").string();
     io.IniFilename = iniPath.c_str();
 
     // Crisp UI fonts: Segoe UI (body) + Segoe UI Semibold (semi), both scalable.
@@ -258,21 +258,21 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
             semiPtr = io.Fonts->AddFontFromFileTTF(segoeSemi, 17.0f, &cfg);
         }
 
-        stimlab::theme::fonts().body = bodyPtr;
-        stimlab::theme::fonts().semi = (semiPtr != nullptr) ? semiPtr : bodyPtr;
+        biocad::theme::fonts().body = bodyPtr;
+        biocad::theme::fonts().semi = (semiPtr != nullptr) ? semiPtr : bodyPtr;
     }
 
-    stimlab::theme::apply();
+    biocad::theme::apply();
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX11_Init(device.device(), device.context());
 
     // Persisted settings (incl. the DPAPI-encrypted agent API key). Declared
     // before the shell so it outlives the shell's agent during teardown.
-    stimlab::Config config(stimlab::AppPaths::instance().config());
+    biocad::Config config(biocad::AppPaths::instance().config());
     config.load();
 
-    stimlab::RealBackend backend;
-    stimlab::AppShell shell(backend.services());
+    biocad::RealBackend backend;
+    biocad::AppShell shell(backend.services());
     // WP-2: give the shell the live DX11 device so the 3D molecular viewport can
     // render into an off-screen target shown by ImGui in the Structure/Docking panels.
     shell.setRenderDevice(device.device(), device.context());
@@ -280,16 +280,16 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     // provider/key/model and the Settings panel can persist them.
     shell.setConfig(&config);
 
-    // Optional: STIMLAB_PANEL / STIMLAB_MOLECULE select the initial panel + compound
+    // Optional: BIOCAD_PANEL / BIOCAD_MOLECULE select the initial panel + compound
     // (handy for screenshots/automation; defaults are Dashboard/amphetamine).
-    if (char buf[128]; GetEnvironmentVariableA("STIMLAB_PANEL", buf, sizeof(buf)) > 0)
+    if (char buf[128]; GetEnvironmentVariableA("BIOCAD_PANEL", buf, sizeof(buf)) > 0)
         shell.state().activePanel = buf;
-    if (char buf[128]; GetEnvironmentVariableA("STIMLAB_MOLECULE", buf, sizeof(buf)) > 0)
+    if (char buf[128]; GetEnvironmentVariableA("BIOCAD_MOLECULE", buf, sizeof(buf)) > 0)
         shell.state().selectedMolecule = buf;
-    // STIMLAB_TARGET selects the initial docking target (preset id or display name) so a
+    // BIOCAD_TARGET selects the initial docking target (preset id or display name) so a
     // capture can show the on-demand "Provision <target>" affordance for an unprepared one.
-    if (char buf[128]; GetEnvironmentVariableA("STIMLAB_TARGET", buf, sizeof(buf)) > 0) {
-        if (const auto* p = stimlab::docking::findPreset(buf)) shell.state().dockTarget = p->name;
+    if (char buf[128]; GetEnvironmentVariableA("BIOCAD_TARGET", buf, sizeof(buf)) > 0) {
+        if (const auto* p = biocad::docking::findPreset(buf)) shell.state().dockTarget = p->name;
         else shell.state().dockTarget = buf;
     }
 
@@ -297,7 +297,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     // capture shows the live DAG executing (harmless in normal use - this env path is
     // only exercised by the screenshot tooling).
     if (shell.state().activePanel == "Workflows") {
-        const stimlab::Molecule mm = shell.currentMolecule();
+        const biocad::Molecule mm = shell.currentMolecule();
         shell.runWorkflow(mm.smiles, "DAT", mm.name + " -> DAT");
     }
 
@@ -334,7 +334,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         if (shell.state().quitRequested) running = false;
     }
 
-    spdlog::info("StimLab shutting down");
+    spdlog::info("BioCAD shutting down");
     ImGui_ImplDX11_Shutdown();
     ImGui_ImplWin32_Shutdown();
     ImPlot::DestroyContext();
@@ -343,6 +343,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     device.shutdown();
     DestroyWindow(hwnd);
     UnregisterClassW(wc.lpszClassName, hInstance);
-    stimlab::log::shutdown();
+    biocad::log::shutdown();
     return 0;
 }

@@ -20,7 +20,7 @@
 #include "chem/Embed3D.h"
 #include "contracts/IDockingBackend.h"
 
-namespace stimlab::docking {
+namespace biocad::docking {
 
 // Parse a Vina/smina output PDBQT string into ranked poses. `reference` supplies
 // the per-atom z, the bond list and heavyCount that the coordinate-only PDBQT
@@ -35,4 +35,4 @@ std::vector<DockPose> parseVinaPdbqt(const std::string& output,
                                      const chem::Conformer& reference,
                                      const std::vector<int>* serialToConf = nullptr);
 
-}  // namespace stimlab::docking
+}  // namespace biocad::docking

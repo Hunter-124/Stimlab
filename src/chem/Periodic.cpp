@@ -2,11 +2,11 @@
 
 #include <array>
 
-namespace stimlab::chem {
+namespace biocad::chem {
 
 namespace {
 
-// Standard atomic weights (IUPAC) for the elements StimLab parses.
+// Standard atomic weights (IUPAC) for the elements BioCAD parses.
 constexpr std::array<ElementInfo, 25> kElements = {{
     {1, "H", 1.008},    {5, "B", 10.81},    {6, "C", 12.011},   {7, "N", 14.007},
     {8, "O", 15.999},   {9, "F", 18.998},   {11, "Na", 22.990}, {12, "Mg", 24.305},
@@ -41,4 +41,4 @@ const char* symbolByZ(int z) {
     return e ? e->symbol : "?";
 }
 
-}  // namespace stimlab::chem
+}  // namespace biocad::chem

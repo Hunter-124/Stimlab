@@ -5,7 +5,7 @@
 
 #include "core/Hash.h"
 
-namespace stimlab {
+namespace biocad {
 
 namespace fs = std::filesystem;
 
@@ -110,4 +110,4 @@ Manifest Manifest::load(const fs::path& p) {
     }
 }
 
-}  // namespace stimlab
+}  // namespace biocad

@@ -10,10 +10,10 @@
 // 1 = polar (N/O, H-bond-capable). radii are Vina xs surface radii (Angstrom).
 #pragma once
 
-namespace stimlab::docking {
+namespace biocad::docking {
 
 // Is a usable CUDA device present right now? false when this is a non-CUDA build (a
-// stub is never linked - the whole file is compiled only with STIMLAB_ENABLE_CUDA) or
+// stub is never linked - the whole file is compiled only with BIOCAD_ENABLE_CUDA) or
 // when no NVIDIA GPU is visible at runtime.
 bool cudaDockAvailable();
 
@@ -27,4 +27,4 @@ bool cudaScorePoses(const float* recXYZ, const int* recType, const float* recRad
                     const float* ligXYZ, const int* ligType, const float* ligRadius, int nLig,
                     const float* poseXform, int nPoses, float* outScores);
 
-}  // namespace stimlab::docking
+}  // namespace biocad::docking

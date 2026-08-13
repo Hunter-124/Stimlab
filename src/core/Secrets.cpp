@@ -11,7 +11,7 @@
 #  include <wincrypt.h>
 #endif
 
-namespace stimlab {
+namespace biocad {
 
 namespace {
 
@@ -75,7 +75,7 @@ Result<std::string> Secrets::protect(const std::string& plaintext) {
     in.cbData = static_cast<DWORD>(plaintext.size());
 
     DATA_BLOB out{};
-    if (!CryptProtectData(&in, L"StimLab", nullptr, nullptr, nullptr,
+    if (!CryptProtectData(&in, L"BioCAD", nullptr, nullptr, nullptr,
                           CRYPTPROTECT_UI_FORBIDDEN, &out)) {
         return Error::internal("CryptProtectData failed");
     }
@@ -117,4 +117,4 @@ Result<std::string> Secrets::unprotect(const std::string& base64Blob) {
 
 #endif
 
-}  // namespace stimlab
+}  // namespace biocad

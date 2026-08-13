@@ -1,10 +1,10 @@
-# package.ps1 - assemble a StimLab release (Phase E, WP-M).
+# package.ps1 - assemble a BioCAD release (Phase E, WP-M).
 #
-# Produces dist/StimLab-<version>-win-x64/ containing StimLab.exe (plus any runtime
+# Produces dist/BioCAD-<version>-win-x64/ containing BioCAD.exe (plus any runtime
 # DLLs the chosen preset needs) and a README, then zips it. The default preset is
-# the fully-static `windows-static`, whose StimLab.exe is self-contained (no DLLs and
+# the fully-static `windows-static`, whose BioCAD.exe is self-contained (no DLLs and
 # no VC++ redist required); on first launch the app self-provisions its docking
-# engine + receptors into %APPDATA%/StimLab (see the Docking panel's Provision button).
+# engine + receptors into %APPDATA%/BioCAD (see the Docking panel's Provision button).
 #
 # Usage:
 #   .\scripts\package.ps1                       # build windows-static, package, zip
@@ -12,12 +12,13 @@
 #   .\scripts\package.ps1 -NoBuild              # package an already-built tree
 param(
     [string]$Preset  = "windows-static",
-    [string]$Version = "0.1.0",
+    [string]$Version = "",
     [switch]$NoBuild
 )
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
+if (-not $Version) { $Version = & "$PSScriptRoot\version.ps1" }
 
 if (-not $NoBuild) {
     Write-Host "[package] building preset '$Preset'..." -ForegroundColor Cyan
@@ -26,10 +27,10 @@ if (-not $NoBuild) {
 }
 
 $binDir = Join-Path $root "build\$Preset\bin"
-$exe    = Join-Path $binDir "StimLab.exe"
-if (-not (Test-Path $exe)) { throw "StimLab.exe not found at $exe - build the '$Preset' preset first." }
+$exe    = Join-Path $binDir "BioCAD.exe"
+if (-not (Test-Path $exe)) { throw "BioCAD.exe not found at $exe - build the '$Preset' preset first." }
 
-$stage = Join-Path $root "dist\StimLab-$Version-win-x64"
+$stage = Join-Path $root "dist\BioCAD-$Version-win-x64"
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
@@ -60,42 +61,43 @@ AI ASSISTANT (optional)
 }
 
 $readme = @"
-StimLab $Version - native CNS-stimulant computational pharmacology suite (x64 Windows)
+BioCAD $Version - native workstation for molecular, protein, and pharmacological analysis (x64 Windows)
 
 WHAT IT IS
-  Predicts what a CNS-stimulant compound IS and DOES: structure & physicochemical
-  properties, molecular stability, absorption/PK, ADMET/metabolism, target binding
-  affinity (real AutoDock Vina docking), similarity to known substances, legal-analog
+  Analyses what a compound IS and DOES: structure & physicochemical properties,
+  molecular stability, absorption/PK, ADMET/metabolism, target binding affinity
+  (real AutoDock Vina docking), similarity to known substances, legal-analog
   scoring, re-runnable prep->dock workflows, and an AI assistant that drives the app.
-  Analysis only - it does NOT and will not produce synthesis routes, reaction
-  conditions, precursors, or manufacturability guidance.
+  Every derived number carries a provenance tier, so a measurement is never shown
+  as if it were a prediction. Analysis only - it does NOT and will not produce
+  synthesis routes, reaction conditions, precursors, or manufacturability guidance.
 
 RUNNING
-  Double-click StimLab.exe. No install, no Docker, no Python, no localhost server.
-  All state lives under %APPDATA%\StimLab (database, artifacts, runtime, logs).
+  Double-click BioCAD.exe. No install, no Docker, no Python, no localhost server.
+  All state lives under %APPDATA%\BioCAD (database, artifacts, runtime, logs).
 
 FIRST RUN / SELF-PROVISIONING (optional, needs internet)
   Real docking needs the AutoDock Vina engine + prepared receptors. Open the Docking
-  panel and click "Provision engine + receptors": StimLab downloads vina.exe
+  panel and click "Provision engine + receptors": BioCAD downloads vina.exe
   (size-verified) and fetches + prepares the DAT/NET/SERT/TAAR1 receptors from RCSB
-  into %APPDATA%\StimLab\runtime. Until then, docking shows a clearly-labeled
+  into %APPDATA%\BioCAD\runtime. Until then, docking shows a clearly-labeled
   descriptor estimate. The runtime self-heals: a corrupt component is re-provisioned
   (Settings > Verify + heal runtime; manifest.json is the source of truth).
 
 INTEGRITY (this build is intentionally UNSIGNED)
-  StimLab is an educational / personal-use project and ships without an Authenticode
+  BioCAD is an educational / personal-use project and ships without an Authenticode
   signature, so Windows SmartScreen may show "Windows protected your PC" on first run:
   click More info > Run anyway. Nothing here is signed or certified. (A maintainer with
   a code-signing certificate can sign the exe via scripts\sign.ps1; absent a cert it is
   a clean no-op.) The downloaded docking engine is size- and content-verified, and an
-  optional SHA-256 pin (STIMLAB_VINA_SHA256) cryptographically verifies vina.exe.
+  optional SHA-256 pin (BIOCAD_VINA_SHA256) cryptographically verifies vina.exe.
 
 $aiPara
 This build: preset '$Preset'$(if ($dlls) { " (bundled DLLs: " + (($dlls | ForEach-Object { $_.Name }) -join ', ') + ")" } else { " (fully static - single self-contained exe)" })$(if ($science) { " - live agent + web tools bundled" }).
 "@
 Set-Content -Path (Join-Path $stage "README.txt") -Value $readme -Encoding ASCII
 
-$zip = Join-Path $root "dist\StimLab-$Version-win-x64.zip"
+$zip = Join-Path $root "dist\BioCAD-$Version-win-x64.zip"
 if (Test-Path $zip) { Remove-Item -Force $zip }
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip
 

@@ -14,15 +14,15 @@
 #include "modules/docking/Backends.h"
 #include "modules/docking/Presets.h"
 #include "modules/docking/ReceptorPrep.h"
-#ifdef STIMLAB_HAVE_CUDA
+#ifdef BIOCAD_HAVE_CUDA
 #  include "modules/docking/CudaBackend.h"
 #endif
 #include "storage/RunStore.h"
 
-namespace stimlab {
+namespace biocad {
 namespace {
 
-namespace chem = stimlab::chem;
+namespace chem = biocad::chem;
 
 double clampd(double v, double lo, double hi) { return std::max(lo, std::min(hi, v)); }
 
@@ -520,21 +520,21 @@ private:
     //   Cpu  - Vina/smina only (skip the GPU engines).
     //   Gpu  - GPU engines only: Vina-GPU first, then CUDA.
     // Vina-GPU is a subprocess engine so it is compiled in EVERY build (no CUDA toolkit
-    // needed); the first-party CUDA engine only exists under STIMLAB_HAVE_CUDA.
+    // needed); the first-party CUDA engine only exists under BIOCAD_HAVE_CUDA.
     // dockDetailed() falls back to the labeled descriptor estimate when none of these
     // produce a real dock, so every mode degrades honestly.
     BackendList realEngines() const {
         static const docking::VinaBackend vina{docking::Engine::Vina};
         static const docking::VinaBackend smina{docking::Engine::Smina};
         static const docking::VinaGpuBackend vinaGpu;
-#ifdef STIMLAB_HAVE_CUDA
+#ifdef BIOCAD_HAVE_CUDA
         static const docking::CudaBackend cuda;
 #endif
         const docking::ComputeMode mode = docking::computeMode();
         BackendList list;
         if (mode == docking::ComputeMode::Gpu) {
             list.push_back(&vinaGpu);  // GPU forced: Vina-GPU (real Vina search) first...
-#ifdef STIMLAB_HAVE_CUDA
+#ifdef BIOCAD_HAVE_CUDA
             list.push_back(&cuda);     // ...then the first-party CUDA grid engine
 #endif
         } else if (mode == docking::ComputeMode::Cpu) {
@@ -544,7 +544,7 @@ private:
             list.push_back(&vina);
             list.push_back(&smina);
             list.push_back(&vinaGpu);
-#ifdef STIMLAB_HAVE_CUDA
+#ifdef BIOCAD_HAVE_CUDA
             list.push_back(&cuda);
 #endif
         }
@@ -586,4 +586,4 @@ Services RealBackend::services() {
     return s;
 }
 
-}  // namespace stimlab
+}  // namespace biocad

@@ -20,7 +20,7 @@
 
 #include "modules/docking/CudaScore.h"
 
-namespace stimlab::docking {
+namespace biocad::docking {
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
@@ -244,4 +244,4 @@ DockJobResult CudaBackend::dock(const chem::Molecule& graph, const chem::Conform
     return res;
 }
 
-}  // namespace stimlab::docking
+}  // namespace biocad::docking

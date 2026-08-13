@@ -24,7 +24,7 @@
 #include "chem/Embed3D.h"
 #include "chem/Molecule.h"
 
-namespace stimlab::docking {
+namespace biocad::docking {
 
 // AutoDock atom type for a single position, given its element and bonding context.
 // `aromatic` selects A (aromatic carbon) / NA / SA variants; `polarH` marks an HD.
@@ -66,4 +66,4 @@ PdbqtLigand writeRigidPdbqt(const chem::Molecule& graph, const chem::Conformer& 
 PdbqtLigand writeFlexiblePdbqt(const chem::Molecule& graph, const chem::Conformer& conf,
                                const std::string& resName = "LIG");
 
-}  // namespace stimlab::docking
+}  // namespace biocad::docking

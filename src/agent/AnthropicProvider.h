@@ -2,9 +2,9 @@
 //
 // Streams the Messages API over libcurl (SSE) and assembles text + tool_use
 // blocks into an LlmResponse. ALL networking is compiled only when
-// STIMLAB_HAVE_SCIENCE is defined (the `science` vcpkg feature provides curl,
+// BIOCAD_HAVE_SCIENCE is defined (the `science` vcpkg feature provides curl,
 // using Windows-native Schannel TLS). Without it the class still exists but
-// ready() is false and send() returns a clear error, so stimlab_ui links either
+// ready() is false and send() returns a clear error, so biocad_ui links either
 // way and the agent simply falls back to the offline MockProvider.
 //
 // SAFETY SCOPE: transport only - the boundary is the system prompt + tool set.
@@ -15,7 +15,7 @@
 
 #include "contracts/ILlmProvider.h"
 
-namespace stimlab::agent {
+namespace biocad::agent {
 
 class AnthropicProvider : public ILlmProvider {
 public:
@@ -37,4 +37,4 @@ private:
     std::string apiKey_;
 };
 
-}  // namespace stimlab::agent
+}  // namespace biocad::agent

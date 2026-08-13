@@ -2,7 +2,7 @@
 // Each takes the AppShell (for Services, UiState and the highlight bridge).
 #pragma once
 
-namespace stimlab {
+namespace biocad {
 
 class AppShell;
 
@@ -26,4 +26,4 @@ void presets(AppShell& shell);
 void settings(AppShell& shell);
 
 }  // namespace panels
-}  // namespace stimlab
+}  // namespace biocad

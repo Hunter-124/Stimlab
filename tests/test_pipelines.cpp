@@ -7,8 +7,8 @@
 #include "workflow/Dag.h"
 #include "workflow/JobSystem.h"
 
-using namespace stimlab;
-using namespace stimlab::workflow;
+using namespace biocad;
+using namespace biocad::workflow;
 
 TEST_CASE("Docking pipeline builds a 3-node prep->dock DAG and runs", "[workflow][pipeline]") {
     RealBackend backend;

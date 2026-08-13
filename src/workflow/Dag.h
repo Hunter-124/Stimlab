@@ -9,7 +9,7 @@
 //     so re-running an unchanged graph is a full cache hit (instant resume); changing
 //     one node's params/version re-runs that node and everything downstream of it,
 //     and nothing else. Cached outputs live behind an INodeCache (in-memory or
-//     %APPDATA%/StimLab/cache on disk).
+//     %APPDATA%/BioCAD/cache on disk).
 //   * COOPERATIVE CANCEL. A CancelToken stops scheduling new work; in-flight nodes
 //     observe it and bail; un-started nodes are marked Cancelled.
 //   * PROGRESS. An optional callback fires on every node status transition for a live
@@ -33,7 +33,7 @@
 
 #include "workflow/JobSystem.h"
 
-namespace stimlab::workflow {
+namespace biocad::workflow {
 
 enum class NodeStatus { Pending, Running, Cached, Done, Failed, Cancelled, Skipped };
 const char* toString(NodeStatus s);
@@ -101,7 +101,7 @@ private:
     mutable std::mutex                 mu_;
 };
 
-// Disk-backed cache under %APPDATA%/StimLab/cache/<sub> for cross-session resume.
+// Disk-backed cache under %APPDATA%/BioCAD/cache/<sub> for cross-session resume.
 class DiskNodeCache final : public INodeCache {
 public:
     explicit DiskNodeCache(std::string subdir = "dag");
@@ -147,4 +147,4 @@ private:
     INodeCache& cache_;
 };
 
-}  // namespace stimlab::workflow
+}  // namespace biocad::workflow

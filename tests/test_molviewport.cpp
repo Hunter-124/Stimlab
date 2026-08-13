@@ -6,7 +6,7 @@
 #include "chem/Smiles.h"
 #include "render/MolViewport.h"
 
-using namespace stimlab;
+using namespace biocad;
 
 namespace {
 chem::Conformer embed(const char* smi) {

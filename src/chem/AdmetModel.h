@@ -29,7 +29,7 @@
 #include <cstdio>
 #include <string>
 
-namespace stimlab::chem {
+namespace biocad::chem {
 
 // Structural liabilities the PK / stability heuristics key on. Each backend fills
 // these from its own perception (graph-based in the real engine, motif-based in
@@ -190,4 +190,4 @@ inline std::string thermalWindowText(const ThermalWindow& t) {
     return s;
 }
 
-}  // namespace stimlab::chem
+}  // namespace biocad::chem

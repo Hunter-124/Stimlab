@@ -18,7 +18,7 @@
 #include "contracts/Services.h"
 #include "workflow/Dag.h"
 
-namespace stimlab::workflow {
+namespace biocad::workflow {
 
 // Build the prep->dock pipeline DAG for one ligand SMILES against one CNS target id
 // (e.g. "DAT"). `svc` is copied (it is a bundle of non-owning service pointers) into
@@ -26,4 +26,4 @@ namespace stimlab::workflow {
 Dag buildDockingPipeline(const std::string& ligandSmiles, const std::string& targetId,
                          Services svc);
 
-}  // namespace stimlab::workflow
+}  // namespace biocad::workflow

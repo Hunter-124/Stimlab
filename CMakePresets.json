@@ -17,8 +17,8 @@
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "VCPKG_TARGET_TRIPLET": "x64-windows",
         "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
-        "STIMLAB_ENABLE_CUDA": "OFF",
-        "STIMLAB_ENABLE_SCIENCE": "OFF"
+        "BIOCAD_ENABLE_CUDA": "OFF",
+        "BIOCAD_ENABLE_SCIENCE": "OFF"
       }
     },
     {
@@ -29,8 +29,8 @@
       "binaryDir": "${sourceDir}/build/windows-science",
       "cacheVariables": {
         "VCPKG_MANIFEST_FEATURES": "science;webview2",
-        "STIMLAB_ENABLE_SCIENCE": "ON",
-        "STIMLAB_ENABLE_WEBVIEW2": "ON"
+        "BIOCAD_ENABLE_SCIENCE": "ON",
+        "BIOCAD_ENABLE_WEBVIEW2": "ON"
       }
     },
     {
@@ -40,7 +40,7 @@
       "description": "Adds the first-party CUDA GPU docking backend (nvcc-compiled kernel). Lean base (no science/curl/webview2 - GPU docking needs none of them). Requires the full CUDA Toolkit with nvcc; CMAKE_CUDA_COMPILER points at v13.3 and the arch defaults to sm_86 (RTX 3080 Ti). Override CMAKE_CUDA_COMPILER/ARCHITECTURES for a different toolkit/GPU.",
       "binaryDir": "${sourceDir}/build/windows-cuda",
       "cacheVariables": {
-        "STIMLAB_ENABLE_CUDA": "ON",
+        "BIOCAD_ENABLE_CUDA": "ON",
         "CMAKE_CUDA_COMPILER": "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.3/bin/nvcc.exe",
         "CMAKE_CUDA_ARCHITECTURES": "86",
         "CMAKE_CUDA_FLAGS": "-allow-unsupported-compiler"
@@ -50,7 +50,7 @@
       "name": "windows-cuda-static",
       "inherits": "windows-cuda",
       "displayName": "Windows x64 + CUDA - fully static (self-contained GPU exe)",
-      "description": "windows-cuda (first-party CUDA GPU docking) built fully static: x64-windows-static triplet + static CRT (/MT) + a STATICALLY-linked CUDA runtime (CUDA::cudart_static, selected by the triplet in src/modules/CMakeLists.txt). The result is ONE self-contained StimLab.exe that GPU-docks with NO cudart64_*.dll required on PATH. Same nvcc 13.3 / sm_86 settings as windows-cuda; the /MT host CRT matches cudart_static's static CRT.",
+      "description": "windows-cuda (first-party CUDA GPU docking) built fully static: x64-windows-static triplet + static CRT (/MT) + a STATICALLY-linked CUDA runtime (CUDA::cudart_static, selected by the triplet in src/modules/CMakeLists.txt). The result is ONE self-contained BioCAD.exe that GPU-docks with NO cudart64_*.dll required on PATH. Same nvcc 13.3 / sm_86 settings as windows-cuda; the /MT host CRT matches cudart_static's static CRT.",
       "binaryDir": "${sourceDir}/build/windows-cuda-static",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
@@ -62,7 +62,7 @@
       "name": "windows-static",
       "inherits": "windows",
       "displayName": "Windows x64 RELEASE - fully static (single self-contained exe)",
-      "description": "Phase E release build: x64-windows-static triplet + static CRT (/MT) so StimLab.exe needs no DLLs or VC++ redist. Heavier first build (all deps rebuilt static).",
+      "description": "Phase E release build: x64-windows-static triplet + static CRT (/MT) so BioCAD.exe needs no DLLs or VC++ redist. Heavier first build (all deps rebuilt static).",
       "binaryDir": "${sourceDir}/build/windows-static",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
@@ -74,12 +74,12 @@
       "name": "windows-science-static",
       "inherits": "windows-static",
       "displayName": "Windows x64 RELEASE - fully static + science (single exe w/ live agent + web tools)",
-      "description": "Phase E science release: everything in windows-static (x64-windows-static + static CRT /MT) PLUS the science feature, so ONE self-contained StimLab.exe also carries the live Anthropic provider + web_search/web_fetch. curl[ssl] resolves to Windows-native Schannel and is linked statically (no OpenSSL, no DLLs). Heavier first build (static libcurl).",
+      "description": "Phase E science release: everything in windows-static (x64-windows-static + static CRT /MT) PLUS the science feature, so ONE self-contained BioCAD.exe also carries the live Anthropic provider + web_search/web_fetch. curl[ssl] resolves to Windows-native Schannel and is linked statically (no OpenSSL, no DLLs). Heavier first build (static libcurl).",
       "binaryDir": "${sourceDir}/build/windows-science-static",
       "cacheVariables": {
         "VCPKG_MANIFEST_FEATURES": "science;webview2",
-        "STIMLAB_ENABLE_SCIENCE": "ON",
-        "STIMLAB_ENABLE_WEBVIEW2": "ON"
+        "BIOCAD_ENABLE_SCIENCE": "ON",
+        "BIOCAD_ENABLE_WEBVIEW2": "ON"
       }
     }
   ],

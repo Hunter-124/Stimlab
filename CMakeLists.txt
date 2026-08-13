@@ -1,15 +1,15 @@
 cmake_minimum_required(VERSION 3.27)
 
-project(StimLab
-  VERSION 0.1.0
-  DESCRIPTION "Native CNS-stimulant computational drug-discovery suite"
+project(BioCAD
+  VERSION 0.2.0
+  DESCRIPTION "BioCAD - native workstation for molecular, protein, and pharmacological analysis"
   LANGUAGES CXX)
 
 # ---- Global options -------------------------------------------------------
-option(STIMLAB_ENABLE_CUDA    "Enable CUDA-accelerated engines (needs nvcc)" OFF)
-option(STIMLAB_ENABLE_SCIENCE "Link the heavy science stack (RDKit/curl)"    OFF)
-option(STIMLAB_BUILD_TESTS    "Build the Catch2 test suite"                  ON)
-option(STIMLAB_ENABLE_WEBVIEW2 "Optional WebView2 headless JS-render web_fetch (Windows; needs the Evergreen WebView2 Runtime at runtime)" OFF)
+option(BIOCAD_ENABLE_CUDA    "Enable CUDA-accelerated engines (needs nvcc)" OFF)
+option(BIOCAD_ENABLE_SCIENCE "Link the heavy science stack (RDKit/curl)"    OFF)
+option(BIOCAD_BUILD_TESTS    "Build the Catch2 test suite"                  ON)
+option(BIOCAD_ENABLE_WEBVIEW2 "Optional WebView2 headless JS-render web_fetch (Windows; needs the Evergreen WebView2 Runtime at runtime)" OFF)
 
 # ---- Language / compiler standard ----------------------------------------
 set(CMAKE_CXX_STANDARD 20)
@@ -35,23 +35,23 @@ if(MSVC)
 endif()
 
 # ---- Feature defines passed to code --------------------------------------
-if(STIMLAB_ENABLE_SCIENCE)
-  add_compile_definitions(STIMLAB_HAVE_SCIENCE=1)
+if(BIOCAD_ENABLE_SCIENCE)
+  add_compile_definitions(BIOCAD_HAVE_SCIENCE=1)
 endif()
-if(STIMLAB_ENABLE_WEBVIEW2)
+if(BIOCAD_ENABLE_WEBVIEW2)
   # The rendered fetch augments the curl web tools, so it requires the science feature.
-  if(NOT STIMLAB_ENABLE_SCIENCE)
-    message(FATAL_ERROR "STIMLAB_ENABLE_WEBVIEW2 requires STIMLAB_ENABLE_SCIENCE.")
+  if(NOT BIOCAD_ENABLE_SCIENCE)
+    message(FATAL_ERROR "BIOCAD_ENABLE_WEBVIEW2 requires BIOCAD_ENABLE_SCIENCE.")
   endif()
-  add_compile_definitions(STIMLAB_HAVE_WEBVIEW2=1)
+  add_compile_definitions(BIOCAD_HAVE_WEBVIEW2=1)
 endif()
-if(STIMLAB_ENABLE_CUDA)
+if(BIOCAD_ENABLE_CUDA)
   if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
     set(CMAKE_CUDA_ARCHITECTURES 86)  # RTX 3080 Ti = sm_86 (CUDA 13 dropped pre-sm_75)
   endif()
   enable_language(CUDA)
   find_package(CUDAToolkit REQUIRED)
-  add_compile_definitions(STIMLAB_HAVE_CUDA=1)
+  add_compile_definitions(BIOCAD_HAVE_CUDA=1)
 endif()
 
 # ---- Third-party dependencies (vcpkg) ------------------------------------
@@ -69,6 +69,12 @@ if(NOT TARGET yaml-cpp::yaml-cpp AND TARGET yaml-cpp)
   add_library(yaml-cpp::yaml-cpp ALIAS yaml-cpp)
 endif()
 
+# ---- Generated version header (single source: project(BioCAD VERSION ...)) --
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/core/Version.h.in"
+  "${CMAKE_BINARY_DIR}/generated/core/Version.h"
+  @ONLY)
+
 # ---- Project modules ------------------------------------------------------
 add_subdirectory(src/core)
 add_subdirectory(src/data)
@@ -83,9 +89,9 @@ add_subdirectory(src/render)
 add_subdirectory(src/ui)
 add_subdirectory(src/app)
 
-if(STIMLAB_BUILD_TESTS)
+if(BIOCAD_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)
 endif()
 
-message(STATUS "StimLab ${PROJECT_VERSION}  |  CUDA=${STIMLAB_ENABLE_CUDA}  Science=${STIMLAB_ENABLE_SCIENCE}  Tests=${STIMLAB_BUILD_TESTS}")
+message(STATUS "BioCAD ${PROJECT_VERSION}  |  CUDA=${BIOCAD_ENABLE_CUDA}  Science=${BIOCAD_ENABLE_SCIENCE}  Tests=${BIOCAD_BUILD_TESTS}")

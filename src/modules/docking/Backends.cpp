@@ -25,11 +25,11 @@
 #  include <windows.h>
 #endif
 
-namespace stimlab::docking {
+namespace biocad::docking {
 namespace {
 
 namespace fs = std::filesystem;
-namespace chem = stimlab::chem;
+namespace chem = biocad::chem;
 
 // Run a process to completion with no console window; return its exit code (or -1
 // if it could not be launched). Windows-only; the fallback path never calls this.
@@ -299,4 +299,4 @@ DockJobResult VinaGpuBackend::dock(const chem::Molecule& graph, const chem::Conf
                          graph, ligand3d, target);
 }
 
-}  // namespace stimlab::docking
+}  // namespace biocad::docking

@@ -1,6 +1,6 @@
 // core/Manifest.h - the provisioned-runtime manifest + self-heal (Phase E, WP-B).
 //
-// A single source of truth for what StimLab has provisioned under %APPDATA%/StimLab/
+// A single source of truth for what BioCAD has provisioned under %APPDATA%/BioCAD/
 // runtime (engine binaries, prepared receptors, future ML models) and an integrity
 // check. After provisioning, the Provisioner records each component's path + size +
 // content hash into manifest.json. On launch, verify() re-checks every component:
@@ -18,7 +18,7 @@
 
 #include <nlohmann/json.hpp>
 
-namespace stimlab {
+namespace biocad {
 
 // One provisioned artifact tracked for self-heal.
 struct ManifestComponent {
@@ -68,4 +68,4 @@ private:
     std::vector<ManifestComponent> components_;
 };
 
-}  // namespace stimlab
+}  // namespace biocad

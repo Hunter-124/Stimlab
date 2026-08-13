@@ -1,15 +1,18 @@
 #include "agent/AnthropicProvider.h"
 
+#include <string>
 #include <utility>
 
-#ifdef STIMLAB_HAVE_SCIENCE
+#include "core/Version.h"
+
+#ifdef BIOCAD_HAVE_SCIENCE
 #  include <mutex>
 #  include <vector>
 #  include <curl/curl.h>
 #  include <nlohmann/json.hpp>
 #endif
 
-namespace stimlab::agent {
+namespace biocad::agent {
 
 void AnthropicProvider::setApiKey(std::string key) {
     std::lock_guard<std::mutex> lk(mu_);
@@ -22,7 +25,7 @@ bool AnthropicProvider::hasKey() const {
 }
 
 bool AnthropicProvider::transportAvailable() {
-#ifdef STIMLAB_HAVE_SCIENCE
+#ifdef BIOCAD_HAVE_SCIENCE
     return true;
 #else
     return false;
@@ -30,14 +33,14 @@ bool AnthropicProvider::transportAvailable() {
 }
 
 bool AnthropicProvider::ready() const {
-#ifdef STIMLAB_HAVE_SCIENCE
+#ifdef BIOCAD_HAVE_SCIENCE
     return hasKey();
 #else
     return false;
 #endif
 }
 
-#ifdef STIMLAB_HAVE_SCIENCE
+#ifdef BIOCAD_HAVE_SCIENCE
 
 namespace {
 
@@ -247,7 +250,8 @@ LlmResponse AnthropicProvider::send(const LlmRequest& req, const StreamCallback&
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 120L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 20L);
     curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "StimLab/0.1");
+    const std::string ua = std::string("BioCAD/") + kBioCadVersionShort;
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, ua.c_str());
     curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");  // allow gzip if offered
 
     const CURLcode rc = curl_easy_perform(curl);
@@ -286,7 +290,7 @@ LlmResponse AnthropicProvider::send(const LlmRequest& req, const StreamCallback&
     return r;
 }
 
-#else  // !STIMLAB_HAVE_SCIENCE - no transport compiled in.
+#else  // !BIOCAD_HAVE_SCIENCE - no transport compiled in.
 
 LlmResponse AnthropicProvider::send(const LlmRequest&, const StreamCallback&) const {
     LlmResponse r;
@@ -299,4 +303,4 @@ LlmResponse AnthropicProvider::send(const LlmRequest&, const StreamCallback&) co
 
 #endif
 
-}  // namespace stimlab::agent
+}  // namespace biocad::agent

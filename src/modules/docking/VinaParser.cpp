@@ -6,10 +6,10 @@
 #include <sstream>
 #include <string>
 
-namespace stimlab::docking {
+namespace biocad::docking {
 namespace {
 
-namespace chem = stimlab::chem;
+namespace chem = biocad::chem;
 
 bool startsWith(const std::string& s, const char* prefix) {
     return s.rfind(prefix, 0) == 0;
@@ -162,4 +162,4 @@ std::vector<DockPose> parseVinaPdbqt(const std::string& output,
     return poses;
 }
 
-}  // namespace stimlab::docking
+}  // namespace biocad::docking

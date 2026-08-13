@@ -9,7 +9,7 @@
 #include "modules/docking/EngineLocator.h"
 #include "modules/docking/ReceptorPrep.h"
 
-namespace stimlab::docking {
+namespace biocad::docking {
 
 namespace fs = std::filesystem;
 
@@ -92,4 +92,4 @@ void Provisioner::run(bool allowDownload, std::vector<ReceptorTarget> headline) 
     running_.store(false);
 }
 
-}  // namespace stimlab::docking
+}  // namespace biocad::docking

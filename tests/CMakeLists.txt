@@ -1,7 +1,7 @@
 # ---- Catch2 unit tests ----
 find_package(Catch2 CONFIG REQUIRED)
 
-add_executable(stimlab_tests
+add_executable(biocad_tests
   test_core.cpp
   test_fakes.cpp
   test_chem.cpp
@@ -16,21 +16,21 @@ add_executable(stimlab_tests
   test_manifest.cpp
 )
 
-target_link_libraries(stimlab_tests PRIVATE
+target_link_libraries(biocad_tests PRIVATE
   Catch2::Catch2WithMain
-  stimlab_core
-  stimlab_data
-  stimlab_fakes
-  stimlab_chem
-  stimlab_modules
-  stimlab_render
-  stimlab_storage
-  stimlab_agent
-  stimlab_workflow
-  stimlab_ui
+  biocad_core
+  biocad_data
+  biocad_fakes
+  biocad_chem
+  biocad_modules
+  biocad_render
+  biocad_storage
+  biocad_agent
+  biocad_workflow
+  biocad_ui
 )
 
-target_compile_features(stimlab_tests PRIVATE cxx_std_20)
+target_compile_features(biocad_tests PRIVATE cxx_std_20)
 
 include(Catch)
-catch_discover_tests(stimlab_tests)
+catch_discover_tests(biocad_tests)

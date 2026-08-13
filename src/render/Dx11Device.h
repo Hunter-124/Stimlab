@@ -9,7 +9,7 @@ struct ID3D11RenderTargetView;
 struct HWND__;
 using HWND = HWND__*;
 
-namespace stimlab {
+namespace biocad {
 
 class Dx11Device {
 public:
@@ -39,4 +39,4 @@ private:
     ID3D11RenderTargetView* renderTarget_ = nullptr;
 };
 
-}  // namespace stimlab
+}  // namespace biocad

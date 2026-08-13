@@ -14,7 +14,7 @@
 *.user
 CMakeUserPresets.json
 
-# Provisioned runtime / local state (mirrors %APPDATA%/StimLab; never commit)
+# Provisioned runtime / local state (mirrors %APPDATA%/BioCAD; never commit)
 /runtime/
 /artifacts/
 *.db
@@ -33,6 +33,7 @@ CMakeUserPresets.json
 # Local GUI-verification screenshots + scratch debug output
 verify_*.png
 viewport_dbg.txt
+/scratch/
 
 # OS cruft
 Thumbs.db

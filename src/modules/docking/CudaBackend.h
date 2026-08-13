@@ -1,7 +1,7 @@
 // modules/docking/CudaBackend.h - first-party CUDA GPU docking backend.
 //
 // A genuine GPU docking engine for NVIDIA hardware, compiled ONLY with
-// STIMLAB_ENABLE_CUDA (STIMLAB_HAVE_CUDA). It runs a RIGID-BODY pose search of the
+// BIOCAD_ENABLE_CUDA (BIOCAD_HAVE_CUDA). It runs a RIGID-BODY pose search of the
 // embedded ligand conformer inside the receptor box and scores every sampled pose on
 // the GPU with the AutoDock Vina inter-molecular scoring function (Trott & Olson 2010).
 //
@@ -17,7 +17,7 @@
 
 #include "contracts/IDockingBackend.h"
 
-namespace stimlab::docking {
+namespace biocad::docking {
 
 class CudaBackend final : public IDockingBackend {
 public:
@@ -28,4 +28,4 @@ public:
                        const ReceptorTarget& target) const override;
 };
 
-}  // namespace stimlab::docking
+}  // namespace biocad::docking

@@ -8,7 +8,7 @@
 
 #include "core/AppPaths.h"
 
-namespace stimlab {
+namespace biocad {
 
 struct SqliteRunStore::Impl {
     sqlite3* db = nullptr;
@@ -35,7 +35,7 @@ SqliteRunStore::SqliteRunStore() : impl_(std::make_unique<Impl>()) {
     // Seed a couple of illustrative rows on a fresh database so the panel is not
     // empty on first launch (clearly real, persisted rows - not fakes).
     if (ok() && count() == 0) {
-        record({"", "Session", "StimLab", "complete", "", "Run history is now persisted to SQLite."});
+        record({"", "Session", "BioCAD", "complete", "", "Run history is now persisted to SQLite."});
     }
 }
 
@@ -125,4 +125,4 @@ void SqliteRunStore::record(const RunRecord& r) {
     sqlite3_finalize(st);
 }
 
-}  // namespace stimlab
+}  // namespace biocad

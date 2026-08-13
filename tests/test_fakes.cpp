@@ -5,7 +5,7 @@
 
 #include "fakes/FakeBackend.h"
 
-using namespace stimlab;
+using namespace biocad;
 
 namespace {
 Molecule mol(Services& s, const std::string& id) {

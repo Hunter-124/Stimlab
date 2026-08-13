@@ -19,7 +19,7 @@
 struct ID3D11Device;
 struct ID3D11DeviceContext;
 
-namespace stimlab {
+namespace biocad {
 
 class Config;
 class IToolRegistry;  // contracts/IAgentTools.h
@@ -258,4 +258,4 @@ private:
     std::unique_ptr<agent::Agent> agent_;  // LAST: ~Agent joins its worker first
 };
 
-}  // namespace stimlab
+}  // namespace biocad

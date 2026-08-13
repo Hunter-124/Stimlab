@@ -7,7 +7,7 @@
 
 #include <nlohmann/json.hpp>
 
-namespace stimlab {
+namespace biocad {
 
 class Config {
 public:
@@ -43,4 +43,4 @@ private:
     mutable std::mutex mutex_;
 };
 
-}  // namespace stimlab
+}  // namespace biocad

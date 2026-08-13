@@ -2,7 +2,7 @@
 
 #include "data/Domain.h"
 
-namespace stimlab::theme {
+namespace biocad::theme {
 
 namespace {
 ImVec4 rgba(int r, int g, int b, int a = 255) {
@@ -227,4 +227,4 @@ void metricCard(const char* title, const char* value, const char* sub,
     endCard();
 }
 
-}  // namespace stimlab::theme
+}  // namespace biocad::theme

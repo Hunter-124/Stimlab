@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-namespace stimlab::workflow {
+namespace biocad::workflow {
 
 JobSystem::JobSystem(unsigned threads) {
     if (threads == 0) {
@@ -49,4 +49,4 @@ void JobSystem::worker() {
     }
 }
 
-}  // namespace stimlab::workflow
+}  // namespace biocad::workflow

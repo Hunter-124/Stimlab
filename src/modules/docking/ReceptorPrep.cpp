@@ -27,7 +27,7 @@
 #  include <windows.h>
 #endif
 
-namespace stimlab::docking {
+namespace biocad::docking {
 namespace {
 
 namespace fs = std::filesystem;
@@ -182,7 +182,7 @@ std::string readFile(const fs::path& p) {
 std::string boxRemark(bool has, double x, double y, double z) {
     if (!has) return {};
     char b[96];
-    std::snprintf(b, sizeof(b), "REMARK STIMLAB_BOX %.3f %.3f %.3f\n", x, y, z);
+    std::snprintf(b, sizeof(b), "REMARK BIOCAD_BOX %.3f %.3f %.3f\n", x, y, z);
     return b;
 }
 
@@ -293,7 +293,7 @@ ReceptorPdbqt pdbToRigidReceptor(const std::string& pdbText,
 
     std::string text;
     text.reserve(body.size() + 256);
-    text += "REMARK  StimLab rigid receptor (built-in heavy-atom prep; AutoDock4 types)\n";
+    text += "REMARK  BioCAD rigid receptor (built-in heavy-atom prep; AutoDock4 types)\n";
     text += "REMARK  binding-affinity / target-engagement prediction only; not a synthesis artifact\n";
     text += "REMARK  Vina scoring is partial-charge-independent; charges are approximate\n";
     text += body;
@@ -376,12 +376,12 @@ ReceptorPrepResult locatePreparedReceptor(const std::string& targetId) {
         r.ready = true;
         r.path = pdbqt.string();
         r.note = "prepared receptor cached at " + r.path;
-        // Recover the structure-frame box center from the STIMLAB_BOX remark.
+        // Recover the structure-frame box center from the BIOCAD_BOX remark.
         std::ifstream f(pdbqt);
         std::string l;
         while (std::getline(f, l)) {
-            if (l.rfind("REMARK STIMLAB_BOX", 0) == 0) {
-                std::istringstream is(l.substr(std::string("REMARK STIMLAB_BOX").size()));
+            if (l.rfind("REMARK BIOCAD_BOX", 0) == 0) {
+                std::istringstream is(l.substr(std::string("REMARK BIOCAD_BOX").size()));
                 if (is >> r.cx >> r.cy >> r.cz) r.hasBox = true;
                 break;
             }
@@ -499,4 +499,4 @@ ReceptorPrepResult ensureReceptor(const ReceptorTarget& target, bool allowDownlo
     return r;
 }
 
-}  // namespace stimlab::docking
+}  // namespace biocad::docking

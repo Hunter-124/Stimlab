@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-namespace stimlab {
+namespace biocad {
 
 inline constexpr std::uint64_t kFnvOffset = 1469598103934665603ULL;
 inline constexpr std::uint64_t kFnvPrime  = 1099511628211ULL;
@@ -38,4 +38,4 @@ inline std::string hashHex(std::string_view s) {
     return out;
 }
 
-}  // namespace stimlab
+}  // namespace biocad

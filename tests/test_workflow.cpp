@@ -11,7 +11,7 @@
 #include "workflow/Dag.h"
 #include "workflow/JobSystem.h"
 
-using namespace stimlab::workflow;
+using namespace biocad::workflow;
 
 namespace {
 
@@ -300,9 +300,9 @@ TEST_CASE("DiskNodeCache round-trips an output", "[workflow][cache]") {
     // The disk cache persists under %APPDATA%, so assert a miss on a key no test ever
     // writes, and a round-trip on a key we write here (robust across repeated runs).
     DiskNodeCache cache("dag-unit-test");
-    REQUIRE_FALSE(cache.get("stimlab_never_written_key_zzz").has_value());
-    cache.put("stimlab_roundtrip_key", "hello-payload");
-    auto got = cache.get("stimlab_roundtrip_key");
+    REQUIRE_FALSE(cache.get("biocad_never_written_key_zzz").has_value());
+    cache.put("biocad_roundtrip_key", "hello-payload");
+    auto got = cache.get("biocad_roundtrip_key");
     REQUIRE(got.has_value());
     REQUIRE(*got == "hello-payload");
 }

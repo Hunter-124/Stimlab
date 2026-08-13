@@ -3,7 +3,7 @@
 // webFetchRenderedHtml() loads a URL in a HEADLESS WebView2 (a full, invisible Chromium),
 // lets the page's JavaScript run, then returns the rendered DOM HTML so the caller can
 // extract text from JS-built pages a plain curl GET would miss. It is compiled in only
-// when STIMLAB_ENABLE_WEBVIEW2 (STIMLAB_HAVE_WEBVIEW2); otherwise this file provides a
+// when BIOCAD_ENABLE_WEBVIEW2 (BIOCAD_HAVE_WEBVIEW2); otherwise this file provides a
 // stub returning std::nullopt so web_fetch transparently keeps using the curl path.
 //
 // It needs the machine-level Evergreen WebView2 Runtime at RUNTIME (preinstalled on
@@ -17,7 +17,7 @@
 // synthesis/route/precursor content is produced or solicited here.
 #include "agent/WebTools.h"
 
-#ifdef STIMLAB_HAVE_WEBVIEW2
+#ifdef BIOCAD_HAVE_WEBVIEW2
 
 #include <chrono>
 #include <filesystem>
@@ -33,7 +33,7 @@
 
 #include "core/AppPaths.h"
 
-namespace stimlab::agent {
+namespace biocad::agent {
 namespace {
 
 namespace fs = std::filesystem;
@@ -58,7 +58,7 @@ std::string toUtf8(PCWSTR w) {
 
 // A reused, never-shown host window for the (invisible) WebView2 controller. WebView2
 // needs a real parent HWND; we keep it zero-size and never call ShowWindow.
-const wchar_t* kHostClass = L"StimLabWebView2Host";
+const wchar_t* kHostClass = L"BioCADWebView2Host";
 void ensureHostClass() {
     static std::once_flag once;
     std::call_once(once, [] {
@@ -91,7 +91,7 @@ bool runtimeInstalled() {
 }  // namespace
 
 bool webViewRenderAvailable() {
-    // Compiled in (STIMLAB_HAVE_WEBVIEW2) AND the Evergreen Runtime is present.
+    // Compiled in (BIOCAD_HAVE_WEBVIEW2) AND the Evergreen Runtime is present.
     return runtimeInstalled();
 }
 
@@ -195,16 +195,16 @@ std::optional<std::string> webFetchRenderedHtml(const std::string& url, int time
     return result;
 }
 
-}  // namespace stimlab::agent
+}  // namespace biocad::agent
 
-#else  // !STIMLAB_HAVE_WEBVIEW2 - stubs so web_fetch transparently uses the curl path.
+#else  // !BIOCAD_HAVE_WEBVIEW2 - stubs so web_fetch transparently uses the curl path.
 
-namespace stimlab::agent {
+namespace biocad::agent {
 
 bool webViewRenderAvailable() { return false; }
 
 std::optional<std::string> webFetchRenderedHtml(const std::string&, int) { return std::nullopt; }
 
-}  // namespace stimlab::agent
+}  // namespace biocad::agent
 
-#endif  // STIMLAB_HAVE_WEBVIEW2
+#endif  // BIOCAD_HAVE_WEBVIEW2

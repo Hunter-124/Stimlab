@@ -5,7 +5,7 @@
 
 #include "contracts/IModules.h"
 
-namespace stimlab {
+namespace biocad {
 
 struct Services {
     ILibrary*           library    = nullptr;
@@ -23,4 +23,4 @@ struct Services {
     }
 };
 
-}  // namespace stimlab
+}  // namespace biocad

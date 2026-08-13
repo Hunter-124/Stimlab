@@ -24,7 +24,7 @@
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
 
-namespace stimlab::render {
+namespace biocad::render {
 namespace {
 
 // --------------------------------------------------------------------------
@@ -831,4 +831,4 @@ void MolViewport::releaseAll() {
     ready_ = false;
 }
 
-}  // namespace stimlab::render
+}  // namespace biocad::render

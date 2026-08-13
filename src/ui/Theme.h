@@ -3,7 +3,7 @@
 
 #include <imgui.h>
 
-namespace stimlab::theme {
+namespace biocad::theme {
 
 // ---- Palette ---------------------------------------------------------------
 // Background / surface tokens
@@ -76,4 +76,4 @@ void endCard();
 void metricCard(const char* title, const char* value, const char* sub,
                 ImU32 valueColor = kTextHi, float width = 0.0f, float height = 112.0f);
 
-}  // namespace stimlab::theme
+}  // namespace biocad::theme

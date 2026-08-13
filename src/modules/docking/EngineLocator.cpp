@@ -18,7 +18,7 @@
 #  include <windows.h>
 #endif
 
-namespace stimlab::docking {
+namespace biocad::docking {
 
 // Process-wide compute-mode preference (a single global user setting). Thread-safe.
 namespace {
@@ -37,7 +37,7 @@ namespace fs = std::filesystem;
 
 // Official AutoDock Vina 1.2.5 Windows release asset. GitHub publishes no per-asset
 // digest for this release, so kVinaSha256 is left empty by default; integrity can be
-// pinned at runtime (env STIMLAB_VINA_SHA256 or a `vina.sha256` file in the engines
+// pinned at runtime (env BIOCAD_VINA_SHA256 or a `vina.sha256` file in the engines
 // dir) WITHOUT a rebuild. The published byte size IS known and is always enforced as
 // a sanity check, so an HTML error page / truncated transfer is rejected even when no
 // hash is configured. Provisioning stays best-effort and non-blocking either way.
@@ -137,7 +137,7 @@ fs::path vinaGpuDir() {
 std::string expectedVinaSha256() {
     // Runtime override precedence: env var, then a vina.sha256 file beside the binary,
     // then the compile-time pin. All normalised to bare uppercase hex.
-    if (const char* env = std::getenv("STIMLAB_VINA_SHA256"); env && *env) {
+    if (const char* env = std::getenv("BIOCAD_VINA_SHA256"); env && *env) {
         std::string h = trimHash(env);
         if (h.size() == 64) {
             for (auto& c : h) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
@@ -273,7 +273,7 @@ ProvisionResult ensureVina(bool allowDownload) {
         else if (sizeMatch)
             r.note = "downloaded vina.exe (size matches published " +
                      std::to_string(kVinaSizeBytes) + " B; no pinned SHA-256 - "
-                     "set STIMLAB_VINA_SHA256 or runtime/engines/vina.sha256 to verify)";
+                     "set BIOCAD_VINA_SHA256 or runtime/engines/vina.sha256 to verify)";
         else
             r.note = "downloaded vina.exe (" + std::to_string(sz) +
                      " B; UNVERIFIED - no pinned SHA-256 and size differs from published)";
@@ -404,4 +404,4 @@ ProvisionResult ensureObabel() {
     return r;
 }
 
-}  // namespace stimlab::docking
+}  // namespace biocad::docking

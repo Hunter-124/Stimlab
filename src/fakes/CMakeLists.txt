@@ -1,15 +1,15 @@
-# ---- stimlab_fakes : thick fakes implementing the module contracts ----
-add_library(stimlab_fakes STATIC
+# ---- biocad_fakes : thick fakes implementing the module contracts ----
+add_library(biocad_fakes STATIC
   FakeBackend.cpp
 )
 
-target_include_directories(stimlab_fakes PUBLIC
+target_include_directories(biocad_fakes PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/..
 )
 
-target_link_libraries(stimlab_fakes PUBLIC
-  stimlab_contracts
-  stimlab_data
+target_link_libraries(biocad_fakes PUBLIC
+  biocad_contracts
+  biocad_data
 )
 
-target_compile_features(stimlab_fakes PUBLIC cxx_std_20)
+target_compile_features(biocad_fakes PUBLIC cxx_std_20)

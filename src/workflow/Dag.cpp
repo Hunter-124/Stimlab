@@ -14,7 +14,7 @@
 #include "core/AppPaths.h"
 #include "core/Hash.h"
 
-namespace stimlab::workflow {
+namespace biocad::workflow {
 
 namespace fs = std::filesystem;
 
@@ -311,4 +311,4 @@ DagRunResult DagExecutor::run(const Dag& dag, const CancelToken& cancel, Progres
     return res;
 }
 
-}  // namespace stimlab::workflow
+}  // namespace biocad::workflow

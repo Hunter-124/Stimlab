@@ -13,7 +13,7 @@
 #include <cuda_runtime.h>
 #include <math.h>
 
-namespace stimlab::docking {
+namespace biocad::docking {
 namespace {
 
 // Vina intermolecular pair energy for a surface distance `surf` = r - (R_i + R_j).
@@ -117,4 +117,4 @@ bool cudaScorePoses(const float* recXYZ, const int* recType, const float* recRad
     return ok;
 }
 
-}  // namespace stimlab::docking
+}  // namespace biocad::docking

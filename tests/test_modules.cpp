@@ -6,7 +6,7 @@
 
 #include "modules/RealBackend.h"
 
-using namespace stimlab;
+using namespace biocad;
 using Catch::Matchers::WithinAbs;
 
 namespace {

@@ -8,12 +8,12 @@
 #include <unordered_map>
 #include <vector>
 
-namespace stimlab::docking {
+namespace biocad::docking {
 namespace {
 
-namespace chem = stimlab::chem;
+namespace chem = biocad::chem;
 
-// Pauling electronegativity for the elements StimLab's parser admits (others fall
+// Pauling electronegativity for the elements BioCAD's parser admits (others fall
 // back to carbon). Drives the approximate bond-charge smear below.
 double electronegativity(int z) {
     switch (z) {
@@ -191,7 +191,7 @@ PdbqtLigand writeRigidPdbqt(const chem::Molecule& graph, const chem::Conformer& 
     // Vina's tree parser happy (no flexible torsion tree to mis-read).
     std::string text;
     text.reserve(body.size() + 128);
-    text += "REMARK  StimLab rigid ligand (approximate partial charges)\n";
+    text += "REMARK  BioCAD rigid ligand (approximate partial charges)\n";
     text += "REMARK  binding-affinity prediction only; not a synthesis artifact\n";
     text += "ROOT\n";
     text += body;
@@ -320,7 +320,7 @@ PdbqtLigand writeFlexiblePdbqt(const chem::Molecule& graph, const chem::Conforme
     };
 
     std::string header;
-    header += "REMARK  StimLab flexible ligand (" + std::to_string(nRot) +
+    header += "REMARK  BioCAD flexible ligand (" + std::to_string(nRot) +
               " active torsions; approximate partial charges)\n";
     header += "REMARK  binding-affinity prediction only; not a synthesis artifact\n";
     text = header + "ROOT\n";
@@ -334,4 +334,4 @@ PdbqtLigand writeFlexiblePdbqt(const chem::Molecule& graph, const chem::Conforme
     return out;
 }
 
-}  // namespace stimlab::docking
+}  // namespace biocad::docking

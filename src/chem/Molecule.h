@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-namespace stimlab::chem {
+namespace biocad::chem {
 
 struct ElementInfo {
     int z;
@@ -52,4 +52,4 @@ struct Molecule {
     [[nodiscard]] bool empty() const { return atoms.empty(); }
 };
 
-}  // namespace stimlab::chem
+}  // namespace biocad::chem

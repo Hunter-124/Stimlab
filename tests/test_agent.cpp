@@ -15,8 +15,8 @@
 #include "modules/RealBackend.h"
 #include "ui/AppShell.h"
 
-using namespace stimlab;
-using namespace stimlab::agent;
+using namespace biocad;
+using namespace biocad::agent;
 using nlohmann::json;
 
 namespace {
@@ -114,7 +114,7 @@ TEST_CASE("Agent refuses synthesis requests and calls no tools (safety boundary)
     for (const auto& e : snap.transcript)
         if (e.kind == TranscriptEntry::Kind::Assistant) assistantText += e.text;
     REQUIRE_FALSE(assistantText.empty());
-    // The refusal redirects to what StimLab actually does.
+    // The refusal redirects to what BioCAD actually does.
     REQUIRE(assistantText.find("can't") != std::string::npos);
 }
 
@@ -190,7 +190,7 @@ TEST_CASE("parseDuckDuckGoHtml extracts hits and un-wraps redirect URLs", "[agen
 }
 
 TEST_CASE("webToolsAvailable reflects the build, and degrades when absent", "[agent][web]") {
-#ifdef STIMLAB_HAVE_SCIENCE
+#ifdef BIOCAD_HAVE_SCIENCE
     REQUIRE(agent::webToolsAvailable());
 #else
     REQUIRE_FALSE(agent::webToolsAvailable());
@@ -201,7 +201,7 @@ TEST_CASE("webToolsAvailable reflects the build, and degrades when absent", "[ag
 }
 
 // Hidden ([.]) so normal ctest never hits the network; run explicitly in a science
-// build: stimlab_tests.exe "[live]"
+// build: biocad_tests.exe "[live]"
 TEST_CASE("LIVE web_search returns real hits", "[.][live][web]") {
     if (!agent::webToolsAvailable()) {
         SUCCEED("web tools not compiled in this build");
@@ -216,8 +216,8 @@ TEST_CASE("LIVE web_search returns real hits", "[.][live][web]") {
 }
 
 // Hidden ([.]) so normal ctest never spins up WebView2; run explicitly in a build with
-// STIMLAB_ENABLE_WEBVIEW2 on a machine with the Evergreen Runtime:
-//   stimlab_tests.exe "[webview2]"
+// BIOCAD_ENABLE_WEBVIEW2 on a machine with the Evergreen Runtime:
+//   biocad_tests.exe "[webview2]"
 // The div's visible text is COMPUTED by JavaScript ('..._'+(6*7) -> "..._42"), so the
 // literal marker is absent from the page/script source and only appears in the returned
 // DOM if WebView2 actually executed the page JS - a plain GET never would.

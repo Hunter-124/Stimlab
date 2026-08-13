@@ -2,7 +2,7 @@
 //
 // web_search uses DuckDuckGo's HTML endpoint (no API key); web_fetch GETs a URL and
 // extracts readable text. Results are cached + rate-limited under
-// %APPDATA%/StimLab/cache/web. All networking is compiled only with the science
+// %APPDATA%/BioCAD/cache/web. All networking is compiled only with the science
 // feature (libcurl); without it the tools report unavailable and the agent degrades.
 // The HTML parsers (parseDuckDuckGoHtml / htmlToText) are PURE and always compiled so
 // they are unit-testable from fixtures without any network.
@@ -17,12 +17,12 @@
 #include <string>
 #include <vector>
 
-namespace stimlab::agent {
+namespace biocad::agent {
 
 // True iff this build has networking (science feature / libcurl) compiled in.
 bool webToolsAvailable();
 
-// True iff this build can render JavaScript pages (STIMLAB_ENABLE_WEBVIEW2) AND the
+// True iff this build can render JavaScript pages (BIOCAD_ENABLE_WEBVIEW2) AND the
 // machine's Evergreen WebView2 Runtime is installed. False -> web_fetch uses curl only.
 bool webViewRenderAvailable();
 
@@ -62,7 +62,7 @@ WebFetchResult webFetch(const std::string& url, std::size_t maxChars = 8000, boo
 // the rendered DOM HTML (document.documentElement.outerHTML). nullopt if this build has
 // no WebView2, the Evergreen Runtime is absent, navigation fails, or it times out - in
 // which case the caller falls back to the curl path. Compiled in only with
-// STIMLAB_ENABLE_WEBVIEW2; otherwise a stub returns nullopt.
+// BIOCAD_ENABLE_WEBVIEW2; otherwise a stub returns nullopt.
 std::optional<std::string> webFetchRenderedHtml(const std::string& url, int timeoutMs = 20000);
 
 // ---- pure, network-free helpers (unit-testable from fixtures) ----------------
@@ -74,4 +74,4 @@ std::vector<WebHit> parseDuckDuckGoHtml(const std::string& html, int maxResults 
 // and truncate to maxChars.
 std::string htmlToText(const std::string& html, std::size_t maxChars = 8000);
 
-}  // namespace stimlab::agent
+}  // namespace biocad::agent

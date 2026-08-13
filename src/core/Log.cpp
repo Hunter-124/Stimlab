@@ -17,7 +17,7 @@
 #  include <ctime>
 #endif
 
-namespace stimlab::log {
+namespace biocad::log {
 
 namespace {
 
@@ -56,13 +56,13 @@ void init(bool installCrashHandler) {
     std::vector<spdlog::sink_ptr> sinks;
     sinks.push_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
 
-    const auto logfile = (AppPaths::instance().logs() / "stimlab.log").string();
+    const auto logfile = (AppPaths::instance().logs() / "biocad.log").string();
     constexpr std::size_t kMaxSize = 5 * 1024 * 1024;  // 5 MiB
     constexpr std::size_t kMaxFiles = 3;
     sinks.push_back(std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
         logfile, kMaxSize, kMaxFiles));
 
-    auto logger = std::make_shared<spdlog::logger>("stimlab", sinks.begin(), sinks.end());
+    auto logger = std::make_shared<spdlog::logger>("biocad", sinks.begin(), sinks.end());
     logger->set_level(spdlog::level::debug);
     logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
     spdlog::set_default_logger(logger);
@@ -76,11 +76,11 @@ void init(bool installCrashHandler) {
     (void)installCrashHandler;
 #endif
 
-    spdlog::info("StimLab logging initialized -> {}", logfile);
+    spdlog::info("BioCAD logging initialized -> {}", logfile);
 }
 
 void shutdown() {
     spdlog::shutdown();
 }
 
-}  // namespace stimlab::log
+}  // namespace biocad::log

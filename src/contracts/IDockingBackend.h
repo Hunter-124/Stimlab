@@ -17,7 +17,7 @@
 #include "chem/Embed3D.h"
 #include "chem/Molecule.h"
 
-namespace stimlab {
+namespace biocad {
 
 // Search box for docking, in Angstroms (Vina center + size convention).
 struct DockBox {
@@ -87,4 +87,4 @@ public:
                                const ReceptorTarget& target) const = 0;
 };
 
-}  // namespace stimlab
+}  // namespace biocad

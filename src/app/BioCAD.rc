@@ -1,7 +1,7 @@
-// StimLab Windows resources.
+// BioCAD Windows resources.
 //
 // The application icon. As the lowest-id icon resource it becomes the exe's icon in
 // Explorer / the taskbar, and WinMain loads it (id 101) for the window class so the
-// title bar + taskbar show the brand mark. Regenerate StimLab.ico via
+// title bar + taskbar show the brand mark. Regenerate BioCAD.ico via
 // scripts/make-icon.ps1.
-101 ICON "StimLab.ico"
+101 ICON "BioCAD.ico"

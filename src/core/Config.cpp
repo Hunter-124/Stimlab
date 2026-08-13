@@ -2,7 +2,7 @@
 
 #include <fstream>
 
-namespace stimlab {
+namespace biocad {
 
 Config::Config(std::filesystem::path file) : file_(std::move(file)) {}
 
@@ -36,4 +36,4 @@ bool Config::has(const std::string& key) const {
     return data_.contains(key);
 }
 
-}  // namespace stimlab
+}  // namespace biocad

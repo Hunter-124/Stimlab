@@ -9,7 +9,7 @@
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
 
-namespace stimlab {
+namespace biocad {
 
 Dx11Device::~Dx11Device() { shutdown(); }
 
@@ -93,4 +93,4 @@ void Dx11Device::shutdown() {
     if (device_)    { device_->Release();    device_ = nullptr; }
 }
 
-}  // namespace stimlab
+}  // namespace biocad

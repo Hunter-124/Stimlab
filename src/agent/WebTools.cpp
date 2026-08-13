@@ -13,12 +13,13 @@
 
 #include "core/AppPaths.h"
 #include "core/Hash.h"
+#include "core/Version.h"
 
-#ifdef STIMLAB_HAVE_SCIENCE
+#ifdef BIOCAD_HAVE_SCIENCE
 #  include <curl/curl.h>
 #endif
 
-namespace stimlab::agent {
+namespace biocad::agent {
 namespace {
 
 namespace fs = std::filesystem;
@@ -129,7 +130,7 @@ std::string unwrapDdgHref(const std::string& href) {
     return href;
 }
 
-#ifdef STIMLAB_HAVE_SCIENCE
+#ifdef BIOCAD_HAVE_SCIENCE
 std::string extractTitle(const std::string& html) {
     const std::string lh = lower(html);
     const size_t a = lh.find("<title");
@@ -175,8 +176,10 @@ bool httpGet(const std::string& url, std::string& body, std::string& err, long& 
     curl_easy_setopt(c, CURLOPT_CONNECTTIMEOUT, 15L);
     curl_easy_setopt(c, CURLOPT_NOPROGRESS, 1L);
     curl_easy_setopt(c, CURLOPT_ACCEPT_ENCODING, "");
-    curl_easy_setopt(c, CURLOPT_USERAGENT,
-                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 StimLab/0.1");
+    const std::string ua =
+        std::string("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 BioCAD/") +
+        kBioCadVersionShort;
+    curl_easy_setopt(c, CURLOPT_USERAGENT, ua.c_str());
     const CURLcode rc = curl_easy_perform(c);
     curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &code);
     curl_easy_cleanup(c);
@@ -223,7 +226,7 @@ void writeFile(const fs::path& p, const std::string& s) {
     std::ofstream out(p, std::ios::binary);
     out << s;
 }
-#endif  // STIMLAB_HAVE_SCIENCE
+#endif  // BIOCAD_HAVE_SCIENCE
 
 }  // namespace
 
@@ -295,7 +298,7 @@ std::vector<WebHit> parseDuckDuckGoHtml(const std::string& html, int maxResults)
 }
 
 bool webToolsAvailable() {
-#ifdef STIMLAB_HAVE_SCIENCE
+#ifdef BIOCAD_HAVE_SCIENCE
     return true;
 #else
     return false;
@@ -304,7 +307,7 @@ bool webToolsAvailable() {
 
 WebSearchResult webSearch(const std::string& query, int maxResults) {
     WebSearchResult r;
-#ifndef STIMLAB_HAVE_SCIENCE
+#ifndef BIOCAD_HAVE_SCIENCE
     (void)maxResults;
     (void)query;
     r.error = "web search unavailable: this build has no networking (rebuild with the science feature).";
@@ -354,7 +357,7 @@ WebSearchResult webSearch(const std::string& query, int maxResults) {
 WebFetchResult webFetch(const std::string& url, std::size_t maxChars, bool renderJs) {
     WebFetchResult r;
     r.finalUrl = url;
-#ifndef STIMLAB_HAVE_SCIENCE
+#ifndef BIOCAD_HAVE_SCIENCE
     (void)maxChars;
     (void)renderJs;
     r.error = "web fetch unavailable: this build has no networking (rebuild with the science feature).";
@@ -374,7 +377,7 @@ WebFetchResult webFetch(const std::string& url, std::size_t maxChars, bool rende
         r.fromCache = true;
         return r;
     }
-#ifdef STIMLAB_HAVE_WEBVIEW2
+#ifdef BIOCAD_HAVE_WEBVIEW2
     if (renderJs) {
         rateLimit();  // stay polite on the rendered path too
         if (auto html = webFetchRenderedHtml(url)) {
@@ -409,4 +412,4 @@ WebFetchResult webFetch(const std::string& url, std::size_t maxChars, bool rende
 #endif
 }
 
-}  // namespace stimlab::agent
+}  // namespace biocad::agent

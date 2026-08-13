@@ -46,6 +46,17 @@ jobs:
         shell: pwsh
         run: echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
 
+      - name: Assert vcpkg.json version matches project(BioCAD VERSION ...)
+        shell: pwsh
+        run: |
+          $cmakeVer = & ./scripts/version.ps1
+          $vcpkgVer = (Get-Content vcpkg.json -Raw | ConvertFrom-Json).version
+          Write-Host "CMakeLists.txt=$cmakeVer  vcpkg.json=$vcpkgVer"
+          if ($cmakeVer -ne $vcpkgVer) {
+            throw "version mismatch: CMakeLists.txt=$cmakeVer vcpkg.json=$vcpkgVer"
+          }
+          echo "BIOCAD_VERSION=$cmakeVer" >> $env:GITHUB_ENV
+
       - name: windows (dynamic) - configure, build, ctest
         shell: pwsh
         run: |
@@ -62,21 +73,21 @@ jobs:
 
       - name: Package release zip
         shell: pwsh
-        run: ./scripts/package.ps1 -NoBuild -Preset windows-static -Version 0.1.0
+        run: ./scripts/package.ps1 -NoBuild -Preset windows-static
 
       # Optional code-signing: only runs if a cert secret is configured (no-op otherwise).
       - name: Code-sign (optional)
-        if: ${{ env.STIMLAB_SIGN_SHA1 != '' || env.STIMLAB_SIGN_PFX != '' }}
+        if: ${{ env.BIOCAD_SIGN_SHA1 != '' || env.BIOCAD_SIGN_PFX != '' }}
         shell: pwsh
         env:
-          STIMLAB_SIGN_PFX: ${{ secrets.STIMLAB_SIGN_PFX }}
-          STIMLAB_SIGN_PFX_PASSWORD: ${{ secrets.STIMLAB_SIGN_PFX_PASSWORD }}
-          STIMLAB_SIGN_SHA1: ${{ secrets.STIMLAB_SIGN_SHA1 }}
-        run: ./scripts/sign.ps1 -Exe dist/StimLab-0.1.0-win-x64/StimLab.exe
+          BIOCAD_SIGN_PFX: ${{ secrets.BIOCAD_SIGN_PFX }}
+          BIOCAD_SIGN_PFX_PASSWORD: ${{ secrets.BIOCAD_SIGN_PFX_PASSWORD }}
+          BIOCAD_SIGN_SHA1: ${{ secrets.BIOCAD_SIGN_SHA1 }}
+        run: ./scripts/sign.ps1 -Exe "dist/BioCAD-$env:BIOCAD_VERSION-win-x64/BioCAD.exe"
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: StimLab-win-x64
-          path: dist/StimLab-*-win-x64.zip
+          name: BioCAD-win-x64
+          path: dist/BioCAD-*-win-x64.zip
           if-no-files-found: error

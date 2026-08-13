@@ -6,7 +6,7 @@
 #include <map>
 #include <vector>
 
-namespace stimlab::chem {
+namespace biocad::chem {
 
 namespace {
 
@@ -230,4 +230,4 @@ std::optional<Molecule> parseSmiles(std::string_view s) {
     return m;
 }
 
-}  // namespace stimlab::chem
+}  // namespace biocad::chem

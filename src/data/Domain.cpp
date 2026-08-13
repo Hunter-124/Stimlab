@@ -1,6 +1,6 @@
 #include "data/Domain.h"
 
-namespace stimlab {
+namespace biocad {
 
 const char* verdictLabel(Verdict v) {
     switch (v) {
@@ -12,4 +12,4 @@ const char* verdictLabel(Verdict v) {
     return "Info";
 }
 
-}  // namespace stimlab
+}  // namespace biocad

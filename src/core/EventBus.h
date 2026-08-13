@@ -10,7 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace stimlab {
+namespace biocad {
 
 class EventBus {
 public:
@@ -66,4 +66,4 @@ private:
     Token counter_{0};
 };
 
-}  // namespace stimlab
+}  // namespace biocad

@@ -6,7 +6,7 @@
 #include <utility>
 #include <variant>
 
-namespace stimlab {
+namespace biocad {
 
 // A structured error: a category code plus a human-readable message.
 struct Error {
@@ -89,4 +89,4 @@ private:
 
 using Status = Result<void>;
 
-}  // namespace stimlab
+}  // namespace biocad

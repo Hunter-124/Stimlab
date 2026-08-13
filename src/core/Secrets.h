@@ -6,7 +6,7 @@
 
 #include "core/Error.h"
 
-namespace stimlab {
+namespace biocad {
 
 class Secrets {
 public:
@@ -17,4 +17,4 @@ public:
     static Result<std::string> unprotect(const std::string& base64Blob);
 };
 
-}  // namespace stimlab
+}  // namespace biocad

@@ -20,7 +20,7 @@
 #include "modules/docking/ReceptorPrep.h"
 #include "modules/docking/VinaParser.h"
 
-using namespace stimlab;
+using namespace biocad;
 using Catch::Matchers::WithinAbs;
 
 namespace {
@@ -340,25 +340,25 @@ TEST_CASE("Receptor prep can retain a named cofactor", "[docking][receptor]") {
 
 TEST_CASE("Prepared-receptor cache lookup is honest", "[docking][receptor]") {
     // A target with no cached PDBQT is reported not-ready (no network on this path).
-    docking::ReceptorPrepResult miss = docking::locatePreparedReceptor("__stimlab_absent_id__");
+    docking::ReceptorPrepResult miss = docking::locatePreparedReceptor("__biocad_absent_id__");
     REQUIRE_FALSE(miss.ready);
     REQUIRE(miss.note.find("no prepared receptor") != std::string::npos);
 
     // locate-only ensureReceptor never reaches the network and stays in fallback.
     ReceptorTarget t;
-    t.id = "__stimlab_absent_id__";
+    t.id = "__biocad_absent_id__";
     t.pdb = "0XYZ";
     REQUIRE_FALSE(docking::ensureReceptor(t, /*allowDownload=*/false).ready);
 
     // When a prepared PDBQT IS on disk, the lookup finds it and returns its path.
     std::error_code ec;
     std::filesystem::create_directories(docking::receptorsDir(), ec);
-    const auto path = docking::receptorsDir() / "__stimlab_unit__.pdbqt";
+    const auto path = docking::receptorsDir() / "__biocad_unit__.pdbqt";
     {
         std::ofstream o(path, std::ios::binary);
         o << docking::pdbToRigidReceptor(syntheticPdb()).text;
     }
-    docking::ReceptorPrepResult hit = docking::locatePreparedReceptor("__stimlab_unit__");
+    docking::ReceptorPrepResult hit = docking::locatePreparedReceptor("__biocad_unit__");
     REQUIRE(hit.ready);
     REQUIRE(hit.path == path.string());
     std::filesystem::remove(path, ec);  // clean up the unit artifact
