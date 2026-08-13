@@ -85,6 +85,7 @@ file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/assets/packs"
 # ---- Project modules ------------------------------------------------------
 add_subdirectory(src/core)
 add_subdirectory(src/data)
+add_subdirectory(src/numeric)
 add_subdirectory(src/chem)
 add_subdirectory(src/contracts)
 add_subdirectory(src/packs)

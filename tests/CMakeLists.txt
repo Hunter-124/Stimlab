@@ -16,12 +16,14 @@ add_executable(biocad_tests
   test_manifest.cpp
   test_packs.cpp
   test_provenance.cpp
+  test_numeric.cpp
 )
 
 target_link_libraries(biocad_tests PRIVATE
   Catch2::Catch2WithMain
   biocad_core
   biocad_data
+  biocad_numeric
   biocad_packs
   biocad_fakes
   biocad_chem
