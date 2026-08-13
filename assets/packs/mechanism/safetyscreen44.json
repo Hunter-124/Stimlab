@@ -1,0 +1,276 @@
+{
+  "schemaVersion": 1,
+  "kind": "panel",
+  "panelId": "safetyscreen44",
+  "title": "SafetyScreen44 (in vitro pharmacological profiling minimum panel)",
+  "declaredSize": 44,
+  "licence": "Roster of publicly named protein targets. No third-party database content is redistributed here.",
+  "sourceNote": "Roster transcribed from the in vitro pharmacological profiling minimum panel described by Bowes and co-workers in Nature Reviews Drug Discovery (2012), as enumerated in the Eurofins SafetyScreen44 datasheet. Verify any individual row against those sources before citing it: this file is a working roster, not a reproduction of the vendor's catalogue.",
+  "coverageNote": "A panel screen answers only for the targets that were actually screened. Every row this build cannot dock is reported as unscreened with the reason, and the unscreened count is the headline number.",
+  "targets": [
+    {
+      "id": "ADORA2A",
+      "name": "Adenosine A2A receptor",
+      "targetClass": "GPCR",
+      "targetRef": "ADORA2A"
+    },
+    {
+      "id": "ADRA1A",
+      "name": "Alpha-1A adrenergic receptor",
+      "targetClass": "GPCR",
+      "targetRef": "ADRA1A"
+    },
+    {
+      "id": "ADRA2A",
+      "name": "Alpha-2A adrenergic receptor",
+      "targetClass": "GPCR",
+      "targetRef": "ADRA2A"
+    },
+    {
+      "id": "ADRB1",
+      "name": "Beta-1 adrenergic receptor",
+      "targetClass": "GPCR",
+      "targetRef": "ADRB1"
+    },
+    {
+      "id": "ADRB2",
+      "name": "Beta-2 adrenergic receptor",
+      "targetClass": "GPCR",
+      "targetRef": "ADRB2"
+    },
+    {
+      "id": "CB1",
+      "name": "Cannabinoid CB1 receptor",
+      "targetClass": "GPCR",
+      "targetRef": "CB1"
+    },
+    {
+      "id": "CCKAR",
+      "name": "Cholecystokinin CCK-A (CCK1) receptor",
+      "targetClass": "GPCR",
+      "targetRef": "CCKAR"
+    },
+    {
+      "id": "D1",
+      "name": "Dopamine D1 receptor",
+      "targetClass": "GPCR",
+      "targetRef": "D1"
+    },
+    {
+      "id": "D2",
+      "name": "Dopamine D2 receptor",
+      "targetClass": "GPCR",
+      "targetRef": "D2"
+    },
+    {
+      "id": "EDNRA",
+      "name": "Endothelin ETA receptor",
+      "targetClass": "GPCR",
+      "targetRef": "EDNRA"
+    },
+    {
+      "id": "H1",
+      "name": "Histamine H1 receptor",
+      "targetClass": "GPCR",
+      "targetRef": "H1"
+    },
+    {
+      "id": "HRH2",
+      "name": "Histamine H2 receptor",
+      "targetClass": "GPCR",
+      "targetRef": "HRH2"
+    },
+    {
+      "id": "M1",
+      "name": "Muscarinic M1 receptor",
+      "targetClass": "GPCR",
+      "targetRef": "M1"
+    },
+    {
+      "id": "M2",
+      "name": "Muscarinic M2 receptor",
+      "targetClass": "GPCR",
+      "targetRef": "M2"
+    },
+    {
+      "id": "M3",
+      "name": "Muscarinic M3 receptor",
+      "targetClass": "GPCR",
+      "targetRef": "M3"
+    },
+    {
+      "id": "MOR",
+      "name": "Mu-opioid receptor",
+      "targetClass": "GPCR",
+      "targetRef": "MOR"
+    },
+    {
+      "id": "OPRD1",
+      "name": "Delta opioid receptor",
+      "targetClass": "GPCR",
+      "targetRef": "OPRD1"
+    },
+    {
+      "id": "OPRK1",
+      "name": "Kappa opioid receptor",
+      "targetClass": "GPCR",
+      "targetRef": "OPRK1"
+    },
+    {
+      "id": "HTR1B",
+      "name": "Serotonin 5-HT1B receptor",
+      "targetClass": "GPCR",
+      "targetRef": "HTR1B"
+    },
+    {
+      "id": "5HT2A",
+      "name": "5-HT2A receptor",
+      "targetClass": "GPCR",
+      "targetRef": "5HT2A"
+    },
+    {
+      "id": "HTR2B",
+      "name": "Serotonin 5-HT2B receptor",
+      "targetClass": "GPCR",
+      "targetRef": "HTR2B"
+    },
+    {
+      "id": "TACR1",
+      "name": "Tachykinin NK1 (substance P) receptor",
+      "targetClass": "GPCR",
+      "targetRef": "TACR1"
+    },
+    {
+      "id": "AVPR1A",
+      "name": "Vasopressin V1A receptor",
+      "targetClass": "GPCR",
+      "targetRef": "AVPR1A"
+    },
+    {
+      "id": "HTR3A",
+      "name": "5-HT3A receptor (serotonin-gated ion channel)",
+      "targetClass": "ligand-gated ion channel",
+      "targetRef": "HTR3A"
+    },
+    {
+      "id": "GABRA1",
+      "name": "GABA-A receptor, central benzodiazepine site (alpha-1 subunit)",
+      "targetClass": "ligand-gated ion channel",
+      "targetRef": "GABRA1"
+    },
+    {
+      "id": "GABAA_CL",
+      "name": "GABA-A receptor chloride channel, TBPS (picrotoxin) site",
+      "targetClass": "ligand-gated ion channel",
+      "targetRef": "GABAA_CL"
+    },
+    {
+      "id": "CHRNA4",
+      "name": "Nicotinic acetylcholine receptor alpha4beta2 (alpha-4 subunit)",
+      "targetClass": "ligand-gated ion channel",
+      "targetRef": "CHRNA4"
+    },
+    {
+      "id": "NMDA",
+      "name": "NMDA receptor (GluN1/GluN2B)",
+      "targetClass": "ligand-gated ion channel",
+      "targetRef": "NMDA"
+    },
+    {
+      "id": "CACNA1C",
+      "name": "L-type calcium channel Cav1.2 (alpha-1C subunit)",
+      "targetClass": "voltage-gated ion channel",
+      "targetRef": "CACNA1C"
+    },
+    {
+      "id": "hERG",
+      "name": "hERG (Kv11.1 cardiac safety)",
+      "targetClass": "voltage-gated ion channel",
+      "targetRef": "hERG"
+    },
+    {
+      "id": "KCNQ1",
+      "name": "Potassium channel KCNQ1 (KvLQT1)",
+      "targetClass": "voltage-gated ion channel",
+      "targetRef": "KCNQ1"
+    },
+    {
+      "id": "SCN5A",
+      "name": "Cardiac sodium channel Nav1.5",
+      "targetClass": "voltage-gated ion channel",
+      "targetRef": "SCN5A"
+    },
+    {
+      "id": "DAT",
+      "name": "DAT (dopamine transporter)",
+      "targetClass": "transporter",
+      "targetRef": "DAT"
+    },
+    {
+      "id": "NET",
+      "name": "NET (norepinephrine transporter)",
+      "targetClass": "transporter",
+      "targetRef": "NET"
+    },
+    {
+      "id": "SERT",
+      "name": "SERT (serotonin transporter)",
+      "targetClass": "transporter",
+      "targetRef": "SERT"
+    },
+    {
+      "id": "AR",
+      "name": "Androgen receptor",
+      "targetClass": "nuclear receptor",
+      "targetRef": "AR"
+    },
+    {
+      "id": "NR3C1",
+      "name": "Glucocorticoid receptor",
+      "targetClass": "nuclear receptor",
+      "targetRef": "NR3C1"
+    },
+    {
+      "id": "AChE",
+      "name": "Acetylcholinesterase",
+      "targetClass": "enzyme",
+      "targetRef": "AChE"
+    },
+    {
+      "id": "PTGS1",
+      "name": "COX-1 (prostaglandin G/H synthase 1)",
+      "targetClass": "enzyme",
+      "targetRef": "PTGS1"
+    },
+    {
+      "id": "PTGS2",
+      "name": "COX-2 (prostaglandin G/H synthase 2)",
+      "targetClass": "enzyme",
+      "targetRef": "PTGS2"
+    },
+    {
+      "id": "MAOA",
+      "name": "Monoamine oxidase A",
+      "targetClass": "enzyme",
+      "targetRef": "MAOA"
+    },
+    {
+      "id": "PDE3A",
+      "name": "Phosphodiesterase 3A",
+      "targetClass": "enzyme",
+      "targetRef": "PDE3A"
+    },
+    {
+      "id": "PDE4D",
+      "name": "Phosphodiesterase 4D",
+      "targetClass": "enzyme",
+      "targetRef": "PDE4D"
+    },
+    {
+      "id": "LCK",
+      "name": "Lymphocyte-specific protein tyrosine kinase (Lck)",
+      "targetClass": "kinase",
+      "targetRef": "LCK"
+    }
+  ]
+}

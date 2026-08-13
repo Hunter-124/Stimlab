@@ -1,0 +1,1451 @@
+{
+  "schemaVersion": 1,
+  "kind": "interactions",
+  "id": "cyp-and-supplements",
+  "title": "CYP/transporter roles and hand-curated supplement interaction flags",
+  "licence": "Enzyme and transporter role assignments are taken from the FDA Drug Development and Drug Interactions substrate/inhibitor/inducer tables, a US Government work in the public domain. Supplement, food and lifestyle entries are hand-curated and each carries its own prose citation. No licence-restricted commercial interaction database contributed to this file; docs/mechanism.md names every source that was ruled out and why.",
+  "boundaryNote": "This is a mechanism flag, not advice. It states a documented mechanism by which one member could change another's exposure or effect; it does not say the interaction will occur, how large it would be, or what anyone should take. There is no severity score here on purpose.",
+  "coverageNote": "A flag list is bounded by this pack. A member BioCAD does not know is reported in unknownMembers rather than silently dropped, and an empty flag list means nothing in this pack matched - not that the combination is safe.",
+  "members": [
+    {
+      "id": "caffeine",
+      "name": "Caffeine",
+      "kind": "food",
+      "substrateOf": [
+        "CYP1A2"
+      ],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "adenosine receptor antagonism"
+      ],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": "Predominantly CYP1A2-cleared, which is why CYP1A2 perpetrators dominate its interaction list."
+    },
+    {
+      "id": "theophylline",
+      "name": "Theophylline",
+      "kind": "drug",
+      "substrateOf": [
+        "CYP1A2"
+      ],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "melatonin",
+      "name": "Melatonin",
+      "kind": "supplement",
+      "substrateOf": [
+        "CYP1A2"
+      ],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [],
+      "citation": "Melatonin is cleared largely by CYP1A2; the CYP1A2 substrate assignment follows the FDA substrate table and the melatonin clinical-pharmacology literature.",
+      "note": ""
+    },
+    {
+      "id": "fluvoxamine",
+      "name": "Fluvoxamine",
+      "kind": "drug",
+      "substrateOf": [
+        "CYP2D6"
+      ],
+      "inhibitorOf": [
+        "CYP1A2",
+        "CYP2C19"
+      ],
+      "inducerOf": [],
+      "mechanisms": [
+        "serotonin reuptake inhibition"
+      ],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "ciprofloxacin",
+      "name": "Ciprofloxacin",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP1A2"
+      ],
+      "inducerOf": [],
+      "mechanisms": [
+        "chelation-susceptible absorption"
+      ],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "cimetidine",
+      "name": "Cimetidine",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP1A2",
+        "CYP2D6",
+        "CYP3A4"
+      ],
+      "inducerOf": [],
+      "mechanisms": [],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "ketoconazole",
+      "name": "Ketoconazole",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP3A4"
+      ],
+      "inducerOf": [],
+      "mechanisms": [
+        "P-gp inhibition"
+      ],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "itraconazole",
+      "name": "Itraconazole",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP3A4"
+      ],
+      "inducerOf": [],
+      "mechanisms": [
+        "P-gp inhibition"
+      ],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "clarithromycin",
+      "name": "Clarithromycin",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP3A4"
+      ],
+      "inducerOf": [],
+      "mechanisms": [
+        "P-gp inhibition"
+      ],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "ritonavir",
+      "name": "Ritonavir",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP3A4",
+        "CYP2D6"
+      ],
+      "inducerOf": [
+        "CYP1A2",
+        "CYP2C19"
+      ],
+      "mechanisms": [],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "rifampin",
+      "name": "Rifampin (rifampicin)",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [
+        "CYP3A4",
+        "CYP2C19",
+        "CYP2C9",
+        "CYP1A2"
+      ],
+      "mechanisms": [
+        "P-gp induction"
+      ],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "carbamazepine",
+      "name": "Carbamazepine",
+      "kind": "drug",
+      "substrateOf": [
+        "CYP3A4"
+      ],
+      "inhibitorOf": [],
+      "inducerOf": [
+        "CYP3A4",
+        "CYP2C9"
+      ],
+      "mechanisms": [],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "phenytoin",
+      "name": "Phenytoin",
+      "kind": "drug",
+      "substrateOf": [
+        "CYP2C9",
+        "CYP2C19"
+      ],
+      "inhibitorOf": [],
+      "inducerOf": [
+        "CYP3A4",
+        "CYP2C9"
+      ],
+      "mechanisms": [],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "paroxetine",
+      "name": "Paroxetine",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP2D6"
+      ],
+      "inducerOf": [],
+      "mechanisms": [
+        "serotonin reuptake inhibition"
+      ],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "fluoxetine",
+      "name": "Fluoxetine",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP2D6",
+        "CYP2C19"
+      ],
+      "inducerOf": [],
+      "mechanisms": [
+        "serotonin reuptake inhibition"
+      ],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "sertraline",
+      "name": "Sertraline",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP2D6"
+      ],
+      "inducerOf": [],
+      "mechanisms": [
+        "serotonin reuptake inhibition"
+      ],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "quinidine",
+      "name": "Quinidine",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP2D6"
+      ],
+      "inducerOf": [],
+      "mechanisms": [
+        "P-gp inhibition"
+      ],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "bupropion",
+      "name": "Bupropion",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP2D6"
+      ],
+      "inducerOf": [],
+      "mechanisms": [],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "terbinafine",
+      "name": "Terbinafine",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP2D6"
+      ],
+      "inducerOf": [],
+      "mechanisms": [],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "phenelzine",
+      "name": "Phenelzine",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "MAO inhibition"
+      ],
+      "citation": "Phenelzine is an irreversible nonselective MAO inhibitor; the mechanism class is stated in its FDA label.",
+      "note": ""
+    },
+    {
+      "id": "tranylcypromine",
+      "name": "Tranylcypromine",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "MAO inhibition"
+      ],
+      "citation": "Tranylcypromine is an irreversible nonselective MAO inhibitor; the mechanism class is stated in its FDA label.",
+      "note": ""
+    },
+    {
+      "id": "selegiline",
+      "name": "Selegiline",
+      "kind": "drug",
+      "substrateOf": [
+        "CYP2B6"
+      ],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "MAO inhibition"
+      ],
+      "citation": "Selegiline is MAO-B selective at low dose and loses selectivity as dose rises; the mechanism class is stated in its FDA label.",
+      "note": ""
+    },
+    {
+      "id": "moclobemide",
+      "name": "Moclobemide",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "MAO inhibition"
+      ],
+      "citation": "Moclobemide is a reversible MAO-A inhibitor; the mechanism class is stated in its product information.",
+      "note": ""
+    },
+    {
+      "id": "linezolid",
+      "name": "Linezolid",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "MAO inhibition"
+      ],
+      "citation": "Linezolid is a weak reversible MAO inhibitor; the mechanism and the resulting serotonergic caution are stated in its FDA label.",
+      "note": ""
+    },
+    {
+      "id": "amphetamine",
+      "name": "Amphetamine",
+      "kind": "drug",
+      "substrateOf": [
+        "CYP2D6"
+      ],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "monoamine release"
+      ],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "methylphenidate",
+      "name": "Methylphenidate",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "monoamine reuptake inhibition"
+      ],
+      "citation": "Methylphenidate is a dopamine/norepinephrine reuptake inhibitor; the mechanism class is stated in its FDA label.",
+      "note": ""
+    },
+    {
+      "id": "phentermine",
+      "name": "Phentermine",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "monoamine release"
+      ],
+      "citation": "Phentermine is a sympathomimetic amine releasing agent; the mechanism class is stated in its FDA label.",
+      "note": ""
+    },
+    {
+      "id": "sumatriptan",
+      "name": "Sumatriptan",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "serotonin receptor agonism"
+      ],
+      "citation": "Sumatriptan is a 5-HT1B/1D agonist; the mechanism class is stated in its FDA label.",
+      "note": ""
+    },
+    {
+      "id": "dextromethorphan",
+      "name": "Dextromethorphan",
+      "kind": "drug",
+      "substrateOf": [
+        "CYP2D6"
+      ],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "serotonin reuptake inhibition"
+      ],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "codeine",
+      "name": "Codeine",
+      "kind": "drug",
+      "substrateOf": [
+        "CYP2D6",
+        "CYP3A4"
+      ],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "tramadol",
+      "name": "Tramadol",
+      "kind": "drug",
+      "substrateOf": [
+        "CYP2D6",
+        "CYP3A4"
+      ],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "serotonin reuptake inhibition"
+      ],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "midazolam",
+      "name": "Midazolam",
+      "kind": "drug",
+      "substrateOf": [
+        "CYP3A4"
+      ],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "simvastatin",
+      "name": "Simvastatin",
+      "kind": "drug",
+      "substrateOf": [
+        "CYP3A4"
+      ],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "OATP substrate"
+      ],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "atorvastatin",
+      "name": "Atorvastatin",
+      "kind": "drug",
+      "substrateOf": [
+        "CYP3A4"
+      ],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "OATP substrate"
+      ],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "warfarin",
+      "name": "Warfarin",
+      "kind": "drug",
+      "substrateOf": [
+        "CYP2C9",
+        "CYP3A4"
+      ],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "vitamin K antagonism",
+        "platelet-independent bleeding risk"
+      ],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "clopidogrel",
+      "name": "Clopidogrel",
+      "kind": "drug",
+      "substrateOf": [
+        "CYP2C19"
+      ],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "platelet aggregation inhibition"
+      ],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "aspirin",
+      "name": "Aspirin",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "platelet aggregation inhibition"
+      ],
+      "citation": "Aspirin irreversibly acetylates platelet COX-1; the mechanism is stated in its FDA label.",
+      "note": ""
+    },
+    {
+      "id": "tamoxifen",
+      "name": "Tamoxifen",
+      "kind": "drug",
+      "substrateOf": [
+        "CYP2D6",
+        "CYP3A4"
+      ],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "atomoxetine",
+      "name": "Atomoxetine",
+      "kind": "drug",
+      "substrateOf": [
+        "CYP2D6"
+      ],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "cyclosporine",
+      "name": "Cyclosporine",
+      "kind": "drug",
+      "substrateOf": [
+        "CYP3A4"
+      ],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "P-gp substrate",
+        "P-gp inhibition"
+      ],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "digoxin",
+      "name": "Digoxin",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "P-gp substrate"
+      ],
+      "citation": "Digoxin is the FDA table's index P-gp substrate.",
+      "note": ""
+    },
+    {
+      "id": "levothyroxine",
+      "name": "Levothyroxine",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "chelation-susceptible absorption"
+      ],
+      "citation": "Levothyroxine absorption is reduced by polyvalent cations and by binding agents; the interaction is stated in its FDA label.",
+      "note": ""
+    },
+    {
+      "id": "tetracycline",
+      "name": "Tetracycline",
+      "kind": "drug",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "chelation-susceptible absorption"
+      ],
+      "citation": "Tetracyclines chelate polyvalent cations, reducing absorption; the interaction is stated in the FDA label.",
+      "note": ""
+    },
+    {
+      "id": "tizanidine",
+      "name": "Tizanidine",
+      "kind": "drug",
+      "substrateOf": [
+        "CYP1A2"
+      ],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [],
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain).",
+      "note": ""
+    },
+    {
+      "id": "grapefruit-juice",
+      "name": "Grapefruit juice",
+      "kind": "food",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP3A4"
+      ],
+      "inducerOf": [],
+      "mechanisms": [
+        "OATP inhibition"
+      ],
+      "citation": "Grapefruit furanocoumarins (bergamottin and 6',7'-dihydroxybergamottin) cause mechanism-based inactivation of intestinal CYP3A4 and inhibit intestinal OATP; the interaction and its mechanism are described in FDA labelling guidance and in the grapefruit-juice interaction literature.",
+      "note": ""
+    },
+    {
+      "id": "seville-orange-juice",
+      "name": "Seville (sour) orange juice",
+      "kind": "food",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP3A4"
+      ],
+      "inducerOf": [],
+      "mechanisms": [],
+      "citation": "Seville orange juice contains the same furanocoumarins as grapefruit and shows the same intestinal CYP3A4 mechanism-based inactivation in the interaction literature.",
+      "note": ""
+    },
+    {
+      "id": "bitter-orange",
+      "name": "Bitter orange (Citrus aurantium, synephrine)",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "monoamine release"
+      ],
+      "citation": "Bitter orange extracts supply p-synephrine, an adrenergic agonist/releasing amine; the pharmacology is described in the sympathomimetic supplement literature.",
+      "note": ""
+    },
+    {
+      "id": "st-johns-wort",
+      "name": "St John's wort (Hypericum perforatum)",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [
+        "CYP3A4",
+        "CYP2C19",
+        "CYP2C9"
+      ],
+      "mechanisms": [
+        "P-gp induction",
+        "serotonin reuptake inhibition"
+      ],
+      "citation": "Hyperforin is a potent PXR agonist and induces CYP3A4 and P-gp; St John's wort is the FDA table's index herbal inducer, and its serotonergic activity is described in the herb-drug interaction literature.",
+      "note": ""
+    },
+    {
+      "id": "quercetin",
+      "name": "Quercetin",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP3A4",
+        "CYP2C8"
+      ],
+      "inducerOf": [],
+      "mechanisms": [
+        "OATP inhibition"
+      ],
+      "citation": "Quercetin inhibits CYP3A4 and intestinal OATP in vitro; the flavonoid-transporter interaction literature describes both.",
+      "note": ""
+    },
+    {
+      "id": "egcg",
+      "name": "EGCG (epigallocatechin gallate)",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "OATP inhibition"
+      ],
+      "citation": "Green tea catechins including EGCG inhibit intestinal OATP1A2/OATP2B1 uptake; described in the green-tea/nadolol interaction literature.",
+      "note": ""
+    },
+    {
+      "id": "green-tea-extract",
+      "name": "Green tea extract",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "OATP inhibition"
+      ],
+      "citation": "Concentrated green tea catechins inhibit intestinal OATP uptake; described in the green-tea/nadolol interaction literature.",
+      "note": ""
+    },
+    {
+      "id": "piperine",
+      "name": "Piperine (black pepper alkaloid)",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP3A4"
+      ],
+      "inducerOf": [],
+      "mechanisms": [
+        "P-gp inhibition"
+      ],
+      "citation": "Piperine inhibits CYP3A4 and P-gp and slows glucuronidation, which is the documented basis of its use as a bioavailability enhancer.",
+      "note": ""
+    },
+    {
+      "id": "black-pepper",
+      "name": "Black pepper",
+      "kind": "food",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP3A4"
+      ],
+      "inducerOf": [],
+      "mechanisms": [
+        "P-gp inhibition"
+      ],
+      "citation": "Black pepper is the dietary source of piperine; see the piperine entry.",
+      "note": ""
+    },
+    {
+      "id": "curcumin",
+      "name": "Curcumin (turmeric)",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP3A4"
+      ],
+      "inducerOf": [],
+      "mechanisms": [
+        "P-gp inhibition",
+        "platelet aggregation inhibition"
+      ],
+      "citation": "Curcumin inhibits CYP3A4, UGTs and P-gp in vitro and has antiplatelet activity; described in the curcumin pharmacokinetic-interaction literature.",
+      "note": ""
+    },
+    {
+      "id": "resveratrol",
+      "name": "Resveratrol",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP3A4",
+        "CYP1A2"
+      ],
+      "inducerOf": [],
+      "mechanisms": [
+        "platelet aggregation inhibition"
+      ],
+      "citation": "Resveratrol inhibits CYP3A4 and CYP1A2 in vitro and inhibits platelet aggregation; described in the stilbene interaction literature.",
+      "note": ""
+    },
+    {
+      "id": "naringenin",
+      "name": "Naringenin / naringin",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP3A4"
+      ],
+      "inducerOf": [],
+      "mechanisms": [
+        "OATP inhibition"
+      ],
+      "citation": "Naringin and naringenin inhibit intestinal OATP; they are NOT the principal cause of the grapefruit CYP3A4 effect, which is furanocoumarin-driven.",
+      "note": ""
+    },
+    {
+      "id": "ginkgo",
+      "name": "Ginkgo biloba",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [
+        "CYP2C19"
+      ],
+      "mechanisms": [
+        "platelet aggregation inhibition"
+      ],
+      "citation": "Ginkgolides have antiplatelet activity and ginkgo has shown CYP2C19 induction in interaction studies; described in the ginkgo herb-drug interaction literature.",
+      "note": ""
+    },
+    {
+      "id": "panax-ginseng",
+      "name": "Panax ginseng",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "platelet aggregation inhibition"
+      ],
+      "citation": "Ginsenosides show antiplatelet activity and ginseng-warfarin interaction reports exist; described in the ginseng herb-drug interaction literature.",
+      "note": ""
+    },
+    {
+      "id": "garlic-extract",
+      "name": "Garlic extract (allicin, ajoene)",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [
+        "CYP3A4"
+      ],
+      "mechanisms": [
+        "platelet aggregation inhibition"
+      ],
+      "citation": "Garlic organosulfur compounds inhibit platelet aggregation and garlic has shown intestinal CYP3A4/P-gp effects (saquinavir interaction study); described in the garlic interaction literature.",
+      "note": ""
+    },
+    {
+      "id": "echinacea",
+      "name": "Echinacea",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP1A2"
+      ],
+      "inducerOf": [
+        "CYP3A4"
+      ],
+      "mechanisms": [],
+      "citation": "Echinacea has shown CYP1A2 inhibition and hepatic CYP3A induction in a probe-cocktail interaction study; described in the echinacea interaction literature.",
+      "note": ""
+    },
+    {
+      "id": "milk-thistle",
+      "name": "Milk thistle (silymarin, silybin)",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP2C9"
+      ],
+      "inducerOf": [],
+      "mechanisms": [],
+      "citation": "Silybin inhibits UGTs and CYP2C9 in vitro; described in the silymarin interaction literature.",
+      "note": ""
+    },
+    {
+      "id": "kava",
+      "name": "Kava (Piper methysticum)",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP2E1",
+        "CYP1A2"
+      ],
+      "inducerOf": [],
+      "mechanisms": [],
+      "citation": "Kavalactones inhibit CYP2E1 and other CYPs in probe-cocktail studies; described in the kava interaction literature.",
+      "note": ""
+    },
+    {
+      "id": "valerian",
+      "name": "Valerian",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "GABA-A modulation"
+      ],
+      "citation": "Valerian extracts modulate GABA-A signalling; probe-cocktail studies found no clinically meaningful CYP effect, which is recorded here as an absence rather than as a CYP role.",
+      "note": ""
+    },
+    {
+      "id": "chamomile",
+      "name": "Chamomile (apigenin)",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP1A2",
+        "CYP3A4"
+      ],
+      "inducerOf": [],
+      "mechanisms": [],
+      "citation": "Apigenin inhibits CYP1A2 and CYP3A4 in vitro; described in the flavone interaction literature.",
+      "note": ""
+    },
+    {
+      "id": "licorice",
+      "name": "Licorice (glycyrrhizin)",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [
+        "CYP3A4"
+      ],
+      "mechanisms": [
+        "mineralocorticoid-like potassium loss"
+      ],
+      "citation": "Glycyrrhetinic acid inhibits 11-beta-hydroxysteroid dehydrogenase type 2, producing apparent mineralocorticoid excess; described in the licorice pharmacology literature.",
+      "note": ""
+    },
+    {
+      "id": "goldenseal",
+      "name": "Goldenseal (Hydrastis, berberine/hydrastine)",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP3A4",
+        "CYP2D6"
+      ],
+      "inducerOf": [],
+      "mechanisms": [],
+      "citation": "Goldenseal inhibited CYP2D6 and CYP3A4 in a human probe-cocktail interaction study; described in the goldenseal interaction literature.",
+      "note": ""
+    },
+    {
+      "id": "berberine",
+      "name": "Berberine",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP3A4",
+        "CYP2D6"
+      ],
+      "inducerOf": [],
+      "mechanisms": [
+        "P-gp inhibition"
+      ],
+      "citation": "Berberine inhibits CYP3A4 and CYP2D6 and interacts with P-gp in vitro; described in the berberine interaction literature.",
+      "note": ""
+    },
+    {
+      "id": "ginger",
+      "name": "Ginger",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "platelet aggregation inhibition"
+      ],
+      "citation": "Gingerols inhibit thromboxane synthesis and platelet aggregation in vitro; described in the ginger pharmacology literature.",
+      "note": ""
+    },
+    {
+      "id": "grape-seed-extract",
+      "name": "Grape seed extract",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP3A4"
+      ],
+      "inducerOf": [],
+      "mechanisms": [],
+      "citation": "Proanthocyanidin-rich grape seed extract inhibits CYP3A4 in vitro; described in the polyphenol interaction literature.",
+      "note": ""
+    },
+    {
+      "id": "cranberry",
+      "name": "Cranberry juice",
+      "kind": "food",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP2C9"
+      ],
+      "inducerOf": [],
+      "mechanisms": [],
+      "citation": "Cranberry juice has been reported to inhibit CYP2C9 in vitro with mixed clinical findings, and warfarin case reports exist; described in the cranberry interaction literature.",
+      "note": ""
+    },
+    {
+      "id": "pomegranate-juice",
+      "name": "Pomegranate juice",
+      "kind": "food",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP3A4"
+      ],
+      "inducerOf": [],
+      "mechanisms": [],
+      "citation": "Pomegranate juice inhibits CYP3A4 in vitro; clinical findings are inconsistent, which is stated rather than resolved here.",
+      "note": ""
+    },
+    {
+      "id": "schisandra",
+      "name": "Schisandra chinensis",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP3A4"
+      ],
+      "inducerOf": [],
+      "mechanisms": [
+        "P-gp inhibition"
+      ],
+      "citation": "Schisandra lignans inhibit CYP3A4 and P-gp; described in the schisandra interaction literature.",
+      "note": ""
+    },
+    {
+      "id": "ashwagandha",
+      "name": "Ashwagandha (Withania somnifera)",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "thyroid hormone effect",
+        "GABA-A modulation"
+      ],
+      "citation": "Ashwagandha has reported thyrotropic and GABAergic activity; the CYP position is not established, which is stated rather than filled in.",
+      "note": ""
+    },
+    {
+      "id": "rhodiola",
+      "name": "Rhodiola rosea",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP3A4"
+      ],
+      "inducerOf": [],
+      "mechanisms": [
+        "P-gp inhibition",
+        "MAO inhibition"
+      ],
+      "citation": "Rhodiola extracts inhibit CYP3A4 and P-gp in vitro and salidroside/rosavin fractions show MAO inhibition in vitro; described in the Rhodiola interaction literature.",
+      "note": ""
+    },
+    {
+      "id": "bacopa",
+      "name": "Bacopa monnieri",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP3A4"
+      ],
+      "inducerOf": [],
+      "mechanisms": [],
+      "citation": "Bacoside-rich extracts inhibit CYP3A4 in vitro; described in the Bacopa interaction literature.",
+      "note": ""
+    },
+    {
+      "id": "5-htp",
+      "name": "5-HTP (5-hydroxytryptophan)",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "serotonin precursor supply"
+      ],
+      "citation": "5-HTP is decarboxylated to serotonin; the precursor route is basic monoamine biochemistry.",
+      "note": ""
+    },
+    {
+      "id": "l-tryptophan",
+      "name": "L-tryptophan",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "serotonin precursor supply"
+      ],
+      "citation": "Tryptophan is hydroxylated to 5-HTP and decarboxylated to serotonin; the precursor route is basic monoamine biochemistry.",
+      "note": ""
+    },
+    {
+      "id": "sam-e",
+      "name": "SAM-e (S-adenosylmethionine)",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "methyl donor supply"
+      ],
+      "citation": "SAM-e is the methyl donor for COMT-mediated catecholamine methylation; serotonergic case reports exist and are described in the SAM-e literature.",
+      "note": ""
+    },
+    {
+      "id": "yohimbine",
+      "name": "Yohimbine",
+      "kind": "supplement",
+      "substrateOf": [
+        "CYP2D6"
+      ],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "alpha-2 adrenergic antagonism"
+      ],
+      "citation": "Yohimbine is an alpha-2 adrenoceptor antagonist cleared substantially by CYP2D6; described in the yohimbine clinical-pharmacology literature.",
+      "note": ""
+    },
+    {
+      "id": "ephedra",
+      "name": "Ephedra (ephedrine alkaloids)",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "monoamine release"
+      ],
+      "citation": "Ephedrine alkaloids are indirect sympathomimetic releasing agents; described in the sympathomimetic pharmacology literature.",
+      "note": ""
+    },
+    {
+      "id": "syrian-rue",
+      "name": "Syrian rue / harmala alkaloids (harmine, harmaline)",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "MAO inhibition"
+      ],
+      "citation": "Harmine and harmaline are reversible MAO-A inhibitors; described in the beta-carboline pharmacology literature.",
+      "note": ""
+    },
+    {
+      "id": "tyramine-rich-food",
+      "name": "Tyramine-rich food (aged cheese, cured meat, fermented soy)",
+      "kind": "food",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "monoamine release"
+      ],
+      "citation": "Dietary tyramine is an indirect sympathomimetic normally cleared by intestinal MAO-A; the pressor interaction with MAO inhibitors is stated on MAO-inhibitor FDA labels.",
+      "note": ""
+    },
+    {
+      "id": "fish-oil",
+      "name": "Fish oil (EPA/DHA)",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "platelet aggregation inhibition"
+      ],
+      "citation": "Long-chain omega-3 fatty acids reduce platelet aggregation; described in the omega-3 haemostasis literature.",
+      "note": ""
+    },
+    {
+      "id": "vitamin-e",
+      "name": "High-dose vitamin E",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "platelet aggregation inhibition"
+      ],
+      "citation": "High-dose alpha-tocopherol has antiplatelet activity and interacts with vitamin K-dependent clotting; described in the vitamin E haemostasis literature.",
+      "note": ""
+    },
+    {
+      "id": "vitamin-k",
+      "name": "Vitamin K (phytonadione, K-rich greens)",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "vitamin K supply"
+      ],
+      "citation": "Vitamin K supply directly opposes vitamin K antagonists; the interaction is stated on the warfarin FDA label.",
+      "note": ""
+    },
+    {
+      "id": "calcium-supplement",
+      "name": "Calcium supplement",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "polyvalent cation chelation"
+      ],
+      "citation": "Divalent calcium chelates tetracyclines and fluoroquinolones and reduces levothyroxine absorption; the interaction is stated on those FDA labels.",
+      "note": ""
+    },
+    {
+      "id": "magnesium-supplement",
+      "name": "Magnesium supplement",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "polyvalent cation chelation"
+      ],
+      "citation": "Divalent magnesium chelates tetracyclines and fluoroquinolones; the interaction is stated on those FDA labels.",
+      "note": ""
+    },
+    {
+      "id": "iron-supplement",
+      "name": "Iron supplement",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "polyvalent cation chelation"
+      ],
+      "citation": "Ferrous iron chelates tetracyclines and fluoroquinolones and reduces levothyroxine absorption; the interaction is stated on those FDA labels.",
+      "note": ""
+    },
+    {
+      "id": "zinc-supplement",
+      "name": "Zinc supplement",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "polyvalent cation chelation"
+      ],
+      "citation": "Divalent zinc chelates fluoroquinolones and tetracyclines; the interaction is stated on those FDA labels.",
+      "note": ""
+    },
+    {
+      "id": "activated-charcoal",
+      "name": "Activated charcoal",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "nonspecific adsorption"
+      ],
+      "citation": "Activated charcoal adsorbs co-ingested drugs nonspecifically; this is the basis of its use in overdose care.",
+      "note": ""
+    },
+    {
+      "id": "psyllium",
+      "name": "Psyllium fibre",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "nonspecific adsorption"
+      ],
+      "citation": "Bulk-forming fibre delays and can reduce absorption of co-ingested drugs; stated in psyllium product labelling.",
+      "note": ""
+    },
+    {
+      "id": "tobacco-smoke",
+      "name": "Tobacco smoking",
+      "kind": "lifestyle",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [
+        "CYP1A2"
+      ],
+      "mechanisms": [],
+      "citation": "Polycyclic aromatic hydrocarbons in tobacco smoke induce CYP1A2; smoking is the FDA table's non-drug CYP1A2 inducer, and nicotine itself is not the inducer.",
+      "note": ""
+    },
+    {
+      "id": "ethanol",
+      "name": "Ethanol (chronic intake)",
+      "kind": "lifestyle",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [
+        "CYP2E1"
+      ],
+      "mechanisms": [],
+      "citation": "Chronic ethanol induces CYP2E1; described in the ethanol-acetaminophen bioactivation literature.",
+      "note": ""
+    },
+    {
+      "id": "cruciferous-vegetables",
+      "name": "Cruciferous vegetables (charbroiled/indole-rich diet)",
+      "kind": "food",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [
+        "CYP1A2"
+      ],
+      "mechanisms": [],
+      "citation": "Indole-3-carbinol-rich and charbroiled diets induce CYP1A2; described in the diet-CYP1A2 literature.",
+      "note": ""
+    },
+    {
+      "id": "kratom",
+      "name": "Kratom (mitragynine)",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [
+        "CYP2D6",
+        "CYP3A4"
+      ],
+      "inducerOf": [],
+      "mechanisms": [
+        "opioid receptor agonism"
+      ],
+      "citation": "Mitragynine inhibits CYP2D6 and CYP3A4 in vitro and is a partial mu-opioid agonist; described in the kratom pharmacology literature.",
+      "note": ""
+    },
+    {
+      "id": "sceletium",
+      "name": "Sceletium tortuosum (kanna, mesembrine)",
+      "kind": "supplement",
+      "substrateOf": [],
+      "inhibitorOf": [],
+      "inducerOf": [],
+      "mechanisms": [
+        "serotonin reuptake inhibition"
+      ],
+      "citation": "Mesembrine is a serotonin reuptake inhibitor and PDE4 inhibitor in vitro; described in the Sceletium pharmacology literature.",
+      "note": ""
+    }
+  ],
+  "classRules": [
+    {
+      "left": "MAO inhibition",
+      "right": "monoamine release",
+      "mechanism": "MAO inhibition plus an indirect monoamine releasing agent",
+      "evidence": "mechanism-class pairing of two labelled pharmacologies",
+      "citation": "MAO-inhibitor FDA labels state the contraindication with indirect sympathomimetics and tyramine-rich food."
+    },
+    {
+      "left": "MAO inhibition",
+      "right": "serotonin reuptake inhibition",
+      "mechanism": "MAO inhibition plus serotonin reuptake inhibition",
+      "evidence": "mechanism-class pairing of two labelled pharmacologies",
+      "citation": "MAO-inhibitor and SSRI FDA labels both state the serotonin-syndrome contraindication and the required washout."
+    },
+    {
+      "left": "MAO inhibition",
+      "right": "serotonin precursor supply",
+      "mechanism": "MAO inhibition plus increased serotonin precursor supply",
+      "evidence": "mechanism-class pairing",
+      "citation": "MAO-inhibitor FDA labels state the serotonergic precaution; the precursor route is basic monoamine biochemistry."
+    },
+    {
+      "left": "serotonin reuptake inhibition",
+      "right": "serotonin precursor supply",
+      "mechanism": "serotonin reuptake inhibition plus increased precursor supply",
+      "evidence": "mechanism-class pairing",
+      "citation": "SSRI FDA labels state the serotonergic precaution with other serotonergic agents."
+    },
+    {
+      "left": "serotonin reuptake inhibition",
+      "right": "serotonin receptor agonism",
+      "mechanism": "serotonin reuptake inhibition plus 5-HT1B/1D agonism",
+      "evidence": "mechanism-class pairing",
+      "citation": "Triptan and SSRI FDA labels both state the serotonergic precaution."
+    },
+    {
+      "left": "P-gp inhibition",
+      "right": "P-gp substrate",
+      "mechanism": "P-glycoprotein inhibition raising a P-gp substrate's exposure",
+      "evidence": "transporter role assignment",
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain)."
+    },
+    {
+      "left": "OATP inhibition",
+      "right": "OATP substrate",
+      "mechanism": "intestinal/hepatic OATP inhibition changing a substrate's uptake",
+      "evidence": "transporter role assignment",
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain)."
+    },
+    {
+      "left": "platelet aggregation inhibition",
+      "right": "platelet aggregation inhibition",
+      "mechanism": "two independent antiplatelet mechanisms in the same stack",
+      "evidence": "mechanism-class pairing",
+      "citation": "Antiplatelet FDA labels state the additive bleeding mechanism."
+    },
+    {
+      "left": "vitamin K supply",
+      "right": "vitamin K antagonism",
+      "mechanism": "vitamin K supply opposing a vitamin K antagonist",
+      "evidence": "mechanism-class pairing",
+      "citation": "The warfarin FDA label states the dietary vitamin K interaction."
+    },
+    {
+      "left": "polyvalent cation chelation",
+      "right": "chelation-susceptible absorption",
+      "mechanism": "polyvalent-cation chelation reducing absorption",
+      "evidence": "absorption mechanism stated on the affected drug's label",
+      "citation": "FDA, Drug Development and Drug Interactions: Table of Substrates, Inhibitors and Inducers (US Government work, public domain)."
+    },
+    {
+      "left": "nonspecific adsorption",
+      "right": "chelation-susceptible absorption",
+      "mechanism": "nonspecific adsorption reducing absorption of a co-ingested drug",
+      "evidence": "absorption mechanism",
+      "citation": "Activated-charcoal and bulk-fibre labelling state the adsorption mechanism."
+    }
+  ]
+}

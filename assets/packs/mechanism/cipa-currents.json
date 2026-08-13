@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "kind": "panel",
+  "panelId": "cipa-currents",
+  "title": "CiPA five-current cardiac ion channel panel",
+  "declaredSize": 5,
+  "licence": "Roster of publicly named ion channels. No third-party database content is redistributed here.",
+  "sourceNote": "The five currents the CiPA in vitro ion-channel work stream nominates: IKr (hERG), peak and late INa (Nav1.5), ICaL (Cav1.2), IKs (KCNQ1/KCNE1) and IK1 (Kir2.1). Kir2.1 has no receptor preset in the loaded packs, so it is a declared coverage gap.",
+  "coverageNote": "A docking score against a channel pore is not an electrophysiological current measurement. This panel exists to state which currents were NOT interrogated; it produces no proarrhythmia call, and there is no field in which to put one.",
+  "targets": [
+    {
+      "id": "hERG",
+      "name": "hERG (Kv11.1) - IKr rapid delayed rectifier",
+      "targetClass": "voltage-gated ion channel",
+      "targetRef": "hERG"
+    },
+    {
+      "id": "SCN5A",
+      "name": "Nav1.5 - INa peak and late sodium current",
+      "targetClass": "voltage-gated ion channel",
+      "targetRef": "SCN5A"
+    },
+    {
+      "id": "CACNA1C",
+      "name": "Cav1.2 - ICaL L-type calcium current",
+      "targetClass": "voltage-gated ion channel",
+      "targetRef": "CACNA1C"
+    },
+    {
+      "id": "KCNQ1",
+      "name": "KCNQ1/KCNE1 - IKs slow delayed rectifier",
+      "targetClass": "voltage-gated ion channel",
+      "targetRef": "KCNQ1"
+    },
+    {
+      "id": "KCNJ2",
+      "name": "Kir2.1 - IK1 inward rectifier",
+      "targetClass": "voltage-gated ion channel",
+      "targetRef": ""
+    }
+  ]
+}

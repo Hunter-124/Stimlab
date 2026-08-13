@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "kind": "pharmacogenomics",
+  "id": "cpic-notes",
+  "title": "CPIC phenotype vocabulary, CYP2D6 activity-score bands and conditional notes",
+  "licence": "CPIC guideline content is dedicated to the public domain under CC0. Phenotype terms follow the CPIC/DPWG standardised terms for pharmacogenetic phenotype nomenclature; 'extensive metabolizer' is DEPRECATED and does not appear. Activity-score bands for CYP2D6 follow Caudle and co-workers, Clinical and Translational Science (2020), 'Standardizing CYP2D6 genotype to phenotype translation'.",
+  "boundaryStatement": "These are CONDITIONAL NOTES about what a phenotype would imply. BioCAD does not interpret a genotype, does not assign a phenotype, and emits no dose or dose adjustment. Consult the CPIC guideline and a clinician for anything actionable.",
+  "phenotypes": [
+    {
+      "code": "UM",
+      "term": "ultrarapid metabolizer"
+    },
+    {
+      "code": "RM",
+      "term": "rapid metabolizer"
+    },
+    {
+      "code": "NM",
+      "term": "normal metabolizer"
+    },
+    {
+      "code": "IM",
+      "term": "intermediate metabolizer"
+    },
+    {
+      "code": "PM",
+      "term": "poor metabolizer"
+    }
+  ],
+  "activityScoreBands": [
+    {
+      "gene": "CYP2D6",
+      "phenotype": "UM",
+      "band": "AS > 2.25"
+    },
+    {
+      "gene": "CYP2D6",
+      "phenotype": "NM",
+      "band": "1.25 <= AS <= 2.25"
+    },
+    {
+      "gene": "CYP2D6",
+      "phenotype": "IM",
+      "band": "0 < AS <= 1.0"
+    },
+    {
+      "gene": "CYP2D6",
+      "phenotype": "PM",
+      "band": "AS = 0"
+    }
+  ],
+  "notes": [
+    {
+      "compound": "codeine",
+      "gene": "CYP2D6",
+      "phenotype": "PM",
+      "implication": "CPIC states that in a CYP2D6 poor metabolizer the O-demethylation of codeine to morphine is greatly reduced, so the analgesic effect attributed to morphine is expected to be reduced."
+    },
+    {
+      "compound": "codeine",
+      "gene": "CYP2D6",
+      "phenotype": "UM",
+      "implication": "CPIC states that in a CYP2D6 ultrarapid metabolizer the conversion of codeine to morphine is increased, which has been associated with toxicity reports."
+    },
+    {
+      "compound": "tramadol",
+      "gene": "CYP2D6",
+      "phenotype": "PM",
+      "implication": "CPIC states that formation of the active O-desmethyl metabolite is reduced in a CYP2D6 poor metabolizer."
+    },
+    {
+      "compound": "tramadol",
+      "gene": "CYP2D6",
+      "phenotype": "UM",
+      "implication": "CPIC states that formation of the active O-desmethyl metabolite is increased in a CYP2D6 ultrarapid metabolizer."
+    },
+    {
+      "compound": "atomoxetine",
+      "gene": "CYP2D6",
+      "phenotype": "PM",
+      "implication": "CPIC states that atomoxetine exposure is higher in a CYP2D6 poor metabolizer than in a normal metabolizer."
+    },
+    {
+      "compound": "dextromethorphan",
+      "gene": "CYP2D6",
+      "phenotype": "PM",
+      "implication": "CYP2D6 is the principal route of dextromethorphan O-demethylation, so the parent/metabolite ratio differs by phenotype; dextromethorphan is a standard CYP2D6 probe substrate in the FDA interaction tables."
+    },
+    {
+      "compound": "clopidogrel",
+      "gene": "CYP2C19",
+      "phenotype": "PM",
+      "implication": "CPIC states that bioactivation of clopidogrel is reduced in a CYP2C19 poor metabolizer, giving lower active-metabolite exposure."
+    },
+    {
+      "compound": "clopidogrel",
+      "gene": "CYP2C19",
+      "phenotype": "IM",
+      "implication": "CPIC states that a CYP2C19 intermediate metabolizer also has reduced active-metabolite formation relative to a normal metabolizer."
+    },
+    {
+      "compound": "omeprazole",
+      "gene": "CYP2C19",
+      "phenotype": "PM",
+      "implication": "CPIC states that proton-pump-inhibitor exposure is increased in a CYP2C19 poor metabolizer."
+    },
+    {
+      "compound": "omeprazole",
+      "gene": "CYP2C19",
+      "phenotype": "RM",
+      "implication": "CPIC states that proton-pump-inhibitor exposure is decreased in a CYP2C19 rapid metabolizer."
+    },
+    {
+      "compound": "amphetamine",
+      "gene": "CYP2D6",
+      "phenotype": "PM",
+      "implication": "Amphetamine is a CYP2D6 substrate in part; CPIC publishes no amphetamine guideline, so this is a substrate note and NOT a CPIC recommendation."
+    },
+    {
+      "compound": "caffeine",
+      "gene": "CYP1A2",
+      "phenotype": "NM",
+      "implication": "Caffeine is predominantly a CYP1A2 substrate. CPIC publishes no CYP1A2/caffeine guideline, and CYP1A2 activity is strongly environmentally modulated (smoking induction), so no phenotype-based statement is made here."
+    }
+  ]
+}

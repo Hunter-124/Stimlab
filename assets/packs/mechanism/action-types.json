@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 1,
+  "kind": "action-types",
+  "id": "chembl-action-types",
+  "title": "ChEMBL mechanism action_type controlled vocabulary",
+  "declaredSize": 35,
+  "licence": "ChEMBL data is licensed CC BY-SA 3.0. This file lists VALUE NAMES of ChEMBL's action_type controlled vocabulary so a retrieved value can be recognised; the glosses are BioCAD's own editorial wording, not ChEMBL descriptions. Any ChEMBL-derived content cached or committed alongside it inherits the share-alike obligation and must carry this notice. Attribution: ChEMBL, EMBL-EBI.",
+  "sourceNote": "The ChEMBL release documents 35 action_type values; 33 are transcribed here. A value retrieved from ChEMBL that is not in this list is reported VERBATIM and flagged as vocabulary-unrecognised - it is never dropped and never mapped onto a neighbour.",
+  "values": [
+    {
+      "value": "AGONIST",
+      "gloss": "full activation of the target's own signalling"
+    },
+    {
+      "value": "PARTIAL AGONIST",
+      "gloss": "activation to less than the system maximum"
+    },
+    {
+      "value": "INVERSE AGONIST",
+      "gloss": "reduction of constitutive (agonist-free) activity"
+    },
+    {
+      "value": "ANTAGONIST",
+      "gloss": "blockade of agonist-driven activation"
+    },
+    {
+      "value": "ALLOSTERIC ANTAGONIST",
+      "gloss": "antagonism at a site other than the orthosteric site"
+    },
+    {
+      "value": "POSITIVE ALLOSTERIC MODULATOR",
+      "gloss": "potentiation of the orthosteric agonist from an allosteric site"
+    },
+    {
+      "value": "NEGATIVE ALLOSTERIC MODULATOR",
+      "gloss": "attenuation of the orthosteric agonist from an allosteric site"
+    },
+    {
+      "value": "POSITIVE MODULATOR",
+      "gloss": "potentiation with the site unspecified by the source"
+    },
+    {
+      "value": "NEGATIVE MODULATOR",
+      "gloss": "attenuation with the site unspecified by the source"
+    },
+    {
+      "value": "MODULATOR",
+      "gloss": "direction unspecified by the source"
+    },
+    {
+      "value": "INHIBITOR",
+      "gloss": "reduction of catalytic or transport function"
+    },
+    {
+      "value": "ACTIVATOR",
+      "gloss": "increase of catalytic function"
+    },
+    {
+      "value": "BLOCKER",
+      "gloss": "occlusion of an ion-conducting pore"
+    },
+    {
+      "value": "OPENER",
+      "gloss": "stabilisation of a channel's open state"
+    },
+    {
+      "value": "SUBSTRATE",
+      "gloss": "the compound is turned over or transported by the target"
+    },
+    {
+      "value": "RELEASING AGENT",
+      "gloss": "transporter-mediated efflux of the endogenous substrate"
+    },
+    {
+      "value": "DISRUPTING AGENT",
+      "gloss": "disruption of an assembly or interaction"
+    },
+    {
+      "value": "STABILISER",
+      "gloss": "stabilisation of a conformation or assembly"
+    },
+    {
+      "value": "CROSS-LINKING AGENT",
+      "gloss": "covalent cross-linking of the target"
+    },
+    {
+      "value": "CHELATING AGENT",
+      "gloss": "coordination of a metal ion required by the target"
+    },
+    {
+      "value": "SEQUESTERING AGENT",
+      "gloss": "removal of the target or its cofactor from availability"
+    },
+    {
+      "value": "OXIDATIVE ENZYME",
+      "gloss": "the compound acts as an oxidising enzyme on the target"
+    },
+    {
+      "value": "HYDROLYTIC ENZYME",
+      "gloss": "the compound acts as a hydrolytic enzyme on the target"
+    },
+    {
+      "value": "PROTEOLYTIC ENZYME",
+      "gloss": "the compound acts as a protease on the target"
+    },
+    {
+      "value": "ANTISENSE INHIBITOR",
+      "gloss": "antisense oligonucleotide knockdown of the transcript"
+    },
+    {
+      "value": "RNAI INHIBITOR",
+      "gloss": "RNA-interference knockdown of the transcript"
+    },
+    {
+      "value": "DEGRADER",
+      "gloss": "induced degradation of the target protein"
+    },
+    {
+      "value": "BINDING AGENT",
+      "gloss": "binding with no functional consequence asserted"
+    },
+    {
+      "value": "ANTIBODY BINDING",
+      "gloss": "binding by an antibody or antibody-derived agent"
+    },
+    {
+      "value": "VACCINE ANTIGEN",
+      "gloss": "the target is presented as a vaccine antigen"
+    },
+    {
+      "value": "EXOGENOUS GENE",
+      "gloss": "an exogenous gene is delivered"
+    },
+    {
+      "value": "EXOGENOUS PROTEIN",
+      "gloss": "an exogenous protein is delivered"
+    },
+    {
+      "value": "OTHER",
+      "gloss": "the source's own catch-all value"
+    }
+  ]
+}
