@@ -424,10 +424,26 @@ can buy. The suite enforces both bounds in the method's own terms
 (`REQUIRE_THAT(got, WithinAbs(c.ref, 1.35))` per compound - twice the published RMS - and
 `REQUIRE(rms < 0.67)` in aggregate, `tests/test_chem.cpp:107-132`), with the reason stated in the
 source: the previous +/-0.7 band only held because the ad-hoc estimator it replaced had been
-tuned to look good on these ten rows. Exact-value oracles against the reference implementation
-live in `tests/test_chem_crippen.cpp`, and the implementer reports that both the logP and the
-molar-refractivity columns reproduce RDKit's reference values exactly for all 69 pack compounds
-(that comparison needs RDKit, so it is their measurement, not one reproduced on this page).
+tuned to look good on these ten rows.
+
+**The stronger claim, from an oracle this page cannot run.** RDKit 2026.03.5 was installed on the
+development machine purely as an oracle - it is not a dependency and is not in `vcpkg.json` - and
+all 69 shipped library compounds were compared atom for atom: **0 mismatches on logP** (tolerance
+0.005), **0 on molar refractivity** (0.02) and **0 on molecular formula** (exact string). Exact-value
+oracles from that check are committed in `tests/test_chem_crippen.cpp`. That is a stronger claim
+than agreeing with a handful of literature values: the implementation *is* the published method,
+and whether the published method is right about a given compound is the separate question the
+table above answers. The comparison itself needs RDKit, so it is the implementer's measurement,
+not one reproduced by the harnesses at the end of this page.
+
+The same oracle run puts TPSA at **10 of 69 compounds deviating by more than 0.1 A^2** on the
+N,O-only default (worst 1.56 A^2, caffeine), and 11 of 69 with sulfur and phosphorus included
+(worst 13.5 A^2, N-acetylcysteine). The residuals are exact multiples of 0.52 A^2 (celecoxib,
+indomethacin -0.52; phenazone, ondansetron, theobromine, theophylline -1.04; caffeine -1.56) or
++0.22 A^2 (NMN, thiamine, berberine), and they all trace to one thing: the aromaticity model
+assigning aromaticity to fused pyrimidinedione and pyrazolone rings (section 3), which then picks
+the aromatic rather than the aliphatic nitrogen contribution. A documented model boundary
+surfacing in a descriptor, under 2 A^2 in every case, not an arithmetic error.
 
 One consequence of getting the atom typing right was a real parser fix in
 `chem::assignImplicitHydrogens` (`src/chem/Smiles.cpp`): counting an aromatic bond as order 1.5
