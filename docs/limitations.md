@@ -142,7 +142,9 @@ publication's tables.
 atom-for-atom comparison immediately below reports caffeine at 1.56 A^2 rather
 than 1.82 A^2 because it is a different reference, not a different calculation.)
 
-**logP and molar refractivity are exact against the reference implementation.**
+**logP and molar refractivity are exact against the reference implementation**
+(re-run independently, verbatim output in
+[cheminformatics.md](cheminformatics.md#measured-evidence), harness five).
 RDKit 2026.03.5 was installed on the development machine purely as an ORACLE (it is
 not a dependency and is not in `vcpkg.json`) and every one of the 69 shipped library
 compounds was compared atom-for-atom:

@@ -426,24 +426,22 @@ can buy. The suite enforces both bounds in the method's own terms
 source: the previous +/-0.7 band only held because the ad-hoc estimator it replaced had been
 tuned to look good on these ten rows.
 
-**The stronger claim, from an oracle this page cannot run.** RDKit 2026.03.5 was installed on the
-development machine purely as an oracle - it is not a dependency and is not in `vcpkg.json` - and
-all 69 shipped library compounds were compared atom for atom: **0 mismatches on logP** (tolerance
+**The stronger claim, checked against the reference implementation.** RDKit 2026.03.5 is installed
+on this development machine purely as an *oracle* - it is not a dependency, is not linked, and is
+not in `vcpkg.json` - and all 69 compounds of the shipped packs were compared value for value.
+Reproduced independently for this page (harness five below): **0 mismatches on logP** (tolerance
 0.005), **0 on molar refractivity** (0.02) and **0 on molecular formula** (exact string). Exact-value
-oracles from that check are committed in `tests/test_chem_crippen.cpp`. That is a stronger claim
-than agreeing with a handful of literature values: the implementation *is* the published method,
-and whether the published method is right about a given compound is the separate question the
-table above answers. The comparison itself needs RDKit, so it is the implementer's measurement,
-not one reproduced by the harnesses at the end of this page.
+oracle cases from that check are committed in `tests/test_chem_crippen.cpp`. That is a stronger
+claim than agreeing with a handful of literature values: the implementation *is* the published
+method, and whether the published method is right about a given compound is the separate question
+the table above answers.
 
-The same oracle run puts TPSA at **10 of 69 compounds deviating by more than 0.1 A^2** on the
-N,O-only default (worst 1.56 A^2, caffeine), and 11 of 69 with sulfur and phosphorus included
-(worst 13.5 A^2, N-acetylcysteine). The residuals are exact multiples of 0.52 A^2 (celecoxib,
-indomethacin -0.52; phenazone, ondansetron, theobromine, theophylline -1.04; caffeine -1.56) or
-+0.22 A^2 (NMN, thiamine, berberine), and they all trace to one thing: the aromaticity model
-assigning aromaticity to fused pyrimidinedione and pyrazolone rings (section 3), which then picks
-the aromatic rather than the aliphatic nitrogen contribution. A documented model boundary
-surfacing in a descriptor, under 2 A^2 in every case, not an arithmetic error.
+The same run produced the TPSA figures earlier in this section, also reproduced here: 10 of 69
+compounds deviate by more than 0.1 A^2 on the N,O-only default (caffeine -1.56; phenazone,
+ondansetron, theobromine, theophylline -1.04; celecoxib, indomethacin -0.52; NMN, thiamine,
+berberine +0.22) and 11 of 69 with sulfur and phosphorus included (worst N-acetylcysteine -13.5,
+then NMN -9.59). Every N,O-only residual is nitrogen typing that traces to the aromaticity model's
+fused-ring boundary (section 3), and every one is under 2 A^2.
 
 One consequence of getting the atom typing right was a real parser fix in
 `chem::assignImplicitHydrogens` (`src/chem/Smiles.cpp`): counting an aromatic bond as order 1.5
@@ -589,6 +587,41 @@ c1ccncc1       formula=C5H5N      mw=  79.102
 
 Thiophene's 0.000 is the N,O-only TPSA convention, not a bug (section 6); the aspirin 7.1e-15
 difference is floating-point summation order, not a perception difference.
+
+Harness five - the RDKit oracle comparison, reproduced for this page. The 69 pack SMILES were
+extracted from `assets/packs/*.json`, run through the C++ engine
+(`crippen()`, `tpsa()`, `tpsaIncludingSulfurAndPhosphorus()`, `molecularFormula()`) into a TSV,
+then compared in Python against `rdkit.Chem.Crippen.MolLogP` / `MolMR`,
+`Descriptors.TPSA(m)` / `Descriptors.TPSA(m, includeSandP=True)` and
+`rdMolDescriptors.CalcMolFormula`. RDKit is an oracle only: it is not linked, not in
+`vcpkg.json`, and no BioCAD build depends on it.
+
+```
+rdkit 2026.03.5
+
+n=69  logP mismatches=0  MR=0  formula=0
+TPSA (N,O only) mismatches>0.1: 10
+    caffeine -1.56
+    phenazone -1.04
+    ondansetron -1.04
+    theobromine -1.04
+    theophylline -1.04
+    celecoxib -0.52
+    indomethacin -0.52
+    nmn 0.22
+    thiamine 0.22
+    berberine 0.22
+TPSA (incl S,P) mismatches>0.1: 11
+    n-acetylcysteine -13.5
+    nmn -9.59
+    caffeine -1.56
+    phenazone -1.04
+    ondansetron -1.04
+    theobromine -1.04
+```
+
+Formula comparison strips RDKit's charge suffix before comparing, because
+`molecularFormula()` reports the Hill formula without a charge annotation.
 
 Related reading: [provenance.md](provenance.md) for the tier a descriptor may carry,
 [limitations.md](limitations.md) for the project-wide honesty rules, and
