@@ -10,7 +10,7 @@
 
 #include "agent/Agent.h"
 #include "agent/AnthropicProvider.h"
-#include "agent/MockProvider.h"
+#include "agent/OfflineAssistant.h"
 #include "agent/SystemPrompt.h"
 #include "agent/Tools.h"
 #include "agent/WebTools.h"
@@ -35,7 +35,7 @@ namespace biocad {
 
 namespace {
 // Config keys for the persisted agent settings.
-constexpr const char* kCfgProvider = "agent.provider";  // 0 = Anthropic, 1 = Offline mock
+constexpr const char* kCfgProvider = "agent.provider";  // 0 = Anthropic, 1 = offline assistant
 constexpr const char* kCfgApiKey   = "agent.apiKey";    // DPAPI-encrypted base64 blob
 constexpr const char* kCfgModel    = "agent.model";
 constexpr const char* kCfgMode     = "agent.mode";      // "autopilot" | "askfirst"
@@ -410,7 +410,7 @@ void AppShell::drainAgentActions() {
 
 void AppShell::buildAgent() {
     registry_ = std::make_unique<agent::ToolRegistry>();
-    mock_ = std::make_unique<agent::MockProvider>();
+    offline_ = std::make_unique<agent::OfflineAssistant>();
     anthropic_ = std::make_unique<agent::AnthropicProvider>();
     agent_ = std::make_unique<agent::Agent>();
 
@@ -521,7 +521,7 @@ void AppShell::buildAgent() {
     registerAgentServiceTools();
     registerAgentWebTools();
 
-    agent_->configure(mock_.get(), registry_.get(), buildSystemPrompt());
+    agent_->configure(offline_.get(), registry_.get(), buildSystemPrompt());
     agent_->setModel(kDefaultModel);
     agentUsingAnthropic_ = false;
 }
@@ -1133,6 +1133,11 @@ void AppShell::reconfigureAgent() {
     if (config_) {
         model = config_->get<std::string>(kCfgModel, kDefaultModel);
         providerIdx = config_->get<int>(kCfgProvider, 0);
+        // Migration for a persisted value: some configs stored the provider *id*
+        // string instead of the index, and the offline assistant's id used to be
+        // "mock". Accept both spellings so an old config still selects it.
+        const std::string providerId = config_->get<std::string>(kCfgProvider, "");
+        if (providerId == "mock" || providerId == "offline") providerIdx = 1;
         modeStr = config_->get<std::string>(kCfgMode, "autopilot");
         keyBlob = config_->get<std::string>(kCfgApiKey, "");
     }
@@ -1150,7 +1155,7 @@ void AppShell::reconfigureAgent() {
         }
     }
 
-    const ILlmProvider* active = mock_.get();
+    const ILlmProvider* active = offline_.get();
     if (providerIdx == 0 && anthropic_ && anthropic_->ready()) {
         active = anthropic_.get();
         agentUsingAnthropic_ = true;
@@ -1237,7 +1242,7 @@ bool AppShell::anthropicTransport() const { return agent::AnthropicProvider::tra
 
 std::string AppShell::activeProviderLabel() const {
     return agentUsingAnthropic_ ? std::string("Anthropic (Claude)")
-                                : (mock_ ? mock_->displayName() : std::string("Offline"));
+                                : (offline_ ? offline_->displayName() : std::string("Offline"));
 }
 
 void AppShell::draw() {

@@ -28,7 +28,7 @@ namespace docking { class Provisioner; }
 namespace agent {
 class Agent;
 class ToolRegistry;
-class MockProvider;
+class OfflineAssistant;
 class AnthropicProvider;
 }  // namespace agent
 
@@ -148,7 +148,7 @@ public:
     void clearApiKey();
     void setAgentModel(const std::string& model);
     [[nodiscard]] std::string agentModel() const;
-    void setAgentProviderIndex(int idx);             // 0 = Anthropic, 1 = Offline mock
+    void setAgentProviderIndex(int idx);             // 0 = Anthropic, 1 = offline assistant
     [[nodiscard]] int  agentProviderIndex() const;
     void setAutopilot(bool on);
     [[nodiscard]] bool autopilot() const;
@@ -242,7 +242,7 @@ private:
     char cmdPaletteBuf_[128] = {};
 
     std::unique_ptr<agent::ToolRegistry>      registry_;
-    std::unique_ptr<agent::MockProvider>      mock_;
+    std::unique_ptr<agent::OfflineAssistant>      offline_;
     std::unique_ptr<agent::AnthropicProvider> anthropic_;
 
     // Thread-safe inbox between the agent worker and the UI thread.

@@ -1,6 +1,7 @@
 // contracts/IModules.h - frozen analysis-module interfaces.
 // Every analysis capability is a pure-virtual interface; real impls (RDKit-backed)
-// and thick fakes both implement these. The UI codes ONLY against these contracts.
+// implement these. The UI codes ONLY against these contracts, never against an
+// implementation - which is what lets a module be replaced without touching a panel.
 //
 // SAFETY SCOPE: interfaces describe identity, pharmacology (binding affinity),
 // stability, absorption/PK, similarity and legal status. There is intentionally
@@ -70,7 +71,7 @@ public:
     virtual DockingResult dock(const Molecule& m, const std::string& target) const = 0;
 
     // Phase D: richer result carrying 3D poses (for the molecular viewer) and the
-    // engine/fallback provenance. Default = no 3D detail, so legacy/fake impls keep
+    // engine/fallback provenance. Default = no 3D detail, so a legacy impl keeps
     // compiling; the real backend-backed impl overrides both.
     virtual DockJobResult dockDetailed(const Molecule& m, const std::string& target) const {
         (void)m; (void)target; return {};
@@ -84,7 +85,7 @@ class IRunStore {
 public:
     virtual ~IRunStore() = default;
     virtual std::vector<RunRecord> recent() const = 0;
-    // Phase D: persist a run. Default no-op so fakes/legacy stores keep compiling;
+    // Phase D: persist a run. Default no-op so a legacy store keeps compiling;
     // the SQLite-backed store overrides it.
     virtual void record(const RunRecord&) {}
 };

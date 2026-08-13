@@ -37,9 +37,14 @@ struct Xrefs {
     long long   pubchemCid = 0;  // 0 = absent
 };
 
-// One catalog compound. Identity and metadata are authored; the physicochemical
-// properties are optional, and a consumer that finds them absent computes them
-// from the SMILES with the in-house chem engine rather than inventing them.
+// One catalog compound. A pack authors identity and metadata only: id, name,
+// SMILES, drug class, legal status, notes and cross-references.
+//
+// A descriptor has exactly one source, the chem engine. Molecular weight, logP,
+// TPSA, H-bond counts and rotatable bonds are computed from the SMILES by
+// chem::Descriptors at the point of use, so a pack cannot author them: two
+// sources of truth for a molecular weight would silently diverge, and the
+// authored one would lose without saying so.
 struct PackCompound {
     std::string id;
     std::string name;
@@ -49,19 +54,8 @@ struct PackCompound {
     std::string notes;
     Xrefs       xrefs;
 
-    // Authored property values (optional). `formula` empty and molWeight <= 0
-    // together mean "compute me".
-    std::string formula;
-    double      molWeight = 0;
-    double      logP = 0;
-    double      tpsa = 0;
-    int         hbd = 0;
-    int         hba = 0;
-    int         rotatableBonds = 0;
-    bool        hasProperties = false;
-
-    // The Molecule this compound describes. Properties are copied through when
-    // authored; otherwise they are left at zero for the caller to compute.
+    // Identity and metadata only. Every numeric field of the Molecule is left at
+    // zero for the caller to compute from `smiles`.
     [[nodiscard]] Molecule molecule() const;
 };
 

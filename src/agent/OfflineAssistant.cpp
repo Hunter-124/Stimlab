@@ -1,4 +1,4 @@
-#include "agent/MockProvider.h"
+#include "agent/OfflineAssistant.h"
 
 #include <algorithm>
 #include <array>
@@ -109,7 +109,7 @@ void streamOut(const StreamCallback& onText, const std::string& text) {
 
 }  // namespace
 
-LlmResponse MockProvider::send(const LlmRequest& req, const StreamCallback& onText) const {
+LlmResponse OfflineAssistant::send(const LlmRequest& req, const StreamCallback& onText) const {
     LlmResponse r;
     r.message.role = ChatRole::Assistant;
 
@@ -145,7 +145,7 @@ LlmResponse MockProvider::send(const LlmRequest& req, const StreamCallback& onTe
         streamOut(onText, say);
         r.message.text = say;
         ToolCall c;
-        c.id = "mock_call_1";
+        c.id = "offline_call_1";
         c.name = "highlight_panel";
         c.arguments = {{"panel", panel}, {"explanation", blurb}};
         r.message.toolCalls.push_back(std::move(c));

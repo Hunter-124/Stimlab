@@ -53,20 +53,9 @@ encountered one would ignore it (`src/packs/Pack.h:9-11`).
         "pubchemCid": 2519,             // integer only; a quoted number is ignored
         "inchikey": "RYYVLZVUVIJVGH-UHFFFAOYSA-N",
         "uniprot": ""                   // parsed for compounds too, but meaningful on targets
-      },
-
-      // Optional object of AUTHORED property values. Omit it and the consumer computes
-      // the properties from the SMILES with the in-house chem engine instead of
-      // inventing them. The block counts as authored only when molWeight > 0.
-      "properties": {
-        "formula": "C8H10N4O2",
-        "molWeight": 194.19,            // > 0 is what sets hasProperties
-        "logP": -0.07,
-        "tpsa": 58.4,
-        "hbd": 0,
-        "hba": 6,
-        "rotatableBonds": 0
       }
+      // There is deliberately no "properties" block: see "Why a pack cannot author a
+      // molecular weight" below. Present -> the pack is rejected by name.
     }
   ],
 
@@ -115,6 +104,7 @@ named exception type from `src/core/Error.h`.
 |target `id`|`src/packs/Pack.cpp:87`|`Error::parse`|
 |target `name`|`src/packs/Pack.cpp:88`|`Error::parse`|
 |`pdb`, when `box` is present|`src/packs/Pack.cpp:110-113`|`Error::parse`, "a box without a PDB id is an unverifiable binding site"|
+|compound `properties` absent|`src/packs/Pack.cpp:71-78`|`Error::parse`, naming the compound - a pack may not author descriptor numbers|
 
 Structural failures throw the same way: a non-object document
 (`src/packs/Pack.cpp:146`), a non-array `compounds` (`:167`) or `targets` (`:181`), and
@@ -139,12 +129,26 @@ Each rule below is implemented at the cited line, not merely intended.
 |A missing pack directory is not an error|`loadFrom` returns an empty report when the directory does not exist (`src/packs/Pack.cpp:203-204`); `tests/test_packs.cpp:171-175`|
 |Having **no** packs at all is an error|`loadBuiltin` synthesises the message "no built-in packs found - the application has no compound or target catalog" (`src/packs/Pack.cpp:256-260`)|
 |An unreadable file is reported per-file and does not abort the load|`src/packs/Pack.cpp:216-219`|
+|A compound may not author descriptor numbers|`src/packs/Pack.cpp:71-78` throws `Error::parse` naming the compound; `tests/test_packs.cpp:76-93`|
 
 `findTarget` resolves case-insensitively by id, then by display name, then by name prefix,
 so `"DAT"` and `"DAT (dopamine transporter)"` both resolve
 (`src/packs/Pack.cpp:328-343`; `tests/test_packs.cpp:161-169`). The same three-step
 resolution exists over the dockable subset in `findPreset`
 (`src/modules/docking/Presets.cpp:56-67`).
+
+### Why a pack cannot author a molecular weight
+
+A descriptor has exactly one source: the chem engine. `RealBackend::computeMolecule` parses
+`smiles` and computes formula, molecular weight, logP, TPSA, HBD, HBA and rotatable bonds
+with `chem::Descriptors` for every compound it hands out, so an authored number could only
+ever be overwritten. Two sources of truth for a molecular weight diverge silently, and the
+one that loses is invisible - which is worse than either number alone.
+
+So a pack authors identity, not numbers: id, name, SMILES, drug class, legal status, notes
+and `xrefs`. A `"properties"` key is a hard parse error naming the compound rather than a
+field that is quietly dropped, because the author of those numbers needs to learn that
+nothing reads them.
 
 ## Resolution order
 
@@ -185,9 +189,8 @@ additive.
    }
    ```
 
-   With no `properties` block, molecular weight, logP, TPSA and the rest are computed from
-   the SMILES by the in-house chem engine rather than being authored
-   (`src/packs/Pack.h:52-53`, `src/packs/Pack.cpp:133-141`).
+   Molecular weight, logP, TPSA and the rest are computed from the SMILES by the in-house
+   chem engine. A pack never authors them (`src/packs/Pack.h:40-59`).
 4. Add a target only if you can justify its binding site. With a `pdb` and a `box` it
    becomes dockable; with a `pdb` and no `box`, or with neither, it is listed as a
    coverage gap:

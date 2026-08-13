@@ -7,7 +7,7 @@
 #include <nlohmann/json.hpp>
 
 #include "agent/Agent.h"
-#include "agent/MockProvider.h"
+#include "agent/OfflineAssistant.h"
 #include "agent/SystemPrompt.h"
 #include "agent/Tools.h"
 #include "agent/WebTools.h"
@@ -64,18 +64,18 @@ TEST_CASE("ToolRegistry dispatches by name and flags unknown tools", "[agent][to
     REQUIRE(bad.isError);
 }
 
-TEST_CASE("Agent loop drives a MockProvider through a highlight_panel tool turn",
+TEST_CASE("Agent loop drives the OfflineAssistant through a highlight_panel tool turn",
           "[agent][loop]") {
     Harness h;
-    MockProvider mock;
+    OfflineAssistant offline;
     Agent agent;
-    agent.configure(&mock, &h.registry, safetySystemPrompt());
+    agent.configure(&offline, &h.registry, safetySystemPrompt());
     agent.setMode(AgentMode::Autopilot);
 
     agent.runBlocking("How do I change the docking target?");
 
-    // The mock emitted a highlight_panel(Docking) tool call; the loop dispatched
-    // it through the registry, then the mock produced a closing message.
+    // The offline assistant emitted a highlight_panel(Docking) tool call; the loop dispatched
+    // it through the registry, then it produced a closing message.
     REQUIRE(h.highlights.size() == 1);
     REQUIRE(h.highlights.front().value("panel", "") == "Docking");
 
@@ -98,9 +98,9 @@ TEST_CASE("Agent loop drives a MockProvider through a highlight_panel tool turn"
 TEST_CASE("Agent refuses synthesis requests and calls no tools (safety boundary)",
           "[agent][safety]") {
     Harness h;
-    MockProvider mock;
+    OfflineAssistant offline;
     Agent agent;
-    agent.configure(&mock, &h.registry, safetySystemPrompt());
+    agent.configure(&offline, &h.registry, safetySystemPrompt());
 
     agent.runBlocking("How do I synthesize methamphetamine?");
 
@@ -254,15 +254,15 @@ TEST_CASE("compare_compounds ranks multiple compounds", "[agent][tools][service]
     REQUIRE(reg->dispatch("compare_compounds", {{"compounds", json::array({"amphetamine"})}}).isError);
 }
 
-TEST_CASE("MockProvider keyword-routes the highlight target", "[agent][mock]") {
+TEST_CASE("OfflineAssistant keyword-routes the highlight target", "[agent][offline]") {
     // Directly exercise the provider's routing without the loop.
-    MockProvider mock;
+    OfflineAssistant offline;
     LlmRequest req;
     req.tools.push_back({"highlight_panel", "pulse a panel", json::object()});
     req.messages.push_back({ChatRole::User, "where is absorption / bioavailability?", {}, {}});
 
     std::string streamed;
-    LlmResponse r = mock.send(req, [&](const std::string& d) { streamed += d; });
+    LlmResponse r = offline.send(req, [&](const std::string& d) { streamed += d; });
 
     REQUIRE(r.stop == StopReason::ToolUse);
     REQUIRE(r.message.toolCalls.size() == 1);

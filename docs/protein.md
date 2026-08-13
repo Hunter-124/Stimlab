@@ -16,7 +16,7 @@ linked and is the only maths dependency.
 | `src/bio/Align.{h,cpp}` | Gotoh affine-gap DP, BLOSUM matrices, Karlin-Altschul E-values |
 | `src/bio/Superpose.{h,cpp}` | Kabsch with the reflection correction |
 | `src/bio/Score.{h,cpp}` | lDDT and Shrake-Rupley SASA |
-| `src/modules/BioModules.{h,cpp}` | `RealSequence`, `RealStructure`, and the shared adapters the fakes reuse |
+| `src/modules/BioModules.{h,cpp}` | `RealSequence` and `RealStructure`, thin adapters over `bio::` |
 
 ## Coordinates are not conformers
 
@@ -126,8 +126,8 @@ the field reports that it was not computed rather than carrying a plausible subs
 ## Contracts, panels and tools
 
 `ISequenceModule` (`alignGlobal`, `alignLocal`) and `IStructureModule` (`load`, `compare`,
-`sasa`) join `Services`, with real implementations in `src/modules/BioModules.cpp` and
-deterministic fakes that call the **same** pure `bio::` functions - one code path, not two.
+`sasa`) join `Services`, implemented in `src/modules/BioModules.cpp` as thin adapters over the
+pure `bio::` functions. There is one implementation, and the tests run it.
 
 Two panels:
 

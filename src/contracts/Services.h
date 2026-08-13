@@ -1,6 +1,8 @@
 // contracts/Services.h - a non-owning bundle of module interfaces.
-// The UI receives one Services view and never knows whether it is wired to fakes
-// or real RDKit-backed implementations.
+// The UI receives one Services view and codes only against the interfaces, so a
+// module can be replaced without touching a panel. There is exactly one
+// implementation of each: no fake backend exists, because a test suite that
+// validates a double while the product ships the original proves nothing.
 #pragma once
 
 #include "contracts/IModules.h"

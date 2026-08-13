@@ -2,9 +2,8 @@
 //
 // The adapters here are the ONLY place bio:: geometry and alignment results are
 // turned into domain Quantities. The free functions are inline and header-only on
-// purpose: the deterministic fakes call exactly these functions, so the fake and
-// the real backend share one code path instead of growing a second set of numbers
-// that drifts from the first.
+// purpose: they are the single implementation of that mapping, so there is exactly
+// one place where a unit, a provenance tier or a source string gets decided.
 //
 // Nothing here accepts a chem::Conformer. A small-molecule distance-geometry
 // embedding is not a protein, and bio::Structure has no constructor from one, so

@@ -68,16 +68,13 @@ PackCompound parseCompound(const nlohmann::json& j, const std::string& where) {
     c.notes = optString(j, "notes");
     c.xrefs = parseXrefs(j);
 
-    const auto props = j.find("properties");
-    if (props != j.end() && props->is_object()) {
-        c.formula = optString(*props, "formula");
-        c.molWeight = props->value("molWeight", 0.0);
-        c.logP = props->value("logP", 0.0);
-        c.tpsa = props->value("tpsa", 0.0);
-        c.hbd = props->value("hbd", 0);
-        c.hba = props->value("hba", 0);
-        c.rotatableBonds = props->value("rotatableBonds", 0);
-        c.hasProperties = c.molWeight > 0.0;
+    // A pack that authors descriptor numbers must fail loudly rather than have
+    // them silently ignored: the chem engine is the only source of a descriptor.
+    if (j.find("properties") != j.end()) {
+        throw Error::parse(where + " (" + c.id +
+                           "): \"properties\" is not a pack field - molWeight, logP, tpsa, "
+                           "hbd, hba and rotatableBonds are computed from the SMILES by the "
+                           "chem engine. Remove the block.");
     }
     return c;
 }
@@ -130,15 +127,7 @@ Molecule PackCompound::molecule() const {
     m.drugClass = drugClass;
     m.legalStatus = legalStatus;
     m.notes = notes;
-    if (hasProperties) {
-        m.formula = formula;
-        m.molWeight = molWeight;
-        m.logP = logP;
-        m.tpsa = tpsa;
-        m.hbd = hbd;
-        m.hba = hba;
-        m.rotatableBonds = rotatableBonds;
-    }
+    // Numbers are deliberately absent: the caller computes them from `smiles`.
     return m;
 }
 

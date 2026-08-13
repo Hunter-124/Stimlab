@@ -85,7 +85,9 @@ targets, 29 of them dockable. Full schema in [docs/packs.md](docs/packs.md).
 
 Modules are compile-time dependency injection through a struct of interface pointers
 (`src/contracts/Services.h`), populated by `RealBackend::services()` and mirrored by a
-deterministic `FakeBackend` that the whole test suite runs against. There is no plugin loader.
+`RealBackend::services()`. There is no plugin loader, and there is deliberately no fake
+backend: the test suite runs the shipping implementation, because a suite that validates a
+double while the product ships the original proves nothing.
 
 ```text
 ┌───────────────────────────────────────────────────────────────────────────┐
@@ -193,7 +195,6 @@ src/
 ├── contracts/  frozen service and backend interfaces (the Services seam)
 ├── core/       paths, config, logging, manifests, secrets, generated version
 ├── data/       domain DTOs, Provenance and Quantity
-├── fakes/      deterministic backend the test suite runs against
 ├── modules/    real backend services and docking backends
 ├── numeric/    the one Levenberg-Marquardt fitter and the one RK4 integrator
 ├── packs/      versioned JSON data-pack schema and loader

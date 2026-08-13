@@ -1,5 +1,5 @@
 // app/WinMain.cpp - Win32 + DirectX 11 + Dear ImGui entry point.
-// Creates the window, brings up the device and ImGui, wires the FakeBackend into
+// Creates the window, brings up the device and ImGui, wires the RealBackend into
 // the AppShell, and runs the frame loop until the user exits.
 #ifndef WIN32_LEAN_AND_MEAN
 #  define WIN32_LEAN_AND_MEAN

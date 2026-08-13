@@ -6,6 +6,10 @@ add_library(biocad_chem STATIC
   Descriptors.cpp
   Analysis.cpp
   Embed3D.cpp
+  Rings.cpp
+  Aromaticity.cpp
+  Canonical.cpp
+  Smarts.cpp
 )
 
 target_include_directories(biocad_chem PUBLIC

@@ -30,7 +30,6 @@ target to what it links.
    biocad_core  --> nlohmann_json, spdlog, fmt, DbgHelp, Crypt32, Shell32, Ole32
    biocad_data  --> nlohmann_json
    biocad_chem  --> Eigen3
-   biocad_fakes --> biocad_contracts, biocad_data, biocad_packs
 ```
 
 | Target | Sources | Responsibility |
@@ -43,7 +42,6 @@ target to what it links.
 | `biocad_storage` | `src/storage` | SQLite run store |
 | `biocad_workflow` | `src/workflow` | Job system, cancel tokens, the content-cached DAG |
 | `biocad_agent` | `src/agent` | LLM providers, tool registry, system prompt, web tools |
-| `biocad_fakes` | `src/fakes` | Deterministic backend implementing every contract |
 | `biocad_modules` | `src/modules` | Real backend services, docking backends, provisioning, receptor prep |
 | `biocad_render` | `src/render` | DX11 device, WIC back-buffer capture, molecular viewport |
 | `biocad_ui` | `src/ui` | Theme, `AppShell`, panels |
@@ -73,10 +71,16 @@ struct Services {
 ```
 
 It is a non-owning bundle of interface pointers, populated by `RealBackend::services()`
-(`src/modules/RealBackend.cpp`) and mirrored by `FakeBackend::services()`
-(`src/fakes/FakeBackend.cpp`). The UI receives one `Services` value and cannot tell which one
-it got - which is exactly why the whole test suite can run against the fakes with no engine,
-no network and no filesystem.
+(`src/modules/RealBackend.cpp`). The UI codes only against the interfaces, so a module can be
+replaced without touching a panel.
+
+**There is deliberately no fake backend.** An earlier revision carried one - a second
+implementation of every contract, roughly a thousand lines of parallel science - and the test
+suite exercised it. That is worse than having no tests: it validates a double while the product
+ships the original, and the two drift silently. `tests/test_backend.cpp` now runs
+`RealBackend`. Hermeticity comes from the design instead of from a double: the catalog is data
+on disk, every property is computed from SMILES, and the docking hot path is cache-only so it
+never downloads and never spawns an unprovisioned engine.
 
 This is **compile-time** dependency injection. There is no plugin loader, no registry, no
 dynamic discovery, and adding one is not an improvement anybody has asked for: the binary is
@@ -93,9 +97,9 @@ There is no shortcut, and skipping a step fails in a different place each time. 
    first panel that uses it.
 3. **Real implementation.** Add the class in `src/modules/RealBackend.cpp`, hold it in
    `RealBackend::Impl`, and assign it in `RealBackend::services()`.
-4. **Deterministic fake.** Add the mirrored implementation in `src/fakes/FakeBackend.cpp`. It
-   must be hermetic and deterministic: same input, same output, no clock, no network, no
-   filesystem. Tests depend on this being true.
+4. **Determinism.** The implementation must be deterministic for a given input: no clock, no
+   randomness, and no network on a read path. Do NOT add a second implementation to make it
+   testable - if the real one cannot be tested, that is a defect in the real one.
 5. **Panel row.** Add a `PanelInfo{id, title, group}` entry to the table in
    `src/ui/AppShell.cpp`. Panel **ids are persisted** in `imgui.ini` and are used by the agent
    tools and `--shot-panel`, so an id is an API: never rename one.
@@ -103,8 +107,8 @@ There is no shortcut, and skipping a step fails in a different place each time. 
    your `panels::` function, and declare that function in `src/ui/Panels.h`.
 7. **Agent tool (optional).** Register a `FunctionTool` with a JSON schema in
    `AppShell::registerAgentServiceTools()`. Tool ids are brand-free and stable.
-8. **Tests.** Add cases against the fake, and against the real implementation where it does not
-   need an engine.
+8. **Tests.** Add cases in `tests/test_backend.cpp` against the real implementation. If it
+   needs an engine or a network, the module needs a cache-only path, not a stand-in.
 
 Every derived number the new module emits must carry a `Provenance`; see
 [provenance.md](provenance.md).

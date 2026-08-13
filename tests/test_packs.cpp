@@ -28,10 +28,7 @@ std::string packText(const std::string& id, const std::string& compoundId,
                               "drugClass": "Xanthine stimulant",
                               "legalUs": "Unscheduled",
                               "notes": "n",
-                              "xrefs": {"chembl": "CHEMBL113", "pubchemCid": 2519},
-                              "properties": {"formula": "C8H10N4O2", "molWeight": 194.19,
-                                             "logP": -0.07, "tpsa": 58.4,
-                                             "hbd": 0, "hba": 6, "rotatableBonds": 0}}],
+                              "xrefs": {"chembl": "CHEMBL113", "pubchemCid": 2519}}],
                 "targets": [{"id": ")PK" + targetId +
            R"PK(", "name": "DAT (dopamine transporter)",
                             "pdb": "4M48", "uniprot": "Q01959", "headline": true,
@@ -42,7 +39,7 @@ std::string packText(const std::string& id, const std::string& compoundId,
 
 }  // namespace
 
-TEST_CASE("A pack round-trips through parse with its xrefs and properties", "[packs]") {
+TEST_CASE("A pack round-trips through parse with its xrefs and metadata", "[packs]") {
     const auto p = packs::parseString(packText("a", "caffeine", "DAT"), "a.json");
     REQUIRE(p.schemaVersion == packs::kSchemaVersion);
     REQUIRE(p.id == "a");
@@ -54,11 +51,18 @@ TEST_CASE("A pack round-trips through parse with its xrefs and properties", "[pa
     REQUIRE(c.id == "caffeine");
     REQUIRE(c.xrefs.chembl == "CHEMBL113");
     REQUIRE(c.xrefs.pubchemCid == 2519);
-    REQUIRE(c.hasProperties);
 
+    // Identity and metadata only: the numeric fields stay at zero because the
+    // chem engine is the single source of every descriptor.
     const Molecule m = c.molecule();
-    REQUIRE(m.formula == "C8H10N4O2");
-    REQUIRE(m.molWeight == 194.19);
+    REQUIRE(m.smiles == "CN1C=NC2=C1C(=O)N(C(=O)N2C)C");
+    REQUIRE(m.formula.empty());
+    REQUIRE(m.molWeight == 0.0);
+    REQUIRE(m.logP == 0.0);
+    REQUIRE(m.tpsa == 0.0);
+    REQUIRE(m.hbd == 0);
+    REQUIRE(m.hba == 0);
+    REQUIRE(m.rotatableBonds == 0);
     REQUIRE(m.drugClass == "Xanthine stimulant");
 
     const auto& t = p.targets.front();
@@ -67,6 +71,25 @@ TEST_CASE("A pack round-trips through parse with its xrefs and properties", "[pa
     REQUIRE(t.uniprot == "Q01959");
     REQUIRE(t.panels.size() == 1);
     REQUIRE(t.target.box.cx == -2.1);
+}
+
+TEST_CASE("A pack that authors descriptor numbers is rejected by name", "[packs]") {
+    // Two sources of truth for a molecular weight would silently diverge, with the
+    // authored one always losing. The author has to find out, so this is loud.
+    bool threw = false;
+    try {
+        packs::parseString(R"PK({"schemaVersion":1,"id":"a","title":"T","compounds":[
+            {"id":"caffeine","name":"Caffeine","smiles":"CN1C=NC2=C1C(=O)N(C(=O)N2C)C",
+             "properties":{"molWeight":194.19}}]})PK",
+                           "authored.json");
+    } catch (const Error& e) {
+        threw = true;
+        REQUIRE(e.code == Error::Code::Parse);
+        REQUIRE(e.message.find("caffeine") != std::string::npos);
+        REQUIRE(e.message.find("properties") != std::string::npos);
+        REQUIRE(e.message.find("SMILES") != std::string::npos);
+    }
+    REQUIRE(threw);
 }
 
 TEST_CASE("An unknown schemaVersion is a named error, never a silent skip", "[packs]") {

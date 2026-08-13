@@ -3,8 +3,11 @@ find_package(Catch2 CONFIG REQUIRED)
 
 add_executable(biocad_tests
   test_core.cpp
-  test_fakes.cpp
+  test_backend.cpp
   test_chem.cpp
+  test_chem_rings.cpp
+  test_chem_canonical.cpp
+  test_chem_smarts.cpp
   test_modules.cpp
   test_embed3d.cpp
   test_molviewport.cpp
@@ -32,7 +35,6 @@ target_link_libraries(biocad_tests PRIVATE
   biocad_bio
   biocad_pkpd
   biocad_packs
-  biocad_fakes
   biocad_chem
   biocad_modules
   biocad_render

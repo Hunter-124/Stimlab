@@ -1,12 +1,12 @@
 # ---- biocad_agent : LLM agent loop (providers, tools, tool-calling loop) ----
 # Builds under BOTH presets. The Anthropic provider's networking is guarded by
 # BIOCAD_HAVE_SCIENCE; without the science feature it compiles to a stub and the
-# agent falls back to the offline MockProvider. So the default `windows` preset
+# agent falls back to the OfflineAssistant. So the default `windows` preset
 # stays curl-free and fast.
 add_library(biocad_agent STATIC
   Tools.cpp
   SystemPrompt.cpp
-  MockProvider.cpp
+  OfflineAssistant.cpp
   AnthropicProvider.cpp
   WebTools.cpp
   WebToolsRendered.cpp

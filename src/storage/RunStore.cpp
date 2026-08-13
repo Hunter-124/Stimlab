@@ -33,7 +33,7 @@ SqliteRunStore::SqliteRunStore() : impl_(std::make_unique<Impl>()) {
     AppPaths::instance().ensureLayout();
     openAndInit(AppPaths::instance().db());
     // Seed a couple of illustrative rows on a fresh database so the panel is not
-    // empty on first launch (clearly real, persisted rows - not fakes).
+    // empty on first launch (real, persisted rows).
     if (ok() && count() == 0) {
         record({"", "Session", "BioCAD", "complete", "", "Run history is now persisted to SQLite."});
     }

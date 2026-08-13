@@ -5,7 +5,7 @@
 // BIOCAD_HAVE_SCIENCE is defined (the `science` vcpkg feature provides curl,
 // using Windows-native Schannel TLS). Without it the class still exists but
 // ready() is false and send() returns a clear error, so biocad_ui links either
-// way and the agent simply falls back to the offline MockProvider.
+// way and the agent simply falls back to the OfflineAssistant.
 //
 // SAFETY SCOPE: transport only - the boundary is the system prompt + tool set.
 #pragma once

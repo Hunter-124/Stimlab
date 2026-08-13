@@ -3,7 +3,7 @@
 // An ILlmProvider turns a request (system prompt + conversation + tool specs)
 // into one assistant turn, streaming text deltas as they arrive and returning a
 // structured message that may carry tool-use requests. The Anthropic provider
-// (libcurl + SSE Messages API) and a deterministic MockProvider both implement
+// (libcurl + SSE Messages API) and a deterministic OfflineAssistant both implement
 // it; the tool-calling loop (agent::Agent) drives whichever is configured.
 //
 // SAFETY SCOPE: the provider is a transport. The safety boundary (no synthesis /
@@ -78,7 +78,7 @@ class ILlmProvider {
 public:
     virtual ~ILlmProvider() = default;
 
-    virtual std::string id() const = 0;            // "anthropic" / "mock"
+    virtual std::string id() const = 0;            // "anthropic" / "offline"
     virtual std::string displayName() const = 0;   // human label
     virtual bool        ready() const = 0;         // configured (key present, transport built)
 

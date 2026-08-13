@@ -1,8 +1,8 @@
 // chem/AdmetModel.h - structure-derived ADMET prediction model (header-only).
 //
 // ONE source of truth for the oral-bioavailability and stability-range
-// predictions used by every backend (the real chem engine and the fakes both
-// include this and feed it the liabilities they perceive). Everything here is a
+// predictions used across the app: callers include this and feed it the
+// liabilities they perceive. Everything here is a
 // pure function of scalar molecular descriptors plus a small set of detected
 // structural liabilities - there is deliberately NO per-molecule hardcoding and
 // no fixed default value: each number is computed from the inputs.
@@ -34,8 +34,8 @@
 namespace biocad::chem {
 
 // Structural liabilities the PK / stability heuristics key on. Each backend fills
-// these from its own perception (graph-based in the real engine, motif-based in
-// the fakes); the math below is identical regardless of where the flags came from.
+// these from its own perception (graph-based, from chem::detectGroups); the math
+// below is identical regardless of where the flags came from.
 struct PkLiabilities {
     bool catechol = false;        // two adjacent ring -OH: COMT + MAO, near-total first pass
     bool phenol = false;          // single ring -OH: phase-II (glucuronide/sulfate) first pass
