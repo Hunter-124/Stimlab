@@ -95,10 +95,16 @@ AppShell::AppShell(Services services) : svc_(services) {
          "Exposure scenarios: concentration-time and target-occupancy curves under stated assumptions.", "Predict"},
         {"Ionization", "Ionization & Solubility",
          "Microspecies fractions, logD, pH-solubility with the pHmax kink, buffer capacity, isotope envelope and dissolution. pKa and melting point are inputs, never guessed.", "Predict"},
+        {"Assay", "Assay Workbench",
+         "Import a plate reader export, judge it (Z-prime, SSMD, edge and row/column effects), and fit dose-response, enzyme, SPR/BLI, DSF or ITC data. Well readouts are measured; fitted parameters are model values with error bars.", "Predict"},
+        {"AssayDesign", "Assay Design",
+         "Forward-simulate plates from a stated truth model and error structure, through the same import/QC/fit path real data takes, and report what the design would recover. Empirical confidence-interval coverage is the headline number.", "Predict"},
         {"Sequence", "Sequence Compare",
          "Pairwise protein sequence alignment (global or local) with identity, similarity and an E-value.", "Discover"},
         {"Structure3D", "Protein Structure",
          "Load a local PDB / mmCIF structure: chains, per-chain sequence, SASA and parse warnings.", "Workspace"},
+        {"NucleicAcid", "DNA / RNA Workbench",
+         "Sequence features, restriction map and gel, six-frame translation, ORFs, oligo thermodynamics, primer design, codon metrics and CRISPR guides. Every off-target count is reported with the reference and the number of bases actually searched.", "Workspace"},
         {"Analog", "Analog Explorer",
          "Model or draw a candidate derivative, preview its structure, and screen it against existing samples.", "Discover"},
         {"Compare", "Compare",
@@ -975,17 +981,60 @@ void AppShell::registerAgentServiceTools() {
                                        {"description", "Molar concentration, > 0."}}},
                     {"effect", {{"type", "number"}, {"description", "Assay response."}}}}},
                   {"required", json::array({"concentration", "effect"})}}},
-                {"description", "Four or more dose-response observations."}}}}},
-            {"required", json::array({"points"})}};
+                {"description", "Four or more dose-response observations."}}},
+              {"plate_csv", {{"type", "string"},
+                             {"description", "Alternative to 'points': a long CSV/TSV plate "
+                                             "export. The named series is imported and fitted "
+                                             "through the assay path, so exclusions and the "
+                                             "extrapolation flag are honoured."}}},
+              {"series_id", {{"type", "string"},
+                             {"description", "Which series_id in 'plate_csv' to fit. Required "
+                                             "when the plate carries more than one."}}}}}};
         registry_->add(std::make_unique<FunctionTool>(
             "fit_dose_response",
             "Fit a four-parameter logistic curve to dose-response data and return Top, Bottom, "
             "EC50 and the EMPIRICAL slope with their standard errors. Analysis of supplied data "
-            "only: the result is an exposure/potency characterisation, never a dose recommendation.",
+            "only: the result is an exposure/potency characterisation, never a dose "
+            "recommendation. Two input forms: a 'points' array, or a 'plate_csv' plate export "
+            "plus a 'series_id', which routes through the assay import/fit path and therefore "
+            "also reports whether the EC50 fell OUTSIDE the tested concentration range - an "
+            "extrapolated EC50 is a bound, not a potency, and must be quoted as one.",
             schema, [this](const json& args) -> ToolResult {
+                const std::string csv = args.value("plate_csv", "");
+                if (!csv.empty()) {
+                    if (!svc_.assay) return {"Assay service unavailable.", true};
+                    const auto ds = svc_.assay->import(csv);
+                    if (!ds || ds->plates.empty())
+                        return {"That text is not a plate table BioCAD can read.", true};
+                    const std::string want = args.value("series_id", "");
+                    std::vector<Well> series;
+                    std::vector<std::string> available;
+                    for (const auto& w : ds->plates.front().wells) {
+                        if (w.role != WellRole::Sample) continue;
+                        if (std::find(available.begin(), available.end(), w.seriesId) ==
+                            available.end())
+                            available.push_back(w.seriesId);
+                        if (want.empty() || w.seriesId == want) series.push_back(w);
+                    }
+                    if (series.empty())
+                        return {"No sample wells matched that series_id.", true};
+                    if (want.empty() && available.size() > 1)
+                        return {"That plate carries several series; name one in 'series_id'.",
+                                true};
+                    const FitResult f = svc_.assay->fit(
+                        series, AssayModel::FourParameterLogistic, false);
+                    json j = f;
+                    j["disclaimer"] = "Curve fit only - not a dose recommendation.";
+                    if (f.extrapolated)
+                        j["extrapolationWarning"] =
+                            "the EC50 lies outside the tested concentration range: report it as "
+                            "a bound, not a potency";
+                    return {j.dump(), false};
+                }
                 if (!svc_.pharmacodynamics) return {"Pharmacodynamics service unavailable.", true};
                 if (!args.contains("points") || !args["points"].is_array())
-                    return {"Provide a 'points' array of {concentration, effect} objects.", true};
+                    return {"Provide a 'points' array of {concentration, effect} objects, or a "
+                            "'plate_csv' plus 'series_id'.", true};
                 std::vector<DoseResponsePoint> pts;
                 for (const auto& p : args["points"]) {
                     DoseResponsePoint d;
@@ -1342,6 +1391,459 @@ void AppShell::registerAgentServiceTools() {
                              {"dissolution", r.dissolution}}
                             .dump(),
                         false};
+            }));
+    }
+
+    // ----------------------------------------------------------- DNA / RNA tools
+    // Every one of these is sequence arithmetic on text the user supplied. None of
+    // them orders anything, quotes a vendor, or exports anything but FASTA and
+    // GenBank, and search_guides refuses the genome-wide question outright.
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"text", {{"type", "string"},
+                        {"description", "FASTA or GenBank text. Nothing else is accepted."}}}}},
+            {"required", json::array({"text"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "parse_sequence",
+            "Parse FASTA or GenBank text into a nucleotide record and report its id, length, "
+            "topology, GC content and feature table, plus a FASTA and GenBank re-export. These "
+            "two formats are BioCAD's only sequence export paths: there is no order sheet, no "
+            "synthesis-vendor format and no vendor integration to route a sequence to.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.nucleicAcid) return {"Nucleic-acid service unavailable.", true};
+                const auto r = svc_.nucleicAcid->parse(args.value("text", ""));
+                if (!r) return {"That text is neither FASTA nor GenBank.", true};
+                return {json{{"record", *r},
+                             {"fasta", svc_.nucleicAcid->toFasta(*r)},
+                             {"genbank", svc_.nucleicAcid->toGenBank(*r)}}
+                            .dump(),
+                        false};
+            }));
+    }
+
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"text", {{"type", "string"}, {"description", "FASTA or GenBank text."}}},
+              {"genetic_code", {{"type", "integer"},
+                                {"description", "NCBI transl_table id; 1 is the standard code."}}},
+              {"min_orf_aa", {{"type", "integer"},
+                              {"description", "Shortest ORF to report, in amino acids."}}}}},
+            {"required", json::array({"text"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "translate_sequence",
+            "Six-frame translate a nucleotide record with an NCBI genetic-code table and list its "
+            "open reading frames. The translation is exact table lookup, so it is measured "
+            "arithmetic and not a prediction; an ORF is a reading frame, not evidence that a gene "
+            "is expressed, and must not be described as one.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.nucleicAcid) return {"Nucleic-acid service unavailable.", true};
+                const auto r = svc_.nucleicAcid->parse(args.value("text", ""));
+                if (!r) return {"That text is neither FASTA nor GenBank.", true};
+                const TranslationResult t = svc_.nucleicAcid->translate(
+                    *r, args.value("genetic_code", 1), args.value("min_orf_aa", 30));
+                return {json{{"translation", t}}.dump(), false};
+            }));
+    }
+
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"text", {{"type", "string"}, {"description", "FASTA or GenBank text."}}},
+              {"enzymes", {{"type", "array"}, {"items", {{"type", "string"}}},
+                           {"description", "Enzyme names, e.g. [\"EcoRI\", \"BamHI\"]. Empty "
+                                           "means every enzyme in the loaded pack."}}}}},
+            {"required", json::array({"text"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "restriction_map",
+            "Map restriction sites and report the digest fragment lengths, which sum to the "
+            "sequence length exactly - including for a circular template, where the wrap-around "
+            "fragment is the one an off-by-one hides in. Recognition sequences come from a cited "
+            "enzyme pack; an enzyme absent from the pack is named in the warnings rather than "
+            "guessed at.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.nucleicAcid) return {"Nucleic-acid service unavailable.", true};
+                const auto r = svc_.nucleicAcid->parse(args.value("text", ""));
+                if (!r) return {"That text is neither FASTA nor GenBank.", true};
+                std::vector<std::string> enzymes;
+                if (args.contains("enzymes") && args["enzymes"].is_array())
+                    for (const auto& v : args["enzymes"]) enzymes.push_back(v.get<std::string>());
+                return {json{{"digest", svc_.nucleicAcid->digest(*r, enzymes)}}.dump(), false};
+            }));
+    }
+
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"sequence", {{"type", "string"}, {"description", "The oligo, 5'->3'."}}},
+              {"na_molar", {{"type", "number"}, {"description", "Monovalent cation, mol/L."}}},
+              {"mg_molar", {{"type", "number"}, {"description", "Mg2+, mol/L. Echoed back but "
+                                                                "NOT applied: BioCAD does not "
+                                                                "assume a divalent-to-monovalent "
+                                                                "equivalence."}}},
+              {"oligo_molar", {{"type", "number"}, {"description", "Total strand concentration."}}},
+              {"dntp_molar", {{"type", "number"}, {"description", "dNTP, mol/L."}}}}},
+            {"required", json::array({"sequence"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "oligo_thermodynamics",
+            "Nearest-neighbour dH, dS, dG37 and Tm for one oligo, plus its hairpins and "
+            "self-dimers. A Tm is only reproducible together with its salt concentration, strand "
+            "concentration and parameter set, so quote all of them or none: the returned "
+            "assumptions list carries them and must be reported with the number. Folding dG37 is "
+            "the 1 M Na+ standard-state value and carries no salt correction.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.nucleicAcid) return {"Nucleic-acid service unavailable.", true};
+                const std::string seq = args.value("sequence", "");
+                if (seq.empty()) return {"A 'sequence' is required.", true};
+                const double na = args.value("na_molar", 0.05);
+                const OligoThermo t = svc_.nucleicAcid->oligo(
+                    seq, na, args.value("mg_molar", 0.0), args.value("oligo_molar", 2.5e-7),
+                    args.value("dntp_molar", 0.0));
+                return {json{{"thermo", t},
+                             {"structures", svc_.nucleicAcid->selfStructures(seq, na)}}
+                            .dump(),
+                        false};
+            }));
+    }
+
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"text", {{"type", "string"}, {"description", "FASTA or GenBank template."}}},
+              {"begin", {{"type", "integer"},
+                         {"description", "0-based start of the interval the product must "
+                                         "contain."}}},
+              {"end", {{"type", "integer"}, {"description", "Exclusive end of that interval."}}},
+              {"target_tm_c", {{"type", "number"},
+                               {"description", "Desired primer Tm in degrees C; 60 is usual."}}}}},
+            {"required", json::array({"text", "begin", "end"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "design_primers",
+            "Design PCR primer pairs flanking an interval, scored on Tm match, 3'-end stability, "
+            "GC clamp and hairpin/dimer dG37. A pair that breaks a limit - self-dimer, "
+            "cross-dimer, GC window or Tm difference - is ABSENT from the result rather than "
+            "ranked low, so an empty list means no acceptable pair exists for that interval and "
+            "not that the search failed. This returns oligo sequences as text for the user to "
+            "evaluate; it does not order, quote or send them anywhere.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.nucleicAcid) return {"Nucleic-acid service unavailable.", true};
+                const auto r = svc_.nucleicAcid->parse(args.value("text", ""));
+                if (!r) return {"That text is neither FASTA nor GenBank.", true};
+                if (!args.contains("begin") || !args.contains("end"))
+                    return {"'begin' and 'end' are required.", true};
+                const std::vector<PrimerPair> pairs = svc_.nucleicAcid->designPrimers(
+                    *r, args["begin"].get<int>(), args["end"].get<int>(),
+                    args.value("target_tm_c", 60.0));
+                return {json{{"pairs", pairs},
+                             {"note", "Pairs violating a stated threshold were rejected, not "
+                                      "ranked."}}
+                            .dump(),
+                        false};
+            }));
+    }
+
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"cds", {{"type", "string"},
+                       {"description", "The coding sequence, in frame, 5'->3'."}}},
+              {"usage_table", {{"type", "string"},
+                               {"description", "Codon usage table id, e.g. 'ecoli-k12'."}}},
+              {"forbidden_sites", {{"type", "array"}, {"items", {{"type", "string"}}},
+                                   {"description", "IUPAC patterns the output must not "
+                                                   "contain."}}}}},
+            {"required", json::array({"cds", "usage_table"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "optimize_codons",
+            "Re-encode a coding sequence against a cited codon usage table subject to "
+            "constraints. This is CONSTRAINT SATISFACTION, never an expression prediction: the "
+            "only guarantees are that the output translates to exactly the input protein and "
+            "contains none of the forbidden patterns. CAI is reported before and after because it "
+            "is what was optimised, not because a higher CAI predicts more protein - do not "
+            "present any yield, titre or expression-level claim from this tool.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.nucleicAcid) return {"Nucleic-acid service unavailable.", true};
+                const std::string cds = args.value("cds", "");
+                if (cds.empty()) return {"A 'cds' is required.", true};
+                std::vector<std::string> forb;
+                if (args.contains("forbidden_sites") && args["forbidden_sites"].is_array())
+                    for (const auto& v : args["forbidden_sites"])
+                        forb.push_back(v.get<std::string>());
+                const std::string table = args.value("usage_table", "");
+                return {json{{"metrics", svc_.nucleicAcid->codonMetrics(cds, table)},
+                             {"optimization",
+                              svc_.nucleicAcid->optimizeCodons(cds, table, forb)}}
+                            .dump(),
+                        false};
+            }));
+    }
+
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"target", {{"type", "string"},
+                          {"description", "FASTA or GenBank of the sequence to target."}}},
+              {"reference", {{"type", "string"},
+                             {"description", "FASTA or GenBank of the sequence off-targets are "
+                                             "counted in. Omit it and the target itself is the "
+                                             "reference, which is the narrowest possible "
+                                             "scope."}}},
+              {"pam", {{"type", "string"},
+                       {"description", "IUPAC PAM, default NGG."}}}}},
+            {"required", json::array({"target"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "search_guides",
+            "Enumerate PAM-adjacent protospacers in a target and count off-targets at 0, 1 and 2 "
+            "mismatches WITHIN THE REFERENCE THE USER SUPPLIED. You must refuse any question "
+            "about genome-wide specificity: this tool searches the text it was handed and nothing "
+            "else, it reports basesSearched and a scopeStatement for exactly that reason, and "
+            "'0 off-targets' in a 2.7 kb plasmid says nothing whatever about a 3.1 Gb genome. "
+            "Quote the scopeStatement verbatim alongside any count you report and never report a "
+            "count without it. This is an analysis of sequence text: it is not a protocol, not a "
+            "therapeutic or germline editing plan, and BioCAD has no path to order or synthesise "
+            "anything.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.nucleicAcid) return {"Nucleic-acid service unavailable.", true};
+                const auto t = svc_.nucleicAcid->parse(args.value("target", ""));
+                if (!t) return {"The target text is neither FASTA nor GenBank.", true};
+                NucRecord ref = *t;
+                const std::string refText = args.value("reference", "");
+                if (!refText.empty()) {
+                    const auto r = svc_.nucleicAcid->parse(refText);
+                    if (!r) return {"The reference text is neither FASTA nor GenBank.", true};
+                    ref = *r;
+                }
+                const GuideSearchResult g =
+                    svc_.nucleicAcid->findGuides(*t, ref, args.value("pam", std::string("NGG")));
+                return {json{{"result", g},
+                             {"scope", g.scopeStatement},
+                             {"genomeWideSpecificity",
+                              "refused - BioCAD searched only the supplied reference (" +
+                                  std::to_string(g.basesSearched) +
+                                  " bases) and cannot make a genome-wide claim from it"}}
+                            .dump(),
+                        false};
+            }));
+    }
+
+    // ---- Assay workbench. Every one of these takes DATA THE USER MEASURED and
+    // returns parameters with error bars. None of them predicts an assay result, and
+    // design_assay simulates plates, never a dose.
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"text", {{"type", "string"},
+                        {"description", "A long CSV/TSV plate export, or a 96/384/1536 grid "
+                                        "block export."}}}}},
+            {"required", json::array({"text"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "import_assay",
+            "Parse a plate reader export into BioCAD's auditable well representation and report "
+            "what was recognised: the detected layout, the plates, the well roles, and every "
+            "import warning. Unknown columns survive as metadata rather than being dropped, "
+            "because the instrument knows things about the run that BioCAD does not. Report the "
+            "warnings - a silently reinterpreted column is how a plate map ends up transposed.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.assay) return {"Assay service unavailable.", true};
+                const auto ds = svc_.assay->import(args.value("text", ""));
+                if (!ds) return {"That text is not a plate table BioCAD can read.", true};
+                json plates = json::array();
+                for (const auto& p : ds->plates)
+                    plates.push_back({{"id", p.id},
+                                      {"rows", p.rows},
+                                      {"columns", p.columns},
+                                      {"wells", p.wells.size()},
+                                      {"readoutUnit", p.readoutUnit}});
+                return {json{{"layout", ds->detectedLayout},
+                             {"plates", plates},
+                             {"metadata", ds->metadata},
+                             {"warnings", ds->warnings}}
+                            .dump(),
+                        false};
+            }));
+    }
+
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"text", {{"type", "string"}, {"description", "A plate export to import and judge."}}},
+              {"plate_index", {{"type", "integer"},
+                               {"description", "0-based plate to report; default 0."}}}}},
+            {"required", json::array({"text"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "assay_qc",
+            "Judge one imported plate: Z-prime and its robust median/MAD variant, SSMD, "
+            "signal/background, signal/noise, control means, SDs and %CVs, and the edge, row and "
+            "column effect p-values. The published Z-prime bands are >= 0.5 excellent, 0 to 0.5 "
+            "marginal, and <= 0 unusable - a plate at or below 0 cannot support a hit call and "
+            "you must say so rather than reporting its hits. Z-prime is not-computed without "
+            "BOTH a positive and a negative control; do not substitute the extreme wells. Edge "
+            "and pattern effects are reported and never auto-corrected.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.assay) return {"Assay service unavailable.", true};
+                const auto ds = svc_.assay->import(args.value("text", ""));
+                if (!ds || ds->plates.empty())
+                    return {"That text is not a plate table BioCAD can read.", true};
+                const int idx = args.value("plate_index", 0);
+                if (idx < 0 || idx >= static_cast<int>(ds->plates.size()))
+                    return {"plate_index is out of range for that import.", true};
+                const QcReport qc = svc_.assay->qc(ds->plates[static_cast<std::size_t>(idx)]);
+                return {json{{"qc", qc},
+                             {"bands", "Z-prime >= 0.5 excellent, 0-0.5 marginal, <= 0 unusable"}}
+                            .dump(),
+                        false};
+            }));
+    }
+
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"text", {{"type", "string"},
+                        {"description", "A plate export whose wells carry time_s, concentration "
+                                        "(the analyte concentration) and readout (response)."}}},
+              {"model", {{"type", "string"},
+                         {"enum", json::array({"langmuir", "mass-transport"})},
+                         {"description", "1:1 Langmuir, or the two-compartment mass-transport "
+                                         "model when the surface is transport-limited."}}},
+              {"series_id", {{"type", "string"},
+                             {"description", "Which series to fit; default the first."}}}}},
+            {"required", json::array({"text"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "fit_binding_kinetics",
+            "Globally fit an SPR or BLI sensorgram set to a 1:1 Langmuir (or mass-transport) "
+            "model across every analyte concentration at once, returning ka, kd and KD = kd/ka. "
+            "The steady-state KD is reported separately and comes back not-computed when the "
+            "association phase never reached equilibrium - quoting a steady-state KD from a "
+            "curve that did not plateau is the classic SPR error. The injection stop is inferred "
+            "from the response maximum when the export does not carry it, and that inference is "
+            "returned as a warning you must pass on, because it biases kd.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.assay) return {"Assay service unavailable.", true};
+                const auto ds = svc_.assay->import(args.value("text", ""));
+                if (!ds || ds->plates.empty())
+                    return {"That text is not a plate table BioCAD can read.", true};
+                const std::string want = args.value("series_id", "");
+                std::vector<Well> series;
+                for (const auto& w : ds->plates.front().wells)
+                    if (want.empty() || w.seriesId == want) series.push_back(w);
+                if (series.empty()) return {"No wells matched that series_id.", true};
+                const AssayModel m = args.value("model", "langmuir") == "mass-transport"
+                                         ? AssayModel::MassTransportKinetics
+                                         : AssayModel::LangmuirKinetics;
+                const FitResult f = svc_.assay->fit(series, m, false);
+                return {json(f).dump(), false};
+            }));
+    }
+
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"text", {{"type", "string"},
+                        {"description", "A plate export of the full [S] x [I] matrix: "
+                                        "concentration is [S], series_id is the numeric "
+                                        "inhibitor concentration, readout is velocity."}}}}},
+            {"required", json::array({"text"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "fit_enzyme_inhibition",
+            "Globally fit an enzyme inhibition matrix over the whole [S] x [I] surface and rank "
+            "competitive, uncompetitive, noncompetitive and mixed modality by AICc. This is "
+            "BioCAD's ONE producer of inhibition modality, and it answers Unknown when the top "
+            "two models differ by less than 2 AICc units - Unknown is the honest answer there, "
+            "not the runner-up. Modality matters downstream: a Cheng-Prusoff Ki computed with "
+            "the wrong modality is off by a factor of [S]/Km, which is 10x at [S] = 10*Km. Never "
+            "infer modality from a single IC50 curve or from a docking pose.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.assay) return {"Assay service unavailable.", true};
+                const auto ds = svc_.assay->import(args.value("text", ""));
+                if (!ds || ds->plates.empty())
+                    return {"That text is not a plate table BioCAD can read.", true};
+                std::vector<Well> matrix;
+                for (const auto& w : ds->plates.front().wells)
+                    if (w.role == WellRole::Sample || w.role == WellRole::Unknown)
+                        matrix.push_back(w);
+                if (matrix.empty()) return {"No sample wells to fit.", true};
+                const ModelComparison c = svc_.assay->inhibitionModality(matrix);
+                return {json(c).dump(), false};
+            }));
+    }
+
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"truth_parameters", {{"type", "array"}, {"items", {{"type", "number"}}},
+                                    {"description", "The truth model's parameters in 5PL letter "
+                                                    "order: [A (signal at zero), B (slope), C "
+                                                    "(midpoint, mol/L), D (plateau)] for a 4PL, "
+                                                    "plus G for a 5PL."}}},
+              {"concentrations", {{"type", "array"}, {"items", {{"type", "number"}}},
+                                  {"description", "The ladder to simulate, mol/L."}}},
+              {"replicates", {{"type", "integer"}, {"description", "Series per plate."}}},
+              {"additive_noise_sd", {{"type", "number"}}},
+              {"proportional_noise_cv", {{"type", "number"}}},
+              {"pipetting_cv", {{"type", "number"},
+                                {"description", "Per-transfer lognormal CV; it COMPOUNDS down "
+                                                "the ladder."}}},
+              {"plate_gradient_pct", {{"type", "number"}}},
+              {"dmso_tolerance_pct", {{"type", "number"}}},
+              {"seed", {{"type", "integer"}, {"description", "Same seed, same report."}}},
+              {"runs", {{"type", "integer"},
+                        {"description", "Seeded Monte Carlo repetitions; 200-1000 is useful."}}},
+              {"five_parameter", {{"type", "boolean"},
+                                  {"description", "Simulate a 5PL truth instead of a 4PL."}}}}},
+            {"required", json::array({"truth_parameters", "concentrations"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "design_assay",
+            "Forward-simulate an assay design: generate plates from a truth model and error "
+            "structure the USER states, push every plate through the same import, QC and fit "
+            "path real data takes, and report over many seeded runs the median Z-prime, the "
+            "median recovered midpoint, the log10 confidence-interval width, the convergence "
+            "rate and - the number that matters - the EMPIRICAL coverage of the nominal 95% "
+            "interval. Coverage well below 95% means the interval this design would report does "
+            "not mean what it says, and you must lead with that rather than with the recovered "
+            "midpoint. Also returns a Fedorov D-optimal ladder restricted to achievable serial "
+            "dilution points. This is experimental design: it simulates plates, never a dose, "
+            "and it contains no procedure, reagent or route.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.assay) return {"Assay service unavailable.", true};
+                AssayDesignSpec spec;
+                spec.truthModel = args.value("five_parameter", false)
+                                      ? AssayModel::FiveParameterLogistic
+                                      : AssayModel::FourParameterLogistic;
+                for (const auto& v : args["truth_parameters"])
+                    spec.truthParameters.push_back(v.get<double>());
+                for (const auto& v : args["concentrations"])
+                    spec.concentrations.push_back(v.get<double>());
+                if (spec.concentrations.size() < 2)
+                    return {"A design needs at least two concentrations.", true};
+                spec.replicates          = args.value("replicates", 3);
+                spec.additiveNoiseSd     = args.value("additive_noise_sd", 0.0);
+                spec.proportionalNoiseCv = args.value("proportional_noise_cv", 0.0);
+                spec.pipettingCv         = args.value("pipetting_cv", 0.0);
+                spec.plateGradientPct    = args.value("plate_gradient_pct", 0.0);
+                spec.dmsoTolerancePct    = args.value("dmso_tolerance_pct", 0.0);
+                spec.seed = static_cast<std::uint64_t>(args.value("seed", 1));
+                spec.replicateRuns = std::clamp(args.value("runs", 200), 1, 2000);
+                const AssayDesignReport r = svc_.assay->simulate(spec);
+                json j = r;
+                // The per-run vector is thousands of numbers and says nothing a model can
+                // use; the summary quantities are the result.
+                j.erase("recoveredEc50");
+                j["scope"] = "plate simulation for experimental design - not a dose, not a "
+                             "procedure";
+                return {j.dump(), false};
             }));
     }
 }
@@ -1745,8 +2247,11 @@ void AppShell::drawContent() {
         else if (panel == "Metabolites") panels::metabolites(*this);
         else if (panel == "PkPd")        panels::pkpd(*this);
         else if (panel == "Ionization")  panels::ionization(*this);
+        else if (panel == "Assay")       panels::assayWorkbench(*this);
+        else if (panel == "AssayDesign") panels::assayDesign(*this);
         else if (panel == "Sequence")    panels::sequenceCompare(*this);
         else if (panel == "Structure3D") panels::proteinStructure(*this);
+        else if (panel == "NucleicAcid") panels::nucleicAcid(*this);
         else if (panel == "Similarity")  panels::similarity(*this);
         else if (panel == "Legal")       panels::legal(*this);
         else if (panel == "Docking")     panels::docking(*this);

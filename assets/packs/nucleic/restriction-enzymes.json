@@ -1,0 +1,664 @@
+{
+  "schemaVersion": 1,
+  "id": "restriction-enzymes",
+  "title": "Type II restriction endonucleases",
+  "description": "Recognition sequences and cut positions for commonly used type II restriction endonucleases in the suppliers' and REBASE catalogue notation. topCut is the number of bases between the 5' end of the recognition sequence and the phosphodiester bond cut on the top strand; bottomCut is the same distance, measured in top-strand coordinates, for the cut on the bottom strand. So EcoRI G^AATTC / CTTAA^G is topCut 1, bottomCut 5, and the overhang is bottomCut - topCut: positive for a 5' overhang, negative for a 3' overhang, zero for a blunt cut. Every entry has a palindromic recognition sequence and a cut symmetric about the site centre, which the loader asserts; enzymes that cut asymmetrically outside their recognition sequence are deliberately absent rather than approximated.",
+  "enzymes": [
+    {
+      "name": "AatII",
+      "recognition": "GACGTC",
+      "topCut": 5,
+      "bottomCut": 1,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for AatII"
+    },
+    {
+      "name": "AfeI",
+      "recognition": "AGCGCT",
+      "topCut": 3,
+      "bottomCut": 3,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for AfeI"
+    },
+    {
+      "name": "AflII",
+      "recognition": "CTTAAG",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "isoschizomer BspTI",
+      "source": "REBASE/supplier catalogue notation for AflII"
+    },
+    {
+      "name": "AgeI",
+      "recognition": "ACCGGT",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for AgeI"
+    },
+    {
+      "name": "AhdI",
+      "recognition": "GACNNNNNGTC",
+      "topCut": 6,
+      "bottomCut": 5,
+      "notes": "interrupted site",
+      "source": "REBASE/supplier catalogue notation for AhdI"
+    },
+    {
+      "name": "AluI",
+      "recognition": "AGCT",
+      "topCut": 2,
+      "bottomCut": 2,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for AluI"
+    },
+    {
+      "name": "AlwNI",
+      "recognition": "CAGNNNCTG",
+      "topCut": 6,
+      "bottomCut": 3,
+      "notes": "interrupted site",
+      "source": "REBASE/supplier catalogue notation for AlwNI"
+    },
+    {
+      "name": "ApaI",
+      "recognition": "GGGCCC",
+      "topCut": 5,
+      "bottomCut": 1,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for ApaI"
+    },
+    {
+      "name": "ApoI",
+      "recognition": "RAATTY",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "degenerate site",
+      "source": "REBASE/supplier catalogue notation for ApoI"
+    },
+    {
+      "name": "AscI",
+      "recognition": "GGCGCGCC",
+      "topCut": 2,
+      "bottomCut": 6,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for AscI"
+    },
+    {
+      "name": "AseI",
+      "recognition": "ATTAAT",
+      "topCut": 2,
+      "bottomCut": 4,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for AseI"
+    },
+    {
+      "name": "AsiSI",
+      "recognition": "GCGATCGC",
+      "topCut": 5,
+      "bottomCut": 3,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for AsiSI"
+    },
+    {
+      "name": "AvaII",
+      "recognition": "GGWCC",
+      "topCut": 1,
+      "bottomCut": 4,
+      "notes": "degenerate site",
+      "source": "REBASE/supplier catalogue notation for AvaII"
+    },
+    {
+      "name": "AvrII",
+      "recognition": "CCTAGG",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for AvrII"
+    },
+    {
+      "name": "BamHI",
+      "recognition": "GGATCC",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for BamHI"
+    },
+    {
+      "name": "BclI",
+      "recognition": "TGATCA",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "blocked by Dam methylation",
+      "source": "REBASE/supplier catalogue notation for BclI"
+    },
+    {
+      "name": "BglII",
+      "recognition": "AGATCT",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for BglII"
+    },
+    {
+      "name": "Bsp1286I",
+      "recognition": "GDGCHC",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "degenerate site",
+      "source": "REBASE/supplier catalogue notation for Bsp1286I"
+    },
+    {
+      "name": "BsaJI",
+      "recognition": "CCNNGG",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "interrupted site",
+      "source": "REBASE/supplier catalogue notation for BsaJI"
+    },
+    {
+      "name": "BsiWI",
+      "recognition": "CGTACG",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for BsiWI"
+    },
+    {
+      "name": "BspEI",
+      "recognition": "TCCGGA",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for BspEI"
+    },
+    {
+      "name": "BsrGI",
+      "recognition": "TGTACA",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for BsrGI"
+    },
+    {
+      "name": "BssHII",
+      "recognition": "GCGCGC",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for BssHII"
+    },
+    {
+      "name": "BstXI",
+      "recognition": "CCANNNNNNTGG",
+      "topCut": 8,
+      "bottomCut": 4,
+      "notes": "interrupted site",
+      "source": "REBASE/supplier catalogue notation for BstXI"
+    },
+    {
+      "name": "BstYI",
+      "recognition": "RGATCY",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "degenerate site",
+      "source": "REBASE/supplier catalogue notation for BstYI"
+    },
+    {
+      "name": "Bsu36I",
+      "recognition": "CCTNAGG",
+      "topCut": 2,
+      "bottomCut": 5,
+      "notes": "interrupted site",
+      "source": "REBASE/supplier catalogue notation for Bsu36I"
+    },
+    {
+      "name": "ClaI",
+      "recognition": "ATCGAT",
+      "topCut": 2,
+      "bottomCut": 4,
+      "notes": "blocked by Dam methylation",
+      "source": "REBASE/supplier catalogue notation for ClaI"
+    },
+    {
+      "name": "DraI",
+      "recognition": "TTTAAA",
+      "topCut": 3,
+      "bottomCut": 3,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for DraI"
+    },
+    {
+      "name": "DraIII",
+      "recognition": "CACNNNGTG",
+      "topCut": 6,
+      "bottomCut": 3,
+      "notes": "interrupted site",
+      "source": "REBASE/supplier catalogue notation for DraIII"
+    },
+    {
+      "name": "EaeI",
+      "recognition": "YGGCCR",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "degenerate site",
+      "source": "REBASE/supplier catalogue notation for EaeI"
+    },
+    {
+      "name": "EcoNI",
+      "recognition": "CCTNNNNNAGG",
+      "topCut": 5,
+      "bottomCut": 6,
+      "notes": "interrupted site",
+      "source": "REBASE/supplier catalogue notation for EcoNI"
+    },
+    {
+      "name": "EcoRI",
+      "recognition": "GAATTC",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for EcoRI"
+    },
+    {
+      "name": "EcoRV",
+      "recognition": "GATATC",
+      "topCut": 3,
+      "bottomCut": 3,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for EcoRV"
+    },
+    {
+      "name": "FseI",
+      "recognition": "GGCCGGCC",
+      "topCut": 6,
+      "bottomCut": 2,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for FseI"
+    },
+    {
+      "name": "FspI",
+      "recognition": "TGCGCA",
+      "topCut": 3,
+      "bottomCut": 3,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for FspI"
+    },
+    {
+      "name": "HaeIII",
+      "recognition": "GGCC",
+      "topCut": 2,
+      "bottomCut": 2,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for HaeIII"
+    },
+    {
+      "name": "HhaI",
+      "recognition": "GCGC",
+      "topCut": 3,
+      "bottomCut": 1,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for HhaI"
+    },
+    {
+      "name": "HincII",
+      "recognition": "GTYRAC",
+      "topCut": 3,
+      "bottomCut": 3,
+      "notes": "degenerate site",
+      "source": "REBASE/supplier catalogue notation for HincII"
+    },
+    {
+      "name": "HindIII",
+      "recognition": "AAGCTT",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for HindIII"
+    },
+    {
+      "name": "HinfI",
+      "recognition": "GANTC",
+      "topCut": 1,
+      "bottomCut": 4,
+      "notes": "interrupted site",
+      "source": "REBASE/supplier catalogue notation for HinfI"
+    },
+    {
+      "name": "HpaI",
+      "recognition": "GTTAAC",
+      "topCut": 3,
+      "bottomCut": 3,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for HpaI"
+    },
+    {
+      "name": "HpyCH4V",
+      "recognition": "TGCA",
+      "topCut": 2,
+      "bottomCut": 2,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for HpyCH4V"
+    },
+    {
+      "name": "KpnI",
+      "recognition": "GGTACC",
+      "topCut": 5,
+      "bottomCut": 1,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for KpnI"
+    },
+    {
+      "name": "MboI",
+      "recognition": "GATC",
+      "topCut": 0,
+      "bottomCut": 4,
+      "notes": "isoschizomer of Sau3AI",
+      "source": "REBASE/supplier catalogue notation for MboI"
+    },
+    {
+      "name": "MfeI",
+      "recognition": "CAATTG",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for MfeI"
+    },
+    {
+      "name": "MluI",
+      "recognition": "ACGCGT",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for MluI"
+    },
+    {
+      "name": "MscI",
+      "recognition": "TGGCCA",
+      "topCut": 3,
+      "bottomCut": 3,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for MscI"
+    },
+    {
+      "name": "MspI",
+      "recognition": "CCGG",
+      "topCut": 1,
+      "bottomCut": 3,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for MspI"
+    },
+    {
+      "name": "NaeI",
+      "recognition": "GCCGGC",
+      "topCut": 3,
+      "bottomCut": 3,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for NaeI"
+    },
+    {
+      "name": "NcoI",
+      "recognition": "CCATGG",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for NcoI"
+    },
+    {
+      "name": "NdeI",
+      "recognition": "CATATG",
+      "topCut": 2,
+      "bottomCut": 4,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for NdeI"
+    },
+    {
+      "name": "NgoMIV",
+      "recognition": "GCCGGC",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "same site as NaeI, different cut",
+      "source": "REBASE/supplier catalogue notation for NgoMIV"
+    },
+    {
+      "name": "NheI",
+      "recognition": "GCTAGC",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for NheI"
+    },
+    {
+      "name": "NlaIII",
+      "recognition": "CATG",
+      "topCut": 4,
+      "bottomCut": 0,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for NlaIII"
+    },
+    {
+      "name": "NotI",
+      "recognition": "GCGGCCGC",
+      "topCut": 2,
+      "bottomCut": 6,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for NotI"
+    },
+    {
+      "name": "NruI",
+      "recognition": "TCGCGA",
+      "topCut": 3,
+      "bottomCut": 3,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for NruI"
+    },
+    {
+      "name": "NsiI",
+      "recognition": "ATGCAT",
+      "topCut": 5,
+      "bottomCut": 1,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for NsiI"
+    },
+    {
+      "name": "PacI",
+      "recognition": "TTAATTAA",
+      "topCut": 5,
+      "bottomCut": 3,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for PacI"
+    },
+    {
+      "name": "PflMI",
+      "recognition": "CCANNNNNTGG",
+      "topCut": 7,
+      "bottomCut": 4,
+      "notes": "interrupted site",
+      "source": "REBASE/supplier catalogue notation for PflMI"
+    },
+    {
+      "name": "PmlI",
+      "recognition": "CACGTG",
+      "topCut": 3,
+      "bottomCut": 3,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for PmlI"
+    },
+    {
+      "name": "PstI",
+      "recognition": "CTGCAG",
+      "topCut": 5,
+      "bottomCut": 1,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for PstI"
+    },
+    {
+      "name": "PvuII",
+      "recognition": "CAGCTG",
+      "topCut": 3,
+      "bottomCut": 3,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for PvuII"
+    },
+    {
+      "name": "SacI",
+      "recognition": "GAGCTC",
+      "topCut": 5,
+      "bottomCut": 1,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for SacI"
+    },
+    {
+      "name": "SalI",
+      "recognition": "GTCGAC",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for SalI"
+    },
+    {
+      "name": "Sau3AI",
+      "recognition": "GATC",
+      "topCut": 0,
+      "bottomCut": 4,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for Sau3AI"
+    },
+    {
+      "name": "SbfI",
+      "recognition": "CCTGCAGG",
+      "topCut": 6,
+      "bottomCut": 2,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for SbfI"
+    },
+    {
+      "name": "ScaI",
+      "recognition": "AGTACT",
+      "topCut": 3,
+      "bottomCut": 3,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for ScaI"
+    },
+    {
+      "name": "SgrAI",
+      "recognition": "CRCCGGYG",
+      "topCut": 2,
+      "bottomCut": 6,
+      "notes": "degenerate site",
+      "source": "REBASE/supplier catalogue notation for SgrAI"
+    },
+    {
+      "name": "SmaI",
+      "recognition": "CCCGGG",
+      "topCut": 3,
+      "bottomCut": 3,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for SmaI"
+    },
+    {
+      "name": "SnaBI",
+      "recognition": "TACGTA",
+      "topCut": 3,
+      "bottomCut": 3,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for SnaBI"
+    },
+    {
+      "name": "SpeI",
+      "recognition": "ACTAGT",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for SpeI"
+    },
+    {
+      "name": "SphI",
+      "recognition": "GCATGC",
+      "topCut": 5,
+      "bottomCut": 1,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for SphI"
+    },
+    {
+      "name": "SrfI",
+      "recognition": "GCCCGGGC",
+      "topCut": 4,
+      "bottomCut": 4,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for SrfI"
+    },
+    {
+      "name": "SspI",
+      "recognition": "AATATT",
+      "topCut": 3,
+      "bottomCut": 3,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for SspI"
+    },
+    {
+      "name": "StuI",
+      "recognition": "AGGCCT",
+      "topCut": 3,
+      "bottomCut": 3,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for StuI"
+    },
+    {
+      "name": "TaqI",
+      "recognition": "TCGA",
+      "topCut": 1,
+      "bottomCut": 3,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for TaqI"
+    },
+    {
+      "name": "XbaI",
+      "recognition": "TCTAGA",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for XbaI"
+    },
+    {
+      "name": "XcmI",
+      "recognition": "CCANNNNNNNNNTGG",
+      "topCut": 8,
+      "bottomCut": 7,
+      "notes": "interrupted site",
+      "source": "REBASE/supplier catalogue notation for XcmI"
+    },
+    {
+      "name": "XhoI",
+      "recognition": "CTCGAG",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "",
+      "source": "REBASE/supplier catalogue notation for XhoI"
+    },
+    {
+      "name": "XmaI",
+      "recognition": "CCCGGG",
+      "topCut": 1,
+      "bottomCut": 5,
+      "notes": "same site as SmaI, different cut",
+      "source": "REBASE/supplier catalogue notation for XmaI"
+    },
+    {
+      "name": "XmnI",
+      "recognition": "GAANNNNTTC",
+      "topCut": 5,
+      "bottomCut": 5,
+      "notes": "interrupted site",
+      "source": "REBASE/supplier catalogue notation for XmnI"
+    },
+    {
+      "name": "ZraI",
+      "recognition": "GACGTC",
+      "topCut": 3,
+      "bottomCut": 3,
+      "notes": "same site as AatII, blunt cut",
+      "source": "REBASE/supplier catalogue notation for ZraI"
+    }
+  ]
+}

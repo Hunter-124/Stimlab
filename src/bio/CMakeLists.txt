@@ -6,6 +6,11 @@ add_library(biocad_bio STATIC
   Score.cpp
   Align.cpp
   Superpose.cpp
+  NucSeq.cpp
+  NucIo.cpp
+  Restriction.cpp
+  OligoThermo.cpp
+  Codon.cpp
 )
 
 target_include_directories(biocad_bio PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)

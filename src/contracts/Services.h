@@ -24,11 +24,14 @@ struct Services {
     IMetabolismFactsModule* metabolismFacts = nullptr;
     IAlertsModule*      alerts     = nullptr;
     IIonizationModule*  ionization = nullptr;
+    INucleicAcidModule* nucleicAcid = nullptr;
+    IAssayModule*       assay      = nullptr;
 
     [[nodiscard]] bool valid() const {
         return library && stability && admet && absorption &&
                similarity && legal && docking && runs && pharmacodynamics &&
-               sequence && structure && metabolismFacts && alerts && ionization;
+               sequence && structure && metabolismFacts && alerts && ionization &&
+               nucleicAcid && assay;
     }
 };
 

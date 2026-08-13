@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "id": "nn-thermodynamics",
+  "title": "Nearest-neighbour DNA duplex thermodynamics (SantaLucia unified parameter set)",
+  "description": "The unified nearest-neighbour parameters for Watson-Crick DNA/DNA duplexes in 1 M NaCl, as published by SantaLucia and co-workers (Allawi and SantaLucia, Biochemistry 1997, and the unified analysis of SantaLucia, Proc Natl Acad Sci USA 1998, reprinted in the SantaLucia and Hicks review in Annual Review of Biophysics and Biomolecular Structure, 2004). Ten unique Watson-Crick nearest neighbours, plus helix initiation terms that depend on whether the terminal base pair is G/C or A/T - the A/T term is the terminal-AT penalty - plus the entropic symmetry correction for a self-complementary duplex. No DOI is quoted here because none was verified; the parameter set is identified by the publication above and by its values, which are reproduced verbatim.",
+  "units": {
+    "deltaH": "kcal/mol",
+    "deltaS": "cal/(mol*K)"
+  },
+  "gasConstant": 1.9872,
+  "gasConstantUnit": "cal/(mol*K)",
+  "referenceTemperatureK": 310.15,
+  "saltCorrection": {
+    "method": "santalucia-1998-monovalent-entropy",
+    "formula": "dS(Na+) = dS(1 M) + 0.368 * (N - 1) * ln([Na+] / 1 M), with N the number of nucleotides in the strand, i.e. N - 1 phosphates",
+    "coefficient": 0.368,
+    "source": "The monovalent salt correction of SantaLucia, Proc Natl Acad Sci USA 1998, applied to the entropy per phosphate. It is defined for Tm of Watson-Crick duplexes in monovalent salt.",
+    "magnesium": "No magnesium-to-monovalent equivalence is applied. A divalent correction (for example the Owczarzy divalent treatment) was not transcribed here, so a supplied Mg2+ concentration is echoed back and explicitly reported as unused rather than folded into the salt term."
+  },
+  "tmEquation": "Tm = dH / (dS + R * ln(Ct / x)) - 273.15, with Ct the total strand concentration and x = 1 for a self-complementary strand and x = 4 for non-self-complementary strands present in equal concentration",
+  "nearestNeighbours": [
+    { "duplex": "AA/TT", "deltaH": -7.9, "deltaS": -22.2 },
+    { "duplex": "AT/TA", "deltaH": -7.2, "deltaS": -20.4 },
+    { "duplex": "TA/AT", "deltaH": -7.2, "deltaS": -21.3 },
+    { "duplex": "CA/GT", "deltaH": -8.5, "deltaS": -22.7 },
+    { "duplex": "GT/CA", "deltaH": -8.4, "deltaS": -22.4 },
+    { "duplex": "CT/GA", "deltaH": -7.8, "deltaS": -21.0 },
+    { "duplex": "GA/CT", "deltaH": -8.2, "deltaS": -22.2 },
+    { "duplex": "CG/GC", "deltaH": -10.6, "deltaS": -27.2 },
+    { "duplex": "GC/CG", "deltaH": -9.8, "deltaS": -24.4 },
+    { "duplex": "GG/CC", "deltaH": -8.0, "deltaS": -19.9 }
+  ],
+  "initiation": {
+    "terminalGC": { "deltaH": 0.1, "deltaS": -2.8 },
+    "terminalAT": { "deltaH": 2.3, "deltaS": 4.1 },
+    "note": "One initiation term per duplex end, chosen by that end's base pair. The terminal-AT term is the terminal-AT penalty of the unified set; there is no separate penalty on top of it."
+  },
+  "symmetry": { "deltaH": 0.0, "deltaS": -1.4 }
+}

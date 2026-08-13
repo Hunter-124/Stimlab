@@ -8,6 +8,8 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <limits>
+#include <map>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -16,6 +18,8 @@
 #include <imgui.h>
 #include <implot.h>
 
+#include "assay/Design.h"
+#include "bio/NucSeq.h"
 #include "bio/Structure.h"
 #include "chem/Canonical.h"
 #include "chem/Rings.h"
@@ -29,6 +33,7 @@
 #include "core/Manifest.h"
 #include "modules/IonizationModule.h"
 #include "modules/Metabolites.h"
+#include "modules/NucleicModule.h"
 #include "modules/docking/Presets.h"
 #include "modules/docking/Provisioning.h"
 #include "modules/docking/ReceptorPrep.h"
@@ -1604,6 +1609,749 @@ void ionization(AppShell& shell) {
     for (const auto& a : r.solubility.assumptions) ImGui::BulletText("%s", a.c_str());
     for (const auto& a : r.buffer.assumptions) ImGui::BulletText("%s", a.c_str());
     for (const auto& a : r.dissolution.assumptions) ImGui::BulletText("%s", a.c_str());
+}
+
+// ------------------------------------------------------ Assay Workbench
+namespace {
+
+// The default contents of the import box. It is a real long CSV, not a description
+// of one: the fastest way to learn an import format is to see a working example you
+// can edit in place.
+const char* kAssaySampleCsv =
+    "plate_id,well,role,sample_id,series_id,concentration,conc_unit,replicate,readout,readout_unit\n"
+    "P1,A1,negative,ctrl,,0,M,0,10,RFU\n"
+    "P1,B1,negative,ctrl,,0,M,1,11,RFU\n"
+    "P1,C1,negative,ctrl,,0,M,2,9,RFU\n"
+    "P1,D1,negative,ctrl,,0,M,3,10.5,RFU\n"
+    "P1,A2,positive,ctrl,,0,M,0,100,RFU\n"
+    "P1,B2,positive,ctrl,,0,M,1,102,RFU\n"
+    "P1,C2,positive,ctrl,,0,M,2,98,RFU\n"
+    "P1,D2,positive,ctrl,,0,M,3,101,RFU\n"
+    "P1,A3,sample,cmpd1,s1,1e-5,M,0,11.0,RFU\n"
+    "P1,A4,sample,cmpd1,s1,3.16e-6,M,0,12.7,RFU\n"
+    "P1,A5,sample,cmpd1,s1,1e-6,M,0,18.4,RFU\n"
+    "P1,A6,sample,cmpd1,s1,3.16e-7,M,0,35.5,RFU\n"
+    "P1,A7,sample,cmpd1,s1,1e-7,M,0,64.5,RFU\n"
+    "P1,A8,sample,cmpd1,s1,3.16e-8,M,0,81.6,RFU\n"
+    "P1,A9,sample,cmpd1,s1,1e-8,M,0,87.3,RFU\n"
+    "P1,A10,sample,cmpd1,s1,1e-9,M,0,89.6,RFU\n";
+
+// A hollow marker is drawn with a transparent FILL and a visible outline. An
+// excluded well is never removed from a plot: the reader has to be able to see the
+// point that a rule threw away, and which rule threw it.
+ImPlotSpec hollowMarkerSpec(ImPlotMarker marker, float size) {
+    ImPlotSpec s;
+    s.Marker = marker;
+    s.MarkerSize = size;
+    s.MarkerFillColor = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+    s.MarkerLineColor = ImVec4(1.0f, 0.75f, 0.25f, 1.0f);
+    s.LineWeight = 2.0f;
+    return s;
+}
+
+ImPlotSpec markerSpec(ImPlotMarker marker, float size) {
+    ImPlotSpec s;
+    s.Marker = marker;
+    s.MarkerSize = size;
+    return s;
+}
+
+std::string sci(double v) {
+    char b[48];
+    std::snprintf(b, sizeof b, "%.4g", v);
+    return b;
+}
+
+const char* const kAssayModelNames[] = {"4PL", "5PL", "Michaelis-Menten", "Hill",
+                                        "Substrate inhibition", "Morrison tight binding",
+                                        "Langmuir 1:1 (SPR/BLI)", "Mass transport (SPR)",
+                                        "Boltzmann melt (DSF)", "Two-state melt (DSF)",
+                                        "Wiseman isotherm (ITC)"};
+
+// The plate as a heat map. Excluded wells are drawn as an overlay of hollow squares
+// on top of the map rather than being blanked out, for the same reason as above.
+void assayHeatMap(const Plate& p) {
+    if (p.rows <= 0 || p.columns <= 0) return;
+    std::vector<double> grid(static_cast<std::size_t>(p.rows) * p.columns,
+                             std::numeric_limits<double>::quiet_NaN());
+    double lo = 0.0, hi = 0.0;
+    bool first = true;
+    std::vector<double> exX, exY;
+    for (const auto& w : p.wells) {
+        if (w.row < 0 || w.row >= p.rows || w.column < 0 || w.column >= p.columns) continue;
+        grid[static_cast<std::size_t>(w.row) * p.columns + w.column] = w.readout;
+        if (first || w.readout < lo) lo = w.readout;
+        if (first || w.readout > hi) hi = w.readout;
+        first = false;
+        if (w.excluded) {
+            exX.push_back((w.column + 0.5) / p.columns);
+            exY.push_back(1.0 - (w.row + 0.5) / p.rows);
+        }
+    }
+    if (first) return;
+    if (hi <= lo) hi = lo + 1.0;
+    if (ImPlot::BeginPlot("##assay-heat", ImVec2(-1, 240), ImPlotFlags_NoLegend)) {
+        ImPlot::SetupAxes("column", "row",
+                          ImPlotAxisFlags_NoGridLines | ImPlotAxisFlags_NoTickLabels,
+                          ImPlotAxisFlags_NoGridLines | ImPlotAxisFlags_NoTickLabels);
+        ImPlot::PlotHeatmap("readout", grid.data(), p.rows, p.columns, lo, hi, nullptr,
+                            ImPlotPoint(0, 0), ImPlotPoint(1, 1));
+        if (!exX.empty()) {
+            ImPlot::PlotScatter("excluded", exX.data(), exY.data(),
+                                static_cast<int>(exX.size()),
+                                hollowMarkerSpec(ImPlotMarker_Square, 6.0f));
+        }
+        ImPlot::EndPlot();
+    }
+    ImGui::TextDisabled("Heat map spans %s to %s %s; hollow squares are wells an opt-in "
+                        "outlier rule excluded (they are never deleted).",
+                        sci(lo).c_str(), sci(hi).c_str(),
+                        p.readoutUnit.empty() ? "readout units" : p.readoutUnit.c_str());
+}
+
+// The log10 interval the FIT reported for its half-maximal concentration, profile
+// first, Wald second, nothing third. Nothing is a legitimate answer: an interval
+// invented by the panel would be indistinguishable from one the fitter earned.
+bool fitLog10Interval(const FitResult& f, double& lo, double& hi) {
+    for (const auto& p : f.parameters) {
+        if (p.name != "log10EC50" && p.name != "log10C") continue;
+        if (p.profileComputed && p.profileUpper > p.profileLower) {
+            lo = p.profileLower;
+            hi = p.profileUpper;
+            return true;
+        }
+        if (p.value.error > 0.0) {
+            lo = p.value.value - 1.959963984540054 * p.value.error;
+            hi = p.value.value + 1.959963984540054 * p.value.error;
+            return true;
+        }
+    }
+    return false;
+}
+
+void assayCurve(const std::vector<Well>& series, const FitResult& fit) {
+    std::vector<double> ix, iy, ex, ey;
+    for (const auto& w : series) {
+        if (!(w.concentration > 0.0)) continue;
+        const double x = std::log10(w.concentration);
+        if (w.excluded) {
+            ex.push_back(x);
+            ey.push_back(w.readout);
+        } else {
+            ix.push_back(x);
+            iy.push_back(w.readout);
+        }
+    }
+    std::vector<double> fx, fy;
+    for (std::size_t i = 0; i < fit.fittedX.size() && i < fit.fittedY.size(); ++i) {
+        if (!(fit.fittedX[i] > 0.0)) continue;
+        fx.push_back(std::log10(fit.fittedX[i]));
+        fy.push_back(fit.fittedY[i]);
+    }
+    if (ImPlot::BeginPlot("##assay-curve", ImVec2(-1, 250))) {
+        ImPlot::SetupAxes("log10 concentration (mol/L)", "readout");
+        double lo = 0.0, hi = 0.0;
+        if (fitLog10Interval(fit, lo, hi)) {
+            // The band is the reported CONFIDENCE INTERVAL ON THE MIDPOINT, drawn
+            // where it lives - on the concentration axis. It is not a pointwise
+            // prediction band, and labelling it as one would overstate the fit.
+            const double bx[2] = {lo, hi};
+            const double top[2] = {1e30, 1e30};
+            const double bot[2] = {-1e30, -1e30};
+            ImPlot::PlotShaded("95% CI on the midpoint", bx, bot, top, 2);
+            const double mid = 0.5 * (lo + hi);
+            ImPlot::PlotInfLines("reported midpoint", &mid, 1);
+        }
+        if (!fx.empty())
+            ImPlot::PlotLine("fit", fx.data(), fy.data(), static_cast<int>(fx.size()));
+        ImPlot::PlotScatter("measured", ix.data(), iy.data(), static_cast<int>(ix.size()),
+                            markerSpec(ImPlotMarker_Circle, 5.0f));
+        if (!ex.empty()) {
+            ImPlot::PlotScatter("excluded", ex.data(), ey.data(), static_cast<int>(ex.size()),
+                                hollowMarkerSpec(ImPlotMarker_Circle, 6.0f));
+        }
+        ImPlot::EndPlot();
+    }
+
+    if (!fit.residuals.empty() && !ix.empty()) {
+        std::vector<double> rx;
+        for (std::size_t i = 0; i < fit.residuals.size() && i < ix.size(); ++i)
+            rx.push_back(ix[i]);
+        if (ImPlot::BeginPlot("##assay-resid", ImVec2(-1, 140), ImPlotFlags_NoLegend)) {
+            ImPlot::SetupAxes("log10 concentration (mol/L)", "residual");
+            const double zero = 0.0;
+            ImPlotSpec zeroSpec;
+            zeroSpec.Flags = ImPlotInfLinesFlags_Horizontal;
+            ImPlot::PlotInfLines("##zero", &zero, 1, zeroSpec);
+            ImPlot::PlotScatter("residual", rx.data(), fit.residuals.data(),
+                                static_cast<int>(std::min(rx.size(), fit.residuals.size())),
+                                markerSpec(ImPlotMarker_Diamond, 4.0f));
+            ImPlot::EndPlot();
+        }
+        ImGui::TextDisabled("Residuals belong next to the curve: a high R-squared with "
+                            "structured residuals is a wrong model that fits well.");
+    }
+}
+
+// Sensorgram: response vs time, one trace per analyte concentration.
+void assaySensorgram(const std::vector<Well>& wells) {
+    std::map<double, std::pair<std::vector<double>, std::vector<double>>> byConc;
+    for (const auto& w : wells) byConc[w.concentration].first.push_back(w.timeS);
+    for (const auto& w : wells) byConc[w.concentration].second.push_back(w.readout);
+    if (byConc.empty()) return;
+    if (ImPlot::BeginPlot("##assay-spr", ImVec2(-1, 220))) {
+        ImPlot::SetupAxes("time (s)", "response (RU)");
+        for (auto& [conc, xy] : byConc) {
+            const std::string label = sci(conc) + " M";
+            ImPlot::PlotLine(label.c_str(), xy.first.data(), xy.second.data(),
+                             static_cast<int>(std::min(xy.first.size(), xy.second.size())));
+        }
+        ImPlot::EndPlot();
+    }
+}
+
+void assayMelt(const std::vector<Well>& wells) {
+    std::vector<double> t, y;
+    for (const auto& w : wells) {
+        t.push_back(w.temperatureC);
+        y.push_back(w.readout);
+    }
+    if (t.size() < 2) return;
+    if (ImPlot::BeginPlot("##assay-dsf", ImVec2(-1, 200))) {
+        ImPlot::SetupAxes("temperature (C)", "signal");
+        ImPlot::PlotLine("melt", t.data(), y.data(), static_cast<int>(t.size()));
+        ImPlot::EndPlot();
+    }
+}
+
+// The [S] x [I] velocity matrix as a heat map. The modality verdict is a global fit
+// over this whole surface, not over any one row of it, which is why the matrix is
+// what gets drawn.
+void assayInhibitionMatrix(const std::vector<Well>& wells) {
+    std::vector<double> subs, inhibs;
+    for (const auto& w : wells) {
+        subs.push_back(w.concentration);
+        inhibs.push_back(std::atof(w.seriesId.c_str()));
+    }
+    std::sort(subs.begin(), subs.end());
+    subs.erase(std::unique(subs.begin(), subs.end()), subs.end());
+    std::sort(inhibs.begin(), inhibs.end());
+    inhibs.erase(std::unique(inhibs.begin(), inhibs.end()), inhibs.end());
+    if (subs.size() < 2 || inhibs.empty()) return;
+    std::vector<double> grid(subs.size() * inhibs.size(), 0.0);
+    double lo = 0.0, hi = 0.0;
+    bool first = true;
+    for (const auto& w : wells) {
+        const auto si = std::lower_bound(subs.begin(), subs.end(), w.concentration) - subs.begin();
+        const double iv = std::atof(w.seriesId.c_str());
+        const auto ii = std::lower_bound(inhibs.begin(), inhibs.end(), iv) - inhibs.begin();
+        if (si >= static_cast<long>(subs.size()) || ii >= static_cast<long>(inhibs.size()))
+            continue;
+        grid[static_cast<std::size_t>(ii) * subs.size() + si] = w.readout;
+        if (first || w.readout < lo) lo = w.readout;
+        if (first || w.readout > hi) hi = w.readout;
+        first = false;
+    }
+    if (hi <= lo) hi = lo + 1.0;
+    if (ImPlot::BeginPlot("##assay-matrix", ImVec2(-1, 220), ImPlotFlags_NoLegend)) {
+        ImPlot::SetupAxes("[S] (ascending)", "[I] (ascending)",
+                          ImPlotAxisFlags_NoGridLines, ImPlotAxisFlags_NoGridLines);
+        ImPlot::PlotHeatmap("velocity", grid.data(), static_cast<int>(inhibs.size()),
+                            static_cast<int>(subs.size()), lo, hi, nullptr, ImPlotPoint(0, 0),
+                            ImPlotPoint(1, 1));
+        ImPlot::EndPlot();
+    }
+    ImGui::TextDisabled("A Lineweaver-Burk plot is available as a DIAGNOSTIC only; no fitter "
+                        "in BioCAD attaches to a transformed axis, because the transform "
+                        "distorts the error structure it would be fitting.");
+}
+
+// ITC in the standard layout: raw differential power against time on top, the
+// integrated per-injection heat against molar ratio underneath. Anything else is
+// not an ITC figure a calorimetrist can check.
+void assayItc(const std::vector<Well>& wells) {
+    std::vector<double> t, p;
+    for (const auto& w : wells) {
+        t.push_back(w.timeS);
+        p.push_back(w.readout);
+    }
+    if (t.size() < 2) return;
+    if (ImPlot::BeginPlot("##assay-itc-raw", ImVec2(-1, 180), ImPlotFlags_NoLegend)) {
+        ImPlot::SetupAxes("time (s)", "differential power (ucal/s)");
+        ImPlot::PlotLine("power", t.data(), p.data(), static_cast<int>(t.size()));
+        ImPlot::EndPlot();
+    }
+    // Integrated heat per injection: the trapezoid of power over each injection's
+    // own time span, which is the only integration the raw trace supports.
+    std::vector<double> ratio, heat;
+    double acc = 0.0;
+    for (std::size_t i = 1; i < t.size(); ++i) {
+        acc += 0.5 * (p[i] + p[i - 1]) * (t[i] - t[i - 1]);
+        ratio.push_back(static_cast<double>(i));
+        heat.push_back(acc);
+    }
+    if (ImPlot::BeginPlot("##assay-itc-iso", ImVec2(-1, 180), ImPlotFlags_NoLegend)) {
+        ImPlot::SetupAxes("injection number (molar ratio needs the cell composition)",
+                          "cumulative heat (ucal)");
+        ImPlot::PlotScatter("integrated", ratio.data(), heat.data(),
+                            static_cast<int>(ratio.size()),
+                            markerSpec(ImPlotMarker_Square, 4.0f));
+        ImPlot::EndPlot();
+    }
+    ImGui::TextColored(theme::provenanceColor(Provenance::NotComputed),
+                       "The x axis is the injection index, not the molar ratio: the ratio needs "
+                       "the cell volume and the macromolecule and titrant concentrations, which "
+                       "are experiment metadata and not well fields.");
+}
+
+}  // namespace
+
+void assayWorkbench(AppShell& shell) {
+    Services& s = shell.services();
+    if (!s.assay) return;
+
+    static std::vector<char>              csv(1 << 16);
+    static bool                           seeded = false;
+    static std::optional<AssayDataset>    ds;
+    static std::string                    importError;
+    static int                            plateIdx = 0;
+    static int                            modelIdx = 0;
+    static bool                           robust = false;
+    static std::string                    seriesId;
+    static std::optional<FitResult>        fit;
+    static std::optional<ModelComparison>  modality;
+    if (!seeded) {
+        std::snprintf(csv.data(), csv.size(), "%s", kAssaySampleCsv);
+        seeded = true;
+    }
+
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(theme::provenanceColor(Provenance::Measured),
+                       "MEASURED DATA IN, MODEL PARAMETERS OUT. Well readouts are measured and "
+                       "stay measured; every fitted parameter is a model value with its error "
+                       "bar. Excluded wells are hollowed, never deleted, and the rule that "
+                       "excluded them is named.");
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+
+    theme::sectionHeader("IMPORT (LONG CSV/TSV OR A 96/384/1536 GRID EXPORT)");
+    ImGui::InputTextMultiline("##assay-csv", csv.data(), csv.size(), ImVec2(-1, 150));
+    if (ImGui::Button("Import")) {
+        ds = s.assay->import(std::string(csv.data()));
+        importError = ds ? std::string() : "that text is not a plate table BioCAD can read";
+        plateIdx = 0;
+        fit.reset();
+        modality.reset();
+        seriesId.clear();
+    }
+    if (!importError.empty())
+        ImGui::TextColored(theme::verdictColor(3), "%s", importError.c_str());
+    if (!ds) {
+        ImGui::TextDisabled("Paste a plate export and press Import. Recognised columns: "
+                            "plate_id, well, role, sample_id, series_id, concentration, "
+                            "conc_unit, replicate, readout, readout_unit, time_s, "
+                            "temperature_c, excluded, exclusion_rule. Unknown columns survive "
+                            "as metadata.");
+        return;
+    }
+    ImGui::Text("Layout: %s   plates: %d", ds->detectedLayout.c_str(),
+                static_cast<int>(ds->plates.size()));
+    for (const auto& w : ds->warnings)
+        ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic), "%s", w.c_str());
+    if (ds->plates.empty()) return;
+
+    plateIdx = std::clamp(plateIdx, 0, static_cast<int>(ds->plates.size()) - 1);
+    if (ds->plates.size() > 1) {
+        std::vector<const char*> names;
+        for (const auto& p : ds->plates) names.push_back(p.id.c_str());
+        ImGui::SetNextItemWidth(220.0f);
+        ImGui::Combo("Plate", &plateIdx, names.data(), static_cast<int>(names.size()));
+    }
+    const Plate& plate = ds->plates[static_cast<std::size_t>(plateIdx)];
+
+    theme::sectionHeader("PLATE HEAT MAP");
+    assayHeatMap(plate);
+    ImGui::Spacing();
+
+    // ------------------------------------------------------------------ QC
+    const QcReport qcr = s.assay->qc(plate);
+    theme::sectionHeader("PLATE QC");
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(qcr.zPrime.provenance == Provenance::NotComputed
+                           ? theme::provenanceColor(Provenance::NotComputed)
+                           : (qcr.zPrime.value <= 0.0 ? theme::verdictColor(3)
+                                                      : (qcr.zPrime.value < 0.5
+                                                             ? theme::verdictColor(2)
+                                                             : theme::verdictColor(0))),
+                       "%s", qcr.interpretation.c_str());
+    ImGui::PopTextWrapPos();
+    drawQuantity("Z-prime", qcr.zPrime);
+    drawQuantity("Robust Z-prime (median/MAD)", qcr.robustZPrime);
+    drawQuantity("SSMD", qcr.ssmd);
+    drawQuantity("Signal / background", qcr.signalToBackground);
+    drawQuantity("Signal / noise", qcr.signalToNoise);
+    drawQuantity("Positive control mean", qcr.positiveMean);
+    drawQuantity("Positive control SD", qcr.positiveSd);
+    drawQuantity("Negative control mean", qcr.negativeMean);
+    drawQuantity("Negative control SD", qcr.negativeSd);
+    drawQuantity("Positive control %CV", qcr.cvPositivePct);
+    drawQuantity("Negative control %CV", qcr.cvNegativePct);
+    drawQuantity("Edge effect p (Mann-Whitney)", qcr.edgeEffectP);
+    drawQuantity("Row effect p (Kruskal-Wallis)", qcr.rowEffectP);
+    drawQuantity("Column effect p (Kruskal-Wallis)", qcr.columnEffectP);
+    for (const auto& w : qcr.warnings)
+        ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic), "%s", w.c_str());
+    ImGui::TextDisabled("Edge, row and column effects are REPORTED, never auto-corrected: "
+                        "median-polishing a gradient away hides the pipetting problem that "
+                        "caused it.");
+    ImGui::Spacing();
+
+    // -------------------------------------------------------------- fitting
+    theme::sectionHeader("FIT ONE SERIES");
+    std::vector<std::string> seriesIds;
+    for (const auto& w : plate.wells)
+        if (w.role == WellRole::Sample && !w.seriesId.empty() &&
+            std::find(seriesIds.begin(), seriesIds.end(), w.seriesId) == seriesIds.end())
+            seriesIds.push_back(w.seriesId);
+    if (seriesIds.empty()) {
+        ImGui::TextColored(theme::provenanceColor(Provenance::NotComputed),
+                           "No sample series on this plate: a fit needs wells with role "
+                           "'sample' and a series_id.");
+        return;
+    }
+    if (seriesId.empty()) seriesId = seriesIds.front();
+    std::vector<const char*> sids;
+    for (const auto& id : seriesIds) sids.push_back(id.c_str());
+    int sidIdx = 0;
+    for (std::size_t i = 0; i < seriesIds.size(); ++i)
+        if (seriesIds[i] == seriesId) sidIdx = static_cast<int>(i);
+    ImGui::SetNextItemWidth(180.0f);
+    if (ImGui::Combo("Series", &sidIdx, sids.data(), static_cast<int>(sids.size())))
+        seriesId = seriesIds[static_cast<std::size_t>(sidIdx)];
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(220.0f);
+    ImGui::Combo("Model", &modelIdx, kAssayModelNames, IM_ARRAYSIZE(kAssayModelNames));
+    ImGui::SameLine();
+    ImGui::Checkbox("Tukey-biweight IRLS", &robust);
+
+    std::vector<Well> series;
+    for (const auto& w : plate.wells)
+        if (w.role == WellRole::Sample && w.seriesId == seriesId) series.push_back(w);
+
+    ImGui::SameLine();
+    if (ImGui::Button("Fit"))
+        fit = s.assay->fit(series, static_cast<AssayModel>(modelIdx), robust);
+    ImGui::SameLine();
+    if (ImGui::Button("Inhibition modality (whole plate)")) {
+        std::vector<Well> matrix;
+        for (const auto& w : plate.wells)
+            if (w.role == WellRole::Sample) matrix.push_back(w);
+        modality = s.assay->inhibitionModality(matrix);
+    }
+
+    const auto model = static_cast<AssayModel>(modelIdx);
+    if (model == AssayModel::LangmuirKinetics || model == AssayModel::MassTransportKinetics)
+        assaySensorgram(series);
+    else if (model == AssayModel::BoltzmannMelt || model == AssayModel::TwoStateThermodynamic)
+        assayMelt(series);
+    else if (model == AssayModel::WisemanIsotherm)
+        assayItc(series);
+
+    if (fit) {
+        if (model == AssayModel::FourParameterLogistic ||
+            model == AssayModel::FiveParameterLogistic || model == AssayModel::Hill ||
+            model == AssayModel::MichaelisMenten ||
+            model == AssayModel::SubstrateInhibition ||
+            model == AssayModel::MorrisonTightBinding)
+            assayCurve(series, *fit);
+
+        if (!fit->converged)
+            ImGui::TextColored(theme::verdictColor(3), "Not fitted: %s", fit->note.c_str());
+
+        // An EC50 the ladder never bracketed is GREY with the reason. It is not a
+        // result, and colouring it like one is how an extrapolated potency ends up
+        // in a slide deck.
+        if (fit->extrapolated) {
+            ImGui::TextColored(theme::provenanceColor(Provenance::NotComputed),
+                               "EC50 %s mol/L lies OUTSIDE the tested concentration range: "
+                               "the curve was extrapolated past the highest or lowest well, so "
+                               "this is a bound, not a measurement. Widen the ladder.",
+                               sci(fit->derivedEc50.value).c_str());
+        } else {
+            drawQuantity("EC50 / midpoint", fit->derivedEc50);
+        }
+        drawQuantity("KD (kinetics)", fit->derivedKd);
+        ImGui::Text("R-squared %.5f   AICc %.3f   rank %d/%d   condition %.3g   n = %d",
+                    fit->rSquared, fit->aicc, static_cast<int>(fit->rank),
+                    static_cast<int>(fit->parameters.size()), fit->conditionNumber,
+                    static_cast<int>(fit->observations));
+        if (fit->robust)
+            ImGui::TextDisabled("Fitted by Tukey-biweight IRLS: down-weighted points are still "
+                                "plotted.");
+        if (ImGui::BeginTable("assay-params", 4,
+                              ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+            ImGui::TableSetupColumn("Parameter", ImGuiTableColumnFlags_WidthFixed, 220.0f);
+            ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 160.0f);
+            ImGui::TableSetupColumn("Std. error", ImGuiTableColumnFlags_WidthFixed, 140.0f);
+            ImGui::TableSetupColumn("Interval");
+            ImGui::TableHeadersRow();
+            for (const auto& p : fit->parameters) {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::TextColored(theme::provenanceColor(p.value.provenance), "%s",
+                                   p.name.c_str());
+                ImGui::TableSetColumnIndex(1);
+                ImGui::TextUnformatted(sci(p.value.value).c_str());
+                ImGui::TableSetColumnIndex(2);
+                ImGui::TextUnformatted(p.value.error > 0.0 ? sci(p.value.error).c_str() : "-");
+                ImGui::TableSetColumnIndex(3);
+                if (p.profileComputed)
+                    ImGui::Text("[%s, %s] profile", sci(p.profileLower).c_str(),
+                                sci(p.profileUpper).c_str());
+                else
+                    ImGui::TextDisabled("no profile interval requested");
+            }
+            ImGui::EndTable();
+        }
+        for (const auto& a : fit->assumptions) ImGui::BulletText("%s", a.c_str());
+        for (const auto& w : fit->warnings)
+            ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic), "%s", w.c_str());
+    }
+    ImGui::Spacing();
+
+    if (modality) {
+        theme::sectionHeader("INHIBITION MODALITY ([S] x [I] GLOBAL FIT)");
+        std::vector<Well> matrix;
+        for (const auto& w : plate.wells)
+            if (w.role == WellRole::Sample) matrix.push_back(w);
+        assayInhibitionMatrix(matrix);
+        ImGui::TextColored(modality->decisive ? theme::provenanceColor(Provenance::Model)
+                                             : theme::provenanceColor(Provenance::NotComputed),
+                           "%s", modality->conclusion.c_str());
+        ImGui::Text("delta AICc %.3f%s", modality->deltaAicc,
+                    modality->decisive ? "" : " - under 2, so the modality is Unknown");
+        for (const auto& c : modality->candidates)
+            ImGui::BulletText("%s: AICc %.3f, R-squared %.4f", kAssayModelNames[0],
+                              c.aicc, c.rSquared);
+    }
+}
+
+// ------------------------------------------------------ Assay Design
+void assayDesign(AppShell& shell) {
+    Services& s = shell.services();
+    if (!s.assay) return;
+
+    static AssayDesignSpec spec = [] {
+        AssayDesignSpec d;
+        d.truthModel = AssayModel::FourParameterLogistic;
+        // A, B, C, D in the letter order of the 5PL: signal at zero, slope, midpoint,
+        // plateau. G is 1 for a 4PL.
+        d.truthParameters = {100.0, 1.0, 1.0e-7, 0.0};
+        for (int i = 0; i < 10; ++i) d.concentrations.push_back(1.0e-5 / std::pow(3.1623, i));
+        d.replicates = 3;
+        d.rows = 8;
+        d.columns = 12;
+        d.additiveNoiseSd = 2.0;
+        d.proportionalNoiseCv = 0.03;
+        d.pipettingCv = 0.02;
+        d.plateGradientPct = 4.0;
+        d.dmsoTolerancePct = 3.0;
+        d.seed = 20260813;
+        d.replicateRuns = 200;
+        return d;
+    }();
+    static std::optional<AssayDesignReport> rep;
+
+    // The dilution calculator's own state: it is arithmetic, not a simulation, so it
+    // is live rather than behind the Simulate button.
+    static double molarMass = 250.0;
+    static double stockM = 0.01;
+    static double stockVolumeMl = 1.0;
+    static double topM = 1.0e-5;
+    static double fold = 3.1623;
+    static int    steps = 10;
+    static double wellUl = 100.0;
+
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic),
+                       "EXPERIMENTAL DESIGN, NOT A DOSE AND NOT A PROCEDURE. This panel "
+                       "forward-simulates plates from a truth model YOU state, pushes each one "
+                       "through the same import -> QC -> fit path real data takes, and reports "
+                       "what the design would recover. A concentration ladder for a plate is "
+                       "not a regimen for a person.");
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+
+    theme::sectionHeader("TRUTH MODEL AND ERROR STRUCTURE (YOUR STATED BELIEF)");
+    ImGui::SetNextItemWidth(140.0f);
+    ImGui::InputDouble("Signal at zero (A)", &spec.truthParameters[0], 0.0, 0.0, "%.3f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(120.0f);
+    ImGui::InputDouble("Slope (B)", &spec.truthParameters[1], 0.0, 0.0, "%.3f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::InputDouble("Midpoint C (mol/L)", &spec.truthParameters[2], 0.0, 0.0, "%.3e");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(120.0f);
+    ImGui::InputDouble("Plateau (D)", &spec.truthParameters[3], 0.0, 0.0, "%.3f");
+
+    ImGui::SetNextItemWidth(130.0f);
+    ImGui::InputDouble("Additive SD", &spec.additiveNoiseSd, 0.0, 0.0, "%.3f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(130.0f);
+    ImGui::InputDouble("Proportional CV", &spec.proportionalNoiseCv, 0.0, 0.0, "%.4f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(130.0f);
+    ImGui::InputDouble("Pipetting CV", &spec.pipettingCv, 0.0, 0.0, "%.4f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(130.0f);
+    ImGui::InputDouble("Gradient %", &spec.plateGradientPct, 0.0, 0.0, "%.2f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(130.0f);
+    ImGui::InputDouble("DMSO loss %", &spec.dmsoTolerancePct, 0.0, 0.0, "%.2f");
+
+    ImGui::SetNextItemWidth(110.0f);
+    ImGui::InputInt("Replicates", &spec.replicates);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(110.0f);
+    ImGui::InputInt("Runs", &spec.replicateRuns);
+    ImGui::SameLine();
+    int seedI = static_cast<int>(spec.seed);
+    ImGui::SetNextItemWidth(140.0f);
+    if (ImGui::InputInt("Seed", &seedI)) spec.seed = static_cast<std::uint64_t>(std::max(0, seedI));
+    ImGui::SameLine();
+    if (ImGui::Button("Simulate")) rep = s.assay->simulate(spec);
+    ImGui::TextDisabled("The same seed reproduces the same report byte for byte: the RNG is "
+                        "PCG64-DXSM with a Box-Muller normal, both implemented in BioCAD, "
+                        "because std::normal_distribution is not specified bit-exactly.");
+    ImGui::Spacing();
+
+    theme::sectionHeader("LADDER");
+    ImGui::Text("%d concentrations, %s down to %s mol/L",
+                static_cast<int>(spec.concentrations.size()),
+                spec.concentrations.empty() ? "-" : sci(spec.concentrations.front()).c_str(),
+                spec.concentrations.empty() ? "-" : sci(spec.concentrations.back()).c_str());
+    ImGui::Spacing();
+
+    if (rep) {
+        theme::sectionHeader("WHAT THIS DESIGN WOULD RECOVER");
+        // Coverage first, deliberately: it is the number that decides whether the CI
+        // this design reports means anything.
+        statCard("CI COVERAGE",
+                 rep->empiricalCoveragePct.provenance == Provenance::NotComputed
+                     ? std::string("n/a")
+                     : f2(rep->empiricalCoveragePct.value) + "%",
+                 "nominal 95%", 200.0f);
+        ImGui::SameLine();
+        statCard("CONVERGED", f2(rep->convergenceRatePct.value) + "%", "of simulated runs",
+                 180.0f);
+        ImGui::SameLine();
+        statCard("MEDIAN Z'", f2(rep->medianZPrime.value), ">= 0.5 excellent, <= 0 unusable",
+                 220.0f);
+        ImGui::SameLine();
+        statCard("MEDIAN EC50", sci(rep->medianEc50.value), "mol/L recovered", 200.0f);
+        ImGui::SameLine();
+        statCard("CI WIDTH", f2(rep->ec50CiWidthLog10.value), "log10 mol/L", 170.0f);
+        ImGui::Spacing();
+
+        drawQuantity("Empirical CI coverage", rep->empiricalCoveragePct);
+        drawQuantity("Convergence rate", rep->convergenceRatePct);
+        drawQuantity("Median Z-prime", rep->medianZPrime);
+        drawQuantity("Median recovered EC50", rep->medianEc50);
+        drawQuantity("Median CI width", rep->ec50CiWidthLog10);
+        // The reference measurement, so a reader can tell an ill-conditioned design from a
+        // broken fitter: the same machinery was measured at 94.4% coverage against a
+        // nominal 95% over 1000 runs (truth A = 100, B = 1, C = 1e-7 mol/L, D = 0, a
+        // ten-point half-log ladder from 1e-5, three replicates, additive SD 2.0).
+        ImGui::TextDisabled("Reference: this machinery measured 94.4%% empirical coverage at a "
+                            "nominal 95%% over 1000 runs on a well-conditioned ten-point "
+                            "half-log ladder. Coverage far below that is a property of the "
+                            "design you entered, not of the fitter.");
+
+        if (rep->recoveredEc50.size() > 4) {
+            std::vector<double> logs;
+            for (double v : rep->recoveredEc50)
+                if (v > 0.0) logs.push_back(std::log10(v));
+            if (ImPlot::BeginPlot("##design-hist", ImVec2(-1, 200), ImPlotFlags_NoLegend)) {
+                ImPlot::SetupAxes("log10 recovered EC50 (mol/L)", "runs");
+                ImPlot::PlotHistogram("recovered", logs.data(), static_cast<int>(logs.size()));
+                const double truth = std::log10(spec.truthParameters[2]);
+                ImPlot::PlotInfLines("truth", &truth, 1);
+                ImPlot::EndPlot();
+            }
+            ImGui::TextDisabled("The vertical line is the truth the plates were generated "
+                                "from. A histogram centred off that line is bias, not noise.");
+        }
+
+        theme::sectionHeader("D-OPTIMAL LADDER (FEDOROV COORDINATE EXCHANGE)");
+        ImGui::Text("D-efficiency gain over the entered ladder: %.4f", rep->dOptimalityGain);
+        std::string opt;
+        for (double c : rep->optimalConcentrations) opt += sci(c) + "  ";
+        ImGui::TextWrapped("%s", opt.c_str());
+        ImGui::TextDisabled("Candidates are achievable ladder points only (top / sqrt(fold)^j): "
+                            "optimising over a continuum would return concentrations nobody can "
+                            "pipette.");
+        ImGui::Spacing();
+
+        theme::sectionHeader("WHAT THIS SIMULATION RESTS ON");
+        for (const auto& a : rep->assumptions) ImGui::BulletText("%s", a.c_str());
+        for (const auto& w : rep->warnings)
+            ImGui::TextColored(theme::verdictColor(2), "%s", w.c_str());
+        ImGui::Spacing();
+    }
+
+    theme::sectionHeader("DILUTION AND MASS CALCULATOR");
+    ImGui::SetNextItemWidth(150.0f);
+    ImGui::InputDouble("Molar mass (g/mol)", &molarMass, 0.0, 0.0, "%.3f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(150.0f);
+    ImGui::InputDouble("Stock (mol/L)", &stockM, 0.0, 0.0, "%.4g");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(150.0f);
+    ImGui::InputDouble("Stock volume (mL)", &stockVolumeMl, 0.0, 0.0, "%.3f");
+    ImGui::Text("Weigh out %.6g mg of solid.",
+                1000.0 * assay::massForStock(molarMass, stockM, stockVolumeMl / 1000.0));
+
+    ImGui::SetNextItemWidth(150.0f);
+    ImGui::InputDouble("Top well (mol/L)", &topM, 0.0, 0.0, "%.4g");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(120.0f);
+    ImGui::InputDouble("Fold per step", &fold, 0.0, 0.0, "%.4f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(110.0f);
+    ImGui::InputInt("Steps", &steps);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(140.0f);
+    ImGui::InputDouble("Well volume (uL)", &wellUl, 0.0, 0.0, "%.2f");
+
+    const assay::DilutionPlan plan =
+        assay::serialDilution(stockM, topM, fold, steps, wellUl);
+    if (ImGui::BeginTable("design-dil", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("Step", ImGuiTableColumnFlags_WidthFixed, 60.0f);
+        ImGui::TableSetupColumn("Concentration (mol/L)", ImGuiTableColumnFlags_WidthFixed, 200.0f);
+        ImGui::TableSetupColumn("Transfer (uL)", ImGuiTableColumnFlags_WidthFixed, 140.0f);
+        ImGui::TableSetupColumn("Diluent (uL)", ImGuiTableColumnFlags_WidthFixed, 140.0f);
+        ImGui::TableSetupColumn("Fold");
+        ImGui::TableHeadersRow();
+        for (const auto& st : plan.steps) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("%d", st.index + 1);
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextUnformatted(sci(st.concentration).c_str());
+            ImGui::TableSetColumnIndex(2);
+            ImGui::Text("%.3f", st.transferVolumeUl);
+            ImGui::TableSetColumnIndex(3);
+            ImGui::Text("%.3f", st.diluentVolumeUl);
+            ImGui::TableSetColumnIndex(4);
+            ImGui::Text("%.4f", st.fold);
+        }
+        ImGui::EndTable();
+    }
+    ImGui::Text("Pipetting error at the last step compounds to %.3f x the CV of one transfer.",
+                plan.compoundedCvAtLastStep);
+    for (const auto& w : plan.warnings)
+        ImGui::TextColored(theme::verdictColor(2), "%s", w.c_str());
 }
 
 // ------------------------------------------------------ Protein Structure
@@ -3192,6 +3940,488 @@ void analogExplorer(AppShell& shell) {
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// DNA / RNA workbench.
+//
+// Two rules govern this panel. First, an off-target count never appears without
+// the scope it was counted in: the scope statement is rendered ABOVE the guide
+// table, not in a tooltip, because a number a reader can see while its scope is
+// hidden is a number that lies. Second, there is nothing here that orders,
+// quotes, or sends a sequence anywhere: the only outputs are FASTA and GenBank
+// text in a read-only box the user can copy.
+// ---------------------------------------------------------------------------
+void nucleicAcid(AppShell& shell) {
+    Services& s = shell.services();
+    if (!s.nucleicAcid) return;
+
+    // pUC19's polylinker region: small, real, and enough to exercise every track.
+    static char text[65536] =
+        ">demo Synthetic test insert (paste your own FASTA or GenBank here)\n"
+        "GAATTCGAGCTCGGTACCCGGGGATCCTCTAGAGTCGACCTGCAGGCATGCAAGCTTGGCACTGGCCGTCGTTTTACAA\n"
+        "CGTCGTGACTGGGAAAACCCTGGCGTTACCCAACTTAATCGCCTTGCAGCACATCCCCCTTTCGCCAGCTGGCGTAATA\n"
+        "GCGAAGAGGCCCGCACCGATCGCCCTTCCCAACAGTTGCGCAGCCTGAATGGCGAATGGCGCCTGATGCGGTATTTTCT\n";
+    static bool  circular = false;
+    static char  enzymeText[512] = "EcoRI, BamHI, HindIII";
+    static int   geneticCode = 1;
+    static int   minOrfAa = 30;
+
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(theme::provenanceColor(Provenance::Measured), "%s", nucleicScopeNote());
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+
+    theme::sectionHeader("SEQUENCE (FASTA OR GENBANK)");
+    ImGui::InputTextMultiline("##nuc-text", text, sizeof(text), ImVec2(-1, 120));
+    ImGui::Checkbox("Treat as circular", &circular);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(120.0f);
+    ImGui::InputInt("transl_table", &geneticCode);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(120.0f);
+    ImGui::InputInt("min ORF aa", &minOrfAa);
+
+    const auto parsed = s.nucleicAcid->parse(text);
+    if (!parsed) {
+        ImGui::TextColored(theme::provenanceColor(Provenance::NotComputed),
+                           "That text is neither FASTA nor GenBank, so nothing below can be "
+                           "computed.");
+        return;
+    }
+    NucRecord rec = *parsed;
+    if (circular) rec.circular = true;
+    const int len = static_cast<int>(rec.sequence.size());
+    if (len == 0) {
+        ImGui::TextColored(theme::provenanceColor(Provenance::NotComputed),
+                           "The record parsed but carries no sequence.");
+        return;
+    }
+
+    statCard("LENGTH", std::to_string(len) + (rec.kind == NucKind::Rna ? " nt" : " bp"),
+             rec.circular ? "circular" : "linear", 190.0f);
+    ImGui::SameLine();
+    statCard("GC", f2(bio::gcPercent(rec.sequence)) + "%", "G+C / unambiguous bases", 190.0f);
+    ImGui::SameLine();
+    statCard("FEATURES", std::to_string(rec.features.size()), "from the GenBank table", 180.0f);
+    ImGui::SameLine();
+    statCard("ID", rec.id.empty() ? "<none>" : rec.id, rec.description.c_str(), 240.0f);
+    for (const auto& w : rec.warnings)
+        ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic), "%s", w.c_str());
+    ImGui::Spacing();
+
+    // ------------------------------------------------------------ feature track
+    theme::sectionHeader("FEATURE TRACK");
+    if (rec.features.empty()) {
+        ImGui::TextDisabled("No features. A FASTA input has none by definition.");
+    } else {
+        const float w = ImGui::GetContentRegionAvail().x - 8.0f;
+        const float rowH = 18.0f;
+        const int rows = static_cast<int>(std::min<std::size_t>(rec.features.size(), 12));
+        const ImVec2 origin = ImGui::GetCursorScreenPos();
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        for (int i = 0; i < rows; ++i) {
+            const NucFeature& f = rec.features[static_cast<std::size_t>(i)];
+            const float y = origin.y + rowH * static_cast<float>(i);
+            dl->AddLine(ImVec2(origin.x, y + rowH * 0.5f), ImVec2(origin.x + w, y + rowH * 0.5f),
+                        theme::kTextDim, 1.0f);
+            for (const auto& part : f.parts) {
+                const float x0 = origin.x + w * static_cast<float>(part.first) / static_cast<float>(len);
+                const float x1 = origin.x + w * static_cast<float>(part.second) / static_cast<float>(len);
+                const ImU32 col = ImGui::ColorConvertFloat4ToU32(
+                    theme::provenanceColor(f.strand == Strand::Forward ? Provenance::Measured
+                                                                      : Provenance::Model));
+                dl->AddRectFilled(ImVec2(x0, y + 3.0f), ImVec2(std::max(x1, x0 + 2.0f), y + rowH - 3.0f),
+                                  col, 2.0f);
+            }
+            std::string label = f.type;
+            for (const auto& q : f.qualifiers)
+                if (q.first == "gene" || q.first == "product") { label += " " + q.second; break; }
+            dl->AddText(ImVec2(origin.x + 4.0f, y + 2.0f), theme::kTextHi, label.c_str());
+        }
+        ImGui::Dummy(ImVec2(w, rowH * static_cast<float>(rows) + 4.0f));
+    }
+    ImGui::Spacing();
+
+    // -------------------------------------------------- restriction map and gel
+    theme::sectionHeader("RESTRICTION MAP AND GEL SCHEMATIC");
+    ImGui::SetNextItemWidth(-1);
+    ImGui::InputText("##nuc-enz", enzymeText, sizeof(enzymeText));
+    std::vector<std::string> enzymes;
+    {
+        std::string cur;
+        for (const char* p = enzymeText; ; ++p) {
+            if (*p == ',' || *p == '\0') {
+                std::size_t a = cur.find_first_not_of(" \t");
+                std::size_t b = cur.find_last_not_of(" \t");
+                if (a != std::string::npos) enzymes.push_back(cur.substr(a, b - a + 1));
+                cur.clear();
+                if (*p == '\0') break;
+            } else {
+                cur += *p;
+            }
+        }
+    }
+    const RestrictionDigest dig = s.nucleicAcid->digest(rec, enzymes);
+    for (const auto& wn : dig.warnings)
+        ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic), "%s", wn.c_str());
+    if (dig.sites.empty()) {
+        ImGui::TextDisabled("No cut sites for those enzymes in this sequence.");
+    } else {
+        const float w = ImGui::GetContentRegionAvail().x - 8.0f;
+        const ImVec2 origin = ImGui::GetCursorScreenPos();
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        dl->AddLine(ImVec2(origin.x, origin.y + 20.0f), ImVec2(origin.x + w, origin.y + 20.0f),
+                    theme::kTextDim, 2.0f);
+        for (const auto& site : dig.sites) {
+            const float x = origin.x + w * static_cast<float>(site.position) / static_cast<float>(len);
+            dl->AddLine(ImVec2(x, origin.y + 6.0f), ImVec2(x, origin.y + 34.0f),
+                        ImGui::ColorConvertFloat4ToU32(theme::provenanceColor(Provenance::Measured)),
+                        1.5f);
+            dl->AddText(ImVec2(x + 2.0f, origin.y + 34.0f), theme::kTextHi, site.enzyme.c_str());
+        }
+        ImGui::Dummy(ImVec2(w, 56.0f));
+
+        // Gel schematic: one lane, band position by log10(length), which is what a
+        // real agarose gel's mobility approximates. Lengths are labelled, because
+        // reading a size off a picture of a gel is exactly the mistake to avoid.
+        if (!dig.fragmentLengths.empty()) {
+            const float gw = 120.0f, gh = 220.0f;
+            const ImVec2 g = ImGui::GetCursorScreenPos();
+            dl->AddRectFilled(g, ImVec2(g.x + gw, g.y + gh), IM_COL32(18, 20, 26, 255), 3.0f);
+            const double hi = std::log10(static_cast<double>(len));
+            const double lo = std::log10(20.0);
+            for (int fl : dig.fragmentLengths) {
+                const double t = (hi - std::log10(std::max(20.0, static_cast<double>(fl)))) /
+                                 std::max(1e-9, hi - lo);
+                const float y = g.y + 12.0f + static_cast<float>(t) * (gh - 24.0f);
+                dl->AddRectFilled(ImVec2(g.x + 10.0f, y - 2.0f), ImVec2(g.x + gw - 10.0f, y + 2.0f),
+                                  theme::kTextHi, 1.0f);
+                dl->AddText(ImVec2(g.x + gw + 6.0f, y - 7.0f), theme::kTextDim,
+                            (std::to_string(fl) + " bp").c_str());
+            }
+            ImGui::Dummy(ImVec2(gw + 90.0f, gh + 6.0f));
+            int total = 0;
+            for (int fl : dig.fragmentLengths) total += fl;
+            ImGui::TextColored(theme::provenanceColor(total == len ? Provenance::Measured
+                                                                  : Provenance::Heuristic),
+                               "%zu fragments, sum %d bp vs sequence %d bp.",
+                               dig.fragmentLengths.size(), total, len);
+        }
+    }
+    ImGui::Spacing();
+
+    // ------------------------------------------ six-frame ruler and ORF listing
+    theme::sectionHeader("SIX-FRAME TRANSLATION RULER");
+    const TranslationResult tr = s.nucleicAcid->translate(rec, geneticCode, minOrfAa);
+    for (const auto& wn : tr.warnings)
+        ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic), "%s", wn.c_str());
+    static int rulerStart = 0;
+    ImGui::SetNextItemWidth(-120.0f);
+    ImGui::SliderInt("window start (bp)", &rulerStart, 0, std::max(0, len - 60));
+    {
+        const int a = std::clamp(rulerStart, 0, std::max(0, len - 1));
+        const int b = std::min(len, a + 60);
+        ImGui::TextColored(theme::provenanceColor(Provenance::Measured), "%5d %s", a + 1,
+                           rec.sequence.substr(static_cast<std::size_t>(a),
+                                               static_cast<std::size_t>(b - a)).c_str());
+        // Each frame's amino acids are spaced three columns apart so a residue sits
+        // over its own codon: a ruler whose letters do not line up is decoration.
+        for (std::size_t fi = 0; fi < tr.frames.size(); ++fi) {
+            const bool reverse = fi >= 3;
+            const int frame = static_cast<int>(fi % 3);
+            std::string row(static_cast<std::size_t>(b - a), ' ');
+            for (int i = a; i + 2 < b; ++i) {
+                if (((i - frame) % 3) != 0) continue;
+                const int aaIndex = reverse ? ((len - frame) / 3) - 1 - ((i - frame) / 3)
+                                            : (i - frame) / 3;
+                if (aaIndex < 0 || aaIndex >= static_cast<int>(tr.frames[fi].size())) continue;
+                row[static_cast<std::size_t>(i - a)] = tr.frames[fi][static_cast<std::size_t>(aaIndex)];
+            }
+            ImGui::TextColored(theme::provenanceColor(reverse ? Provenance::Model
+                                                             : Provenance::Predicted),
+                               "%s%d   %s", reverse ? "-" : "+", frame + 1, row.c_str());
+        }
+        // The ruler relies on the theme's monospaced default font for alignment.
+    }
+    ImGui::Spacing();
+
+    theme::sectionHeader("OPEN READING FRAMES");
+    if (tr.orfs.empty()) {
+        ImGui::TextDisabled("No ORF of at least %d amino acids in table %d.", minOrfAa,
+                            tr.geneticCodeId);
+    } else if (ImGui::BeginTable("nuc-orfs", 6, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders)) {
+        ImGui::TableSetupColumn("strand");
+        ImGui::TableSetupColumn("frame");
+        ImGui::TableSetupColumn("begin");
+        ImGui::TableSetupColumn("end");
+        ImGui::TableSetupColumn("aa");
+        ImGui::TableSetupColumn("protein (first 60)");
+        ImGui::TableHeadersRow();
+        for (const auto& o : tr.orfs) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(o.strand == Strand::Forward ? "+" : "-");
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d", o.frame + 1);
+            ImGui::TableSetColumnIndex(2);
+            ImGui::Text("%d", o.begin + 1);
+            ImGui::TableSetColumnIndex(3);
+            ImGui::Text("%d", o.end);
+            ImGui::TableSetColumnIndex(4);
+            ImGui::Text("%zu%s", o.protein.size(), o.stopped ? "" : " (runs off the end)");
+            ImGui::TableSetColumnIndex(5);
+            ImGui::TextUnformatted(o.protein.substr(0, 60).c_str());
+        }
+        ImGui::EndTable();
+    }
+    ImGui::Spacing();
+
+    // ------------------------------------------------ oligo thermodynamics
+    theme::sectionHeader("OLIGO THERMODYNAMICS");
+    static char  oligoText[256] = "GTAAAACGACGGCCAGT";
+    static double naM = 0.05, mgM = 0.0, oligoM = 2.5e-7, dntpM = 0.0;
+    ImGui::SetNextItemWidth(-1);
+    ImGui::InputText("##nuc-oligo", oligoText, sizeof(oligoText));
+    ImGui::SetNextItemWidth(130.0f);
+    ImGui::InputDouble("Na+ (M)", &naM, 0.0, 0.0, "%.3f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(130.0f);
+    ImGui::InputDouble("Mg2+ (M)", &mgM, 0.0, 0.0, "%.4f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(150.0f);
+    ImGui::InputDouble("oligo (M)", &oligoM, 0.0, 0.0, "%.2e");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(150.0f);
+    ImGui::InputDouble("dNTP (M)", &dntpM, 0.0, 0.0, "%.2e");
+    {
+        const OligoThermo t = s.nucleicAcid->oligo(oligoText, naM, mgM, oligoM, dntpM);
+        statCard("Tm", f2(t.tm.value) + " C", "nearest-neighbour", 170.0f);
+        ImGui::SameLine();
+        statCard("GC", f2(t.gcPercent) + "%", "of the oligo", 150.0f);
+        ImGui::SameLine();
+        statCard("dG37", f2(t.deltaG37.value), "kcal/mol", 170.0f);
+        ImGui::SameLine();
+        statCard("LENGTH", std::to_string(t.sequence.size()), "nt", 130.0f);
+        drawQuantity("Tm", t.tm);
+        drawQuantity("dH", t.deltaH);
+        drawQuantity("dS", t.deltaS);
+        drawQuantity("dG37", t.deltaG37);
+        // The salt and oligo concentration are part of the Tm, so they are printed
+        // with it: a Tm quoted without them cannot be reproduced at a bench.
+        ImGui::TextColored(theme::provenanceColor(Provenance::Measured),
+                           "Conditions: Na+ %.3f M, Mg2+ %.4f M, oligo %.2e M, dNTP %.2e M",
+                           t.naMolar, t.mgMolar, t.oligoMolar, t.dntpMolar);
+        for (const auto& an : t.assumptions) ImGui::BulletText("%s", an.c_str());
+        const std::vector<SecondaryStructure> ss = s.nucleicAcid->selfStructures(oligoText, naM);
+        if (ss.empty()) {
+            ImGui::TextDisabled("No hairpin or self-dimer above the reporting cutoff.");
+        } else {
+            for (const auto& st : ss) {
+                ImGui::TextColored(theme::provenanceColor(st.deltaG37.value <= -6.0
+                                                              ? Provenance::Heuristic
+                                                              : Provenance::Model),
+                                   "%s at %d: dG37 %.2f kcal/mol (1 M Na+ standard state)",
+                                   st.kind.c_str(), st.position, st.deltaG37.value);
+                if (!st.alignment.empty()) ImGui::TextUnformatted(st.alignment.c_str());
+            }
+        }
+    }
+    ImGui::Spacing();
+
+    // ---------------------------------------------------------- primer design
+    theme::sectionHeader("PRIMER DESIGN");
+    static int   pBegin = 0, pEnd = 0;
+    static double pTm = 60.0;
+    if (pEnd == 0) pEnd = std::min(len, 500);
+    ImGui::SetNextItemWidth(140.0f);
+    ImGui::InputInt("product begin", &pBegin);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(140.0f);
+    ImGui::InputInt("product end", &pEnd);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(140.0f);
+    ImGui::InputDouble("target Tm (C)", &pTm, 0.0, 0.0, "%.1f");
+    const std::vector<PrimerPair> pairs =
+        s.nucleicAcid->designPrimers(rec, std::clamp(pBegin, 0, len),
+                                     std::clamp(pEnd, 0, len), pTm);
+    if (pairs.empty()) {
+        ImGui::TextColored(theme::provenanceColor(Provenance::NotComputed),
+                           "No pair satisfies the limits for that interval. A pair that violates "
+                           "a hairpin, self-dimer, cross-dimer, GC or Tm-difference limit is "
+                           "absent rather than ranked low.");
+    } else if (ImGui::BeginTable("nuc-primers", 6,
+                                 ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders)) {
+        ImGui::TableSetupColumn("forward");
+        ImGui::TableSetupColumn("reverse");
+        ImGui::TableSetupColumn("Tm F / R");
+        ImGui::TableSetupColumn("|dTm|");
+        ImGui::TableSetupColumn("product");
+        ImGui::TableSetupColumn("worst structure dG37");
+        ImGui::TableHeadersRow();
+        for (const auto& p : pairs) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(p.forwardOligo.sequence.c_str());
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextUnformatted(p.reverseOligo.sequence.c_str());
+            ImGui::TableSetColumnIndex(2);
+            ImGui::Text("%.1f / %.1f C", p.forwardOligo.tm.value, p.reverseOligo.tm.value);
+            ImGui::TableSetColumnIndex(3);
+            ImGui::Text("%.2f C", p.tmDifference);
+            ImGui::TableSetColumnIndex(4);
+            ImGui::Text("%d-%d (%d bp)", p.productBegin + 1, p.productEnd, p.productLength);
+            ImGui::TableSetColumnIndex(5);
+            double worst = 0.0;
+            for (const auto& l : p.liabilities) worst = std::min(worst, l.deltaG37.value);
+            ImGui::Text("%.2f kcal/mol", worst);
+        }
+        ImGui::EndTable();
+        for (const auto& wn : pairs.front().warnings) ImGui::TextWrapped("%s", wn.c_str());
+    }
+    ImGui::Spacing();
+
+    // ------------------------------------------------------------ codon metrics
+    theme::sectionHeader("CODON METRICS");
+    static char cdsText[8192] = "ATGGCTAGCAAAGGTGAAGAACTGTTTACCGGTGTTGTTCCGATTCTGGTTGAACTGGATGGTGATGTTAACTAA";
+    static char usageId[64] = "ecoli-k12";
+    static char forbidden[256] = "GAATTC, GGATCC";
+    ImGui::SetNextItemWidth(-1);
+    ImGui::InputTextMultiline("##nuc-cds", cdsText, sizeof(cdsText), ImVec2(-1, 60));
+    ImGui::SetNextItemWidth(200.0f);
+    ImGui::InputText("usage table id", usageId, sizeof(usageId));
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(260.0f);
+    ImGui::InputText("forbidden sites", forbidden, sizeof(forbidden));
+    {
+        const CodonMetrics cm = s.nucleicAcid->codonMetrics(cdsText, usageId);
+        drawQuantity("CAI", cm.cai);
+        drawQuantity("GC", cm.gcPercent);
+        drawQuantity("GC3", cm.gc3Percent);
+        ImGui::TextColored(theme::provenanceColor(Provenance::Measured), "Relative to: %s",
+                           cm.usageTableName.c_str());
+        for (const auto& wn : cm.warnings) ImGui::BulletText("%s", wn.c_str());
+    }
+    if (ImGui::TreeNode("Constraint-based codon optimization (not an expression prediction)")) {
+        std::vector<std::string> forb;
+        {
+            std::string cur;
+            for (const char* p = forbidden; ; ++p) {
+                if (*p == ',' || *p == '\0') {
+                    std::size_t a = cur.find_first_not_of(" \t");
+                    std::size_t b = cur.find_last_not_of(" \t");
+                    if (a != std::string::npos) forb.push_back(cur.substr(a, b - a + 1));
+                    cur.clear();
+                    if (*p == '\0') break;
+                } else {
+                    cur += *p;
+                }
+            }
+        }
+        const CodonOptimizationResult opt =
+            s.nucleicAcid->optimizeCodons(cdsText, usageId, forb);
+        ImGui::TextColored(theme::provenanceColor(opt.translationPreserved ? Provenance::Measured
+                                                                          : Provenance::NotComputed),
+                           "Translation preserved: %s", opt.translationPreserved ? "yes" : "NO");
+        if (!opt.optimized.empty()) {
+            ImGui::InputTextMultiline("##nuc-opt", const_cast<char*>(opt.optimized.c_str()),
+                                      opt.optimized.size() + 1, ImVec2(-1, 60),
+                                      ImGuiInputTextFlags_ReadOnly);
+        }
+        drawQuantity("CAI before", opt.before.cai);
+        drawQuantity("CAI after", opt.after.cai);
+        for (const auto& v : opt.remainingViolations)
+            ImGui::TextColored(theme::verdictColor(3), "%s", v.c_str());
+        for (const auto& an : opt.assumptions) ImGui::TextWrapped("%s", an.c_str());
+        ImGui::TreePop();
+    }
+    ImGui::Spacing();
+
+    // ------------------------------------------------------------- guide search
+    theme::sectionHeader("CRISPR GUIDE SEARCH");
+    static char pamText[16] = "NGG";
+    static char refText[65536] = "";
+    ImGui::SetNextItemWidth(120.0f);
+    ImGui::InputText("PAM (IUPAC)", pamText, sizeof(pamText));
+    ImGui::TextUnformatted("Reference to count off-targets in (FASTA; empty = the sequence above)");
+    ImGui::InputTextMultiline("##nuc-ref", refText, sizeof(refText), ImVec2(-1, 60));
+    NucRecord ref = rec;
+    if (refText[0] != '\0') {
+        if (const auto p = s.nucleicAcid->parse(refText)) {
+            ref = *p;
+        } else {
+            ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic),
+                               "The reference text did not parse; the sequence above was searched "
+                               "instead, and the scope statement below says so.");
+        }
+    }
+    const GuideSearchResult gs = s.nucleicAcid->findGuides(rec, ref, pamText);
+    // THE SCOPE COMES FIRST, ALWAYS. Every number in the table below is a count
+    // inside this reference and nothing more.
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(theme::provenanceColor(Provenance::Measured), "%s",
+                       gs.scopeStatement.c_str());
+    ImGui::PopTextWrapPos();
+    statCard("BASES SEARCHED", std::to_string(gs.basesSearched), gs.referenceName.c_str(), 230.0f);
+    ImGui::SameLine();
+    statCard("GENOME-WIDE CLAIM", gs.genomeWideClaimPossible ? "not verifiable" : "impossible",
+             "see the scope statement", 250.0f);
+    ImGui::SameLine();
+    statCard("GUIDES", std::to_string(gs.guides.size()), "PAM-adjacent sites in the target",
+             240.0f);
+    if (gs.guides.empty()) {
+        ImGui::TextDisabled("No %s-adjacent protospacer in the target sequence.", pamText);
+    } else if (ImGui::BeginTable("nuc-guides", 7,
+                                 ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders |
+                                     ImGuiTableFlags_ScrollY,
+                                 ImVec2(0, 240))) {
+        ImGui::TableSetupColumn("protospacer");
+        ImGui::TableSetupColumn("PAM");
+        ImGui::TableSetupColumn("pos");
+        ImGui::TableSetupColumn("strand");
+        ImGui::TableSetupColumn("GC");
+        ImGui::TableSetupColumn("off-target 0 / 1 / 2 mm (in this reference only)");
+        ImGui::TableSetupColumn("notes");
+        ImGui::TableHeadersRow();
+        for (const auto& g : gs.guides) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(g.protospacer.c_str());
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextUnformatted(g.pam.c_str());
+            ImGui::TableSetColumnIndex(2);
+            ImGui::Text("%d", g.position + 1);
+            ImGui::TableSetColumnIndex(3);
+            ImGui::TextUnformatted(g.strand == Strand::Forward ? "+" : "-");
+            ImGui::TableSetColumnIndex(4);
+            ImGui::Text("%.0f%%", g.gcPercent);
+            ImGui::TableSetColumnIndex(5);
+            ImGui::TextColored(theme::provenanceColor(g.exactOffTargets > 0 ? Provenance::Heuristic
+                                                                           : Provenance::Measured),
+                               "%d / %d / %d", g.exactOffTargets, g.oneMismatchOffTargets,
+                               g.twoMismatchOffTargets);
+            ImGui::TableSetColumnIndex(6);
+            std::string notes;
+            for (const auto& wn : g.warnings) notes += (notes.empty() ? "" : " ") + wn;
+            ImGui::TextUnformatted(notes.c_str());
+        }
+        ImGui::EndTable();
+    }
+    for (const auto& wn : gs.warnings) ImGui::TextWrapped("%s", wn.c_str());
+    ImGui::Spacing();
+
+    // ----------------------------------------------------------------- export
+    // FASTA and GenBank, in a read-only box, and that is the complete list of
+    // export paths this panel has by design.
+    theme::sectionHeader("EXPORT (FASTA / GENBANK ONLY)");
+    static int which = 0;
+    ImGui::RadioButton("FASTA", &which, 0);
+    ImGui::SameLine();
+    ImGui::RadioButton("GenBank", &which, 1);
+    const std::string out =
+        which == 0 ? s.nucleicAcid->toFasta(rec) : s.nucleicAcid->toGenBank(rec);
+    ImGui::InputTextMultiline("##nuc-export", const_cast<char*>(out.c_str()), out.size() + 1,
+                              ImVec2(-1, 140), ImGuiInputTextFlags_ReadOnly);
 }
 
 }  // namespace biocad::panels

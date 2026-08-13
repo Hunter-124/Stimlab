@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "note": "The single source of physiological constants for BioCAD's PK and drug-interaction arithmetic. Nothing in src/ may hard-code one of these numbers: a constant that appears in two places diverges, and a constant with no citation is a guess wearing units. Every value is the population-average adult figure used in the mechanistic static drug-interaction model; individual physiology varies, which is why the panels state these as assumptions rather than as facts about a person.",
+  "source": "Population-average adult values as used in the mechanistic static model for predicting drug interactions described in the FDA in vitro drug interaction studies guidance and in the peer-reviewed literature on that model (Fahmi and co-workers' combined reversible/time-dependent/induction model). Cited in prose because these values are conventions of the model rather than a single measurement; see docs/pkpd.md for how each is used.",
+  "flows": {
+    "hepaticBloodFlow": {
+      "value": 97.0,
+      "unit": "L/h",
+      "note": "Qh. Whole-liver blood flow. The well-stirred model's extraction ratio Eh = fu*CLint/(Qh + fu*CLint) is bounded by this, which is why an apparent CLint above it cannot raise clearance further."
+    },
+    "enterocyteBloodFlow": {
+      "value": 18.0,
+      "unit": "L/h",
+      "note": "Qen. Villous blood flow, used for the gut-wall component of the mechanistic static model. Absent Fg, a gut contribution cannot be computed and the AUCR is reported hepatic-only."
+    },
+    "glomerularFiltrationRate": {
+      "value": 7.5,
+      "unit": "L/h",
+      "note": "GFR, 125 mL/min. Used only to express a renal-impairment exposure scenario as a function ratio; it is never converted into a dose."
+    }
+  },
+  "enzymeDegradation": {
+    "note": "kdeg is the first-order turnover of the enzyme pool, and it sets how fast a time-dependent inhibitor's effect accumulates and washes out. These are the values conventionally used with the mechanistic static and dynamic models; the spread between published estimates is real, which is why the panel shows the value it used.",
+    "unit": "1/h",
+    "values": {
+      "CYP1A2_hepatic": 0.0183,
+      "CYP2B6_hepatic": 0.0217,
+      "CYP2C8_hepatic": 0.0301,
+      "CYP2C9_hepatic": 0.0067,
+      "CYP2C19_hepatic": 0.0267,
+      "CYP2D6_hepatic": 0.0099,
+      "CYP3A4_hepatic": 0.0193,
+      "CYP3A4_intestinal": 0.0288,
+      "CYP3A5_hepatic": 0.0193
+    },
+    "halfLifeNote": "t1/2 = ln(2)/kdeg, so CYP3A4 hepatic 0.0193 /h is a 36 h turnover half-life and intestinal 0.0288 /h is 24 h."
+  },
+  "fractionMetabolized": {
+    "note": "fm and Fg are compound-specific INPUTS, not physiology. They are deliberately absent from this pack: without fm the mechanistic static model returns NotComputed rather than assuming a compound is entirely cleared by the inhibited pathway, which is the assumption that turns a 1.3-fold interaction into a 5-fold one."
+  }
+}

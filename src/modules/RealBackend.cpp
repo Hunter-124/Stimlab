@@ -13,9 +13,11 @@
 #include "chem/Perceive.h"
 #include "chem/Smiles.h"
 #include "modules/AlertsModule.h"
+#include "modules/AssayModule.h"
 #include "modules/BioModules.h"
 #include "modules/IonizationModule.h"
 #include "modules/Metabolites.h"
+#include "modules/NucleicModule.h"
 #include "modules/docking/Backends.h"
 #include "modules/docking/Presets.h"
 #include "modules/docking/ReceptorPrep.h"
@@ -476,6 +478,13 @@ struct RealBackend::Impl {
     // pKa and melting point are INPUTS: this member's pack is the only source of
     // them, and a compound absent from it yields NotComputed, never a guess.
     RealIonization ionization;
+    // The DNA/RNA workbench. Its guide search never reports an off-target count
+    // without the reference and base count it was counted in.
+    RealNucleicAcid nucleicAcid;
+    // Real experimental data: plate import, QC, curve/kinetics/thermodynamics fits
+    // and prospective design simulation. Raw wells stay Measured, fitted parameters
+    // are Model, and the design report's headline is empirical CI coverage.
+    RealAssay assay;
 };
 
 RealBackend::RealBackend() : impl_(std::make_unique<Impl>()) {}
@@ -497,6 +506,8 @@ Services RealBackend::services() {
     s.metabolismFacts = &impl_->metabolismFacts;
     s.alerts = &impl_->alerts;
     s.ionization = &impl_->ionization;
+    s.nucleicAcid = &impl_->nucleicAcid;
+    s.assay = &impl_->assay;
     return s;
 }
 

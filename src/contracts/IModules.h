@@ -16,8 +16,12 @@
 #include "bio/Structure.h"
 #include "contracts/IDockingBackend.h"
 #include "data/Assay.h"
+#include "data/Biologics.h"
 #include "data/Domain.h"
 #include "data/Ionization.h"
+#include "data/Nucleic.h"
+#include "data/Population.h"
+#include "data/Systems.h"
 
 namespace biocad {
 
@@ -279,6 +283,218 @@ public:
     // sends them through the same import/QC/fit path, and reports what the design
     // would actually recover.
     virtual AssayDesignReport simulate(const AssayDesignSpec& spec) const = 0;
+};
+
+// DNA/RNA workbench: sequence and feature I/O, restriction mapping, translation,
+// oligo thermodynamics, codon metrics and guide search.
+//
+// BIOSECURITY BOUNDARY, permanent: there is no synthesis-vendor entry point, no
+// order export, no batch pathogen design and no therapeutic/germline framing.
+// findGuides() returns the exact reference it searched and how many bases it
+// examined, because an off-target count without its scope is not a specificity
+// claim. optimizeCodons() performs constraint satisfaction; it does not predict
+// expression, and the DTO has no field in which to pretend otherwise.
+class INucleicAcidModule {
+public:
+    virtual ~INucleicAcidModule() = default;
+
+    // FASTA or GenBank. std::nullopt when the text is neither; recoverable
+    // problems (unknown IUPAC symbol, unparseable location) arrive in
+    // NucRecord::warnings.
+    virtual std::optional<NucRecord> parse(const std::string& text) const = 0;
+
+    // FASTA/GenBank round-trip. These are the ONLY export formats.
+    virtual std::string toFasta(const NucRecord& r) const = 0;
+    virtual std::string toGenBank(const NucRecord& r) const = 0;
+
+    virtual std::string reverseComplement(const std::string& seq) const = 0;
+
+    virtual TranslationResult translate(const NucRecord& r, int geneticCodeId,
+                                        int minOrfAminoAcids) const = 0;
+
+    virtual RestrictionDigest digest(const NucRecord& r,
+                                     const std::vector<std::string>& enzymes) const = 0;
+
+    // Nearest-neighbour thermodynamics. Salt and oligo concentrations are inputs
+    // with no defaults worth hiding: a Tm without them is not reproducible.
+    virtual OligoThermo oligo(const std::string& seq, double naMolar, double mgMolar,
+                              double oligoMolar, double dntpMolar) const = 0;
+
+    virtual std::vector<SecondaryStructure> selfStructures(const std::string& seq,
+                                                           double naMolar) const = 0;
+
+    virtual std::vector<PrimerPair> designPrimers(const NucRecord& r, int begin, int end,
+                                                  double targetTmC) const = 0;
+
+    virtual CodonMetrics codonMetrics(const std::string& cds,
+                                      const std::string& usageTable) const = 0;
+
+    virtual CodonOptimizationResult optimizeCodons(
+        const std::string& cds, const std::string& usageTable,
+        const std::vector<std::string>& forbiddenSites) const = 0;
+
+    // `reference` is whatever the user actually supplied - a plasmid, a contig, a
+    // genome. The result states which, and how many bases were searched.
+    virtual GuideSearchResult findGuides(const NucRecord& target, const NucRecord& reference,
+                                        const std::string& pam) const = 0;
+};
+
+// Population PK, noncompartmental analysis and mechanistic drug interactions.
+//
+// SAFETY SCOPE, permanent: this interface emits EXPOSURE SCENARIOS. There is no
+// entry point that returns a dose, a dose change or a regimen, and adding one is
+// out of scope by design. An AUC ratio is a statement about exposure under stated
+// in vitro inputs; converting it into a personal dose adjustment is a clinical
+// decision that this software does not make.
+//
+// Reproducibility is part of the contract: simulate() must produce byte-identical
+// output for the same VariabilitySpec including its seed, because a band that
+// cannot be reproduced cannot be checked.
+class IPopulationPkModule {
+public:
+    virtual ~IPopulationPkModule() = default;
+
+    virtual PopulationProfile simulate(const PkModelSpec& model, const DoseRegimen& regimen,
+                                       const VariabilitySpec& variability) const = 0;
+
+    // Noncompartmental analysis of observed data. lambda_z is selected strictly
+    // after Tmax by adjusted R-squared over at least three terminal points, and
+    // everything extrapolated is flagged unreliable above 20% extrapolation.
+    virtual NcaResult nca(const ConcentrationSeries& observed) const = 0;
+
+    // FDA screening R-values plus the mechanistic static AUCR. Returns
+    // NotComputed for the AUCR when fm is absent, and reports hepatic-only when
+    // Fg is absent, rather than assuming either.
+    virtual InteractionReport interaction(const PerpetratorSpec& perpetrator,
+                                          const VictimSpec& victim) const = 0;
+
+    // Dynamic enzyme activity. At constant inhibitor concentration its steady
+    // state must equal the static model exactly; the result carries both so the
+    // agreement is visible rather than asserted.
+    virtual EnzymeTimeCourse enzymeTimeCourse(const PerpetratorSpec& perpetrator,
+                                              double horizonH) const = 0;
+
+    // Renal and hepatic impairment as explicit, editable exposure scenarios.
+    virtual ImpairmentScenario impairment(const VictimSpec& victim, double renalFunctionRatio,
+                                          double hepaticClintRatio) const = 0;
+};
+
+// Antibody and protein-biologics analysis.
+//
+// HONESTY SCOPE, permanent: number() returns NotComputed numbering when an IMGT
+// anchor fails, because plausible wrong numbering is worse than none.
+// "Closest germline set" is never species identification. alanineScan() is
+// GEOMETRIC and unit-free Heuristic - it is not a delta-delta-G, and there is no
+// entry point here for humanness, immunogenicity, affinity maturation,
+// aggregation, viscosity, titre or shelf life.
+class IBiologicsModule {
+public:
+    virtual ~IBiologicsModule() = default;
+
+    virtual AbDomain number(const std::string& sequence, NumberingScheme scheme) const = 0;
+
+    // The same domain re-rendered in another scheme. IMGT is canonical
+    // internally; the other schemes are table-driven views of it.
+    virtual AbDomain convertScheme(const AbDomain& domain, NumberingScheme to) const = 0;
+
+    // Pack-defined, cited motif flags. `structure` may be null; when it is,
+    // exposure is reported as unknown rather than assumed.
+    virtual std::vector<SequenceLiability> liabilities(const AbDomain& domain,
+                                                       const bio::Structure* structure) const = 0;
+
+    virtual DevelopabilityReport developability(const std::vector<std::string>& chains,
+                                                const bio::Structure* structure) const = 0;
+
+    virtual MassLadder massLadder(const std::vector<std::string>& chains,
+                                  int disulfideCount) const = 0;
+
+    virtual PeptideMap digest(const std::string& chain, const std::string& protease,
+                              int maxMissedCleavages) const = 0;
+
+    virtual InterfaceReport interfaceOf(const bio::Structure& complex,
+                                        const std::string& chainsA,
+                                        const std::string& chainsB) const = 0;
+
+    virtual AlanineScanReport alanineScan(const bio::Structure& complex,
+                                          const std::string& chainsA,
+                                          const std::string& chainsB) const = 0;
+};
+
+// Reaction-network simulation, chemical kinetics, metabolic flux, pathway
+// enrichment and graph metrics.
+//
+// SAFETY SCOPE: a simulated growth rate is a property of the model, never a
+// measurement of an organism. No docking score may propagate into a flux, a
+// pathway or a network number, and there is no entry point that would let it.
+// Every returned TimeCourse embeds the solver settings that produced it.
+class ISimulationModule {
+public:
+    virtual ~ISimulationModule() = default;
+
+    // Fills the structural analysis (conservation laws, Wegscheider cycles) of a
+    // network the caller assembled.
+    virtual NetworkSpec analyze(const NetworkSpec& network) const = 0;
+
+    virtual TimeCourse integrate(const NetworkSpec& network, double horizon, double relTol,
+                                 double absTol, const std::string& method) const = 0;
+
+    virtual StochasticEnsemble stochastic(const NetworkSpec& network, double horizon,
+                                          int replicates, std::uint64_t seed,
+                                          bool tauLeap) const = 0;
+
+    virtual KineticsFit arrhenius(const std::vector<double>& temperaturesK,
+                                  const std::vector<double>& rateConstants) const = 0;
+
+    virtual PhRateProfile phRate(const std::vector<double>& pHValues,
+                                 const std::vector<double>& rateConstants) const = 0;
+
+    virtual ControlAnalysis controlAnalysis(const NetworkSpec& network,
+                                            double horizon) const = 0;
+
+    // SBML Level 3 Version 2 Core subset. std::nullopt when the document uses a
+    // construct BioCAD does not implement - which is reported by name, never
+    // silently ignored.
+    virtual std::optional<NetworkSpec> importSbml(const std::string& xml,
+                                                  std::string* error) const = 0;
+    virtual std::string exportSbml(const NetworkSpec& network) const = 0;
+};
+
+// Constraint-based metabolic flux. Gated at build time by BIOCAD_ENABLE_FBA.
+//
+// balance() MUST pass before fba() may run: a flux distribution over a reaction
+// that does not conserve mass and charge is arithmetic about nothing.
+class IFluxModule {
+public:
+    virtual ~IFluxModule() = default;
+
+    virtual FluxSolution balance(const NetworkSpec& network) const = 0;
+    virtual FluxSolution fba(const NetworkSpec& network, const std::string& objectiveReactionId,
+                             const std::vector<FluxBound>& bounds) const = 0;
+    virtual std::vector<FluxRange> fva(const NetworkSpec& network,
+                                       const std::string& objectiveReactionId,
+                                       const std::vector<FluxBound>& bounds,
+                                       double objectiveFraction) const = 0;
+    virtual FluxSolution parsimonious(const NetworkSpec& network,
+                                       const std::string& objectiveReactionId,
+                                       const std::vector<FluxBound>& bounds) const = 0;
+    virtual std::vector<FluxRange> deletions(const NetworkSpec& network,
+                                              const std::string& objectiveReactionId,
+                                              const std::vector<FluxBound>& bounds,
+                                              int order) const = 0;
+};
+
+// Pathway over-representation and network topology.
+//
+// enrich() REQUIRES a background set: the hypergeometric answer is a function of
+// it, so there is no defaulted background to get wrong.
+class IEnrichmentModule {
+public:
+    virtual ~IEnrichmentModule() = default;
+
+    virtual EnrichmentReport enrich(const std::vector<std::string>& query,
+                                    const std::vector<std::string>& background,
+                                    const std::string& gmtPack) const = 0;
+    virtual GraphMetrics graph(const std::vector<NetworkEdge>& edges) const = 0;
 };
 
 }  // namespace biocad

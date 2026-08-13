@@ -6,6 +6,8 @@ add_library(biocad_modules STATIC
   Metabolites.cpp
   AlertsModule.cpp
   IonizationModule.cpp
+  NucleicModule.cpp
+  AssayModule.cpp
   docking/Presets.cpp
   docking/PdbqtWriter.cpp
   docking/VinaParser.cpp
@@ -22,6 +24,7 @@ target_include_directories(biocad_modules PUBLIC
 target_link_libraries(biocad_modules PUBLIC
   biocad_contracts
   biocad_bio
+  biocad_assay
   biocad_data
   biocad_packs
   biocad_chem

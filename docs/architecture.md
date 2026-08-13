@@ -66,6 +66,8 @@ struct Services {                        // abridged - see the header for every 
     IDockingModule*     docking    = nullptr;
     IRunStore*          runs       = nullptr;
     IIonizationModule*  ionization = nullptr;   // Ionization panel: exact chemistry
+    INucleicAcidModule* nucleicAcid = nullptr;  // NucleicAcid panel: DNA / RNA workbench
+    IAssayModule*       assay      = nullptr;   // Assay / AssayDesign panels: real data
 
     [[nodiscard]] bool valid() const;
 };
@@ -113,6 +115,32 @@ There is no shortcut, and skipping a step fails in a different place each time. 
 
 Every derived number the new module emits must carry a `Provenance`; see
 [provenance.md](provenance.md).
+
+## Panels worth knowing about
+
+`NucleicAcid` ("DNA / RNA Workbench", group `Workspace`, `panels::nucleicAcid`) is the DNA/RNA
+surface: feature and restriction tracks with a gel schematic, a six-frame translation ruler,
+ORFs, oligo thermodynamics, primer design, codon metrics and CRISPR guide search. It is backed
+by `INucleicAcidModule` (`src/modules/NucleicModule.*`). Two of its rules are structural rather
+than cosmetic: an off-target count is never rendered without the scope statement naming the
+reference and the number of bases actually searched, and the only export paths are FASTA and
+GenBank - there is no vendor, order or synthesis affordance anywhere in it. See
+[nucleic.md](nucleic.md).
+
+`Assay` ("Assay Workbench", group `Predict`, `panels::assayWorkbench`) and `AssayDesign`
+("Assay Design", group `Predict`, `panels::assayDesign`) are the only surfaces in BioCAD whose
+input is data the user MEASURED rather than a structure. `Assay` imports a plate reader export
+(long CSV/TSV, or a 96/384/1536 grid block), reports plate QC with the published Z-prime bands,
+and fits dose-response, enzyme, SPR/BLI, DSF or ITC data; well readouts stay `Measured` and
+every fitted parameter is `Model` with its error bar. `AssayDesign` forward-simulates plates
+from a stated truth model and error structure, pushes each one through the SAME
+import -> QC -> fit path, and reports what the design would recover - with empirical
+confidence-interval coverage as the headline number. Both are backed by `IAssayModule`
+(`src/modules/AssayModule.*`) over `src/assay/{Dataset,Qc,Fits,Biophysics,Design}.*`. Two rules
+are structural: an excluded well is hollowed and never removed from a plot, and an EC50 outside
+the tested concentration range is greyed with its reason rather than reported as a potency. See
+[assay.md](assay.md).
+
 
 ## Workflow DAG
 

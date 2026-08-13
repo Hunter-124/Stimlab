@@ -29,10 +29,19 @@ add_executable(biocad_tests
   test_bio_score.cpp
   test_bio_align.cpp
   test_bio_io.cpp
+  test_bio_nuc.cpp
+  test_bio_oligo.cpp
+  test_bio_codon.cpp
   test_metabolites.cpp
   test_chem_speciation.cpp
   test_chem_solubility.cpp
   test_ionization_module.cpp
+  test_nucleic_module.cpp
+  test_assay_fits.cpp
+  test_assay_dataset.cpp
+  test_assay_qc.cpp
+  test_assay_module.cpp
+  test_assay_biophysics.cpp
 )
 
 target_link_libraries(biocad_tests PRIVATE
@@ -42,6 +51,7 @@ target_link_libraries(biocad_tests PRIVATE
   biocad_numeric
   biocad_bio
   biocad_pkpd
+  biocad_assay
   biocad_packs
   biocad_chem
   biocad_modules

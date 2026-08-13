@@ -1,0 +1,792 @@
+{
+  "schemaVersion": 1,
+  "id": "codon-usage",
+  "title": "Codon usage tables",
+  "description": "Codon usage frequencies for constraint-based codon optimization and CAI. These are retrieved counts from real coding sequences, not a model: the per-thousand frequencies are verbatim from the cited table and w_ij is the plain ratio to the most frequent synonymous codon. Nothing here predicts expression level, yield or titre.",
+  "tables": [
+    {
+      "id": "ecoli-k12",
+      "name": "Escherichia coli K-12 (W3110)",
+      "geneticCodeId": 1,
+      "source": "Kazusa Codon Usage Database (Nakamura, Gojobori and Ikemura, compiled from GenBank coding sequences): Escherichia coli W3110 [gbbct]: 4332 CDS's (1372057 codons). frequencyPerThousand is taken verbatim from that table; relativeAdaptiveness (w_ij) is computed here as the codon's frequency divided by the highest frequency in its synonymous family under NCBI translation table 1.",
+      "entries": [
+        {
+          "codon": "AAA",
+          "aminoAcid": "K",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 33.6
+        },
+        {
+          "codon": "AAC",
+          "aminoAcid": "N",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 21.6
+        },
+        {
+          "codon": "AAG",
+          "aminoAcid": "K",
+          "relativeAdaptiveness": 0.306548,
+          "frequencyPerThousand": 10.3
+        },
+        {
+          "codon": "AAT",
+          "aminoAcid": "N",
+          "relativeAdaptiveness": 0.814815,
+          "frequencyPerThousand": 17.6
+        },
+        {
+          "codon": "ACA",
+          "aminoAcid": "T",
+          "relativeAdaptiveness": 0.293617,
+          "frequencyPerThousand": 6.9
+        },
+        {
+          "codon": "ACC",
+          "aminoAcid": "T",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 23.5
+        },
+        {
+          "codon": "ACG",
+          "aminoAcid": "T",
+          "relativeAdaptiveness": 0.612766,
+          "frequencyPerThousand": 14.4
+        },
+        {
+          "codon": "ACT",
+          "aminoAcid": "T",
+          "relativeAdaptiveness": 0.374468,
+          "frequencyPerThousand": 8.8
+        },
+        {
+          "codon": "AGA",
+          "aminoAcid": "R",
+          "relativeAdaptiveness": 0.089686,
+          "frequencyPerThousand": 2.0
+        },
+        {
+          "codon": "AGC",
+          "aminoAcid": "S",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 16.1
+        },
+        {
+          "codon": "AGG",
+          "aminoAcid": "R",
+          "relativeAdaptiveness": 0.049327,
+          "frequencyPerThousand": 1.1
+        },
+        {
+          "codon": "AGT",
+          "aminoAcid": "S",
+          "relativeAdaptiveness": 0.540373,
+          "frequencyPerThousand": 8.7
+        },
+        {
+          "codon": "ATA",
+          "aminoAcid": "I",
+          "relativeAdaptiveness": 0.138158,
+          "frequencyPerThousand": 4.2
+        },
+        {
+          "codon": "ATC",
+          "aminoAcid": "I",
+          "relativeAdaptiveness": 0.828947,
+          "frequencyPerThousand": 25.2
+        },
+        {
+          "codon": "ATG",
+          "aminoAcid": "M",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 27.8
+        },
+        {
+          "codon": "ATT",
+          "aminoAcid": "I",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 30.4
+        },
+        {
+          "codon": "CAA",
+          "aminoAcid": "Q",
+          "relativeAdaptiveness": 0.531034,
+          "frequencyPerThousand": 15.4
+        },
+        {
+          "codon": "CAC",
+          "aminoAcid": "H",
+          "relativeAdaptiveness": 0.753846,
+          "frequencyPerThousand": 9.8
+        },
+        {
+          "codon": "CAG",
+          "aminoAcid": "Q",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 29.0
+        },
+        {
+          "codon": "CAT",
+          "aminoAcid": "H",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 13.0
+        },
+        {
+          "codon": "CCA",
+          "aminoAcid": "P",
+          "relativeAdaptiveness": 0.358974,
+          "frequencyPerThousand": 8.4
+        },
+        {
+          "codon": "CCC",
+          "aminoAcid": "P",
+          "relativeAdaptiveness": 0.235043,
+          "frequencyPerThousand": 5.5
+        },
+        {
+          "codon": "CCG",
+          "aminoAcid": "P",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 23.4
+        },
+        {
+          "codon": "CCT",
+          "aminoAcid": "P",
+          "relativeAdaptiveness": 0.299145,
+          "frequencyPerThousand": 7.0
+        },
+        {
+          "codon": "CGA",
+          "aminoAcid": "R",
+          "relativeAdaptiveness": 0.156951,
+          "frequencyPerThousand": 3.5
+        },
+        {
+          "codon": "CGC",
+          "aminoAcid": "R",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 22.3
+        },
+        {
+          "codon": "CGG",
+          "aminoAcid": "R",
+          "relativeAdaptiveness": 0.242152,
+          "frequencyPerThousand": 5.4
+        },
+        {
+          "codon": "CGT",
+          "aminoAcid": "R",
+          "relativeAdaptiveness": 0.941704,
+          "frequencyPerThousand": 21.0
+        },
+        {
+          "codon": "CTA",
+          "aminoAcid": "L",
+          "relativeAdaptiveness": 0.071563,
+          "frequencyPerThousand": 3.8
+        },
+        {
+          "codon": "CTC",
+          "aminoAcid": "L",
+          "relativeAdaptiveness": 0.20904,
+          "frequencyPerThousand": 11.1
+        },
+        {
+          "codon": "CTG",
+          "aminoAcid": "L",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 53.1
+        },
+        {
+          "codon": "CTT",
+          "aminoAcid": "L",
+          "relativeAdaptiveness": 0.207156,
+          "frequencyPerThousand": 11.0
+        },
+        {
+          "codon": "GAA",
+          "aminoAcid": "E",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 39.7
+        },
+        {
+          "codon": "GAC",
+          "aminoAcid": "D",
+          "relativeAdaptiveness": 0.593168,
+          "frequencyPerThousand": 19.1
+        },
+        {
+          "codon": "GAG",
+          "aminoAcid": "E",
+          "relativeAdaptiveness": 0.453401,
+          "frequencyPerThousand": 18.0
+        },
+        {
+          "codon": "GAT",
+          "aminoAcid": "D",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 32.2
+        },
+        {
+          "codon": "GCA",
+          "aminoAcid": "A",
+          "relativeAdaptiveness": 0.59292,
+          "frequencyPerThousand": 20.1
+        },
+        {
+          "codon": "GCC",
+          "aminoAcid": "A",
+          "relativeAdaptiveness": 0.758112,
+          "frequencyPerThousand": 25.7
+        },
+        {
+          "codon": "GCG",
+          "aminoAcid": "A",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 33.9
+        },
+        {
+          "codon": "GCT",
+          "aminoAcid": "A",
+          "relativeAdaptiveness": 0.448378,
+          "frequencyPerThousand": 15.2
+        },
+        {
+          "codon": "GGA",
+          "aminoAcid": "G",
+          "relativeAdaptiveness": 0.265101,
+          "frequencyPerThousand": 7.9
+        },
+        {
+          "codon": "GGC",
+          "aminoAcid": "G",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 29.8
+        },
+        {
+          "codon": "GGG",
+          "aminoAcid": "G",
+          "relativeAdaptiveness": 0.369128,
+          "frequencyPerThousand": 11.0
+        },
+        {
+          "codon": "GGT",
+          "aminoAcid": "G",
+          "relativeAdaptiveness": 0.828859,
+          "frequencyPerThousand": 24.7
+        },
+        {
+          "codon": "GTA",
+          "aminoAcid": "V",
+          "relativeAdaptiveness": 0.414449,
+          "frequencyPerThousand": 10.9
+        },
+        {
+          "codon": "GTC",
+          "aminoAcid": "V",
+          "relativeAdaptiveness": 0.581749,
+          "frequencyPerThousand": 15.3
+        },
+        {
+          "codon": "GTG",
+          "aminoAcid": "V",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 26.3
+        },
+        {
+          "codon": "GTT",
+          "aminoAcid": "V",
+          "relativeAdaptiveness": 0.692015,
+          "frequencyPerThousand": 18.2
+        },
+        {
+          "codon": "TAA",
+          "aminoAcid": "*",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 2.0
+        },
+        {
+          "codon": "TAC",
+          "aminoAcid": "Y",
+          "relativeAdaptiveness": 0.757764,
+          "frequencyPerThousand": 12.2
+        },
+        {
+          "codon": "TAG",
+          "aminoAcid": "*",
+          "relativeAdaptiveness": 0.1,
+          "frequencyPerThousand": 0.2
+        },
+        {
+          "codon": "TAT",
+          "aminoAcid": "Y",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 16.1
+        },
+        {
+          "codon": "TCA",
+          "aminoAcid": "S",
+          "relativeAdaptiveness": 0.434783,
+          "frequencyPerThousand": 7.0
+        },
+        {
+          "codon": "TCC",
+          "aminoAcid": "S",
+          "relativeAdaptiveness": 0.534161,
+          "frequencyPerThousand": 8.6
+        },
+        {
+          "codon": "TCG",
+          "aminoAcid": "S",
+          "relativeAdaptiveness": 0.552795,
+          "frequencyPerThousand": 8.9
+        },
+        {
+          "codon": "TCT",
+          "aminoAcid": "S",
+          "relativeAdaptiveness": 0.521739,
+          "frequencyPerThousand": 8.4
+        },
+        {
+          "codon": "TGA",
+          "aminoAcid": "*",
+          "relativeAdaptiveness": 0.45,
+          "frequencyPerThousand": 0.9
+        },
+        {
+          "codon": "TGC",
+          "aminoAcid": "C",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 6.4
+        },
+        {
+          "codon": "TGG",
+          "aminoAcid": "W",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 15.2
+        },
+        {
+          "codon": "TGT",
+          "aminoAcid": "C",
+          "relativeAdaptiveness": 0.796875,
+          "frequencyPerThousand": 5.1
+        },
+        {
+          "codon": "TTA",
+          "aminoAcid": "L",
+          "relativeAdaptiveness": 0.259887,
+          "frequencyPerThousand": 13.8
+        },
+        {
+          "codon": "TTC",
+          "aminoAcid": "F",
+          "relativeAdaptiveness": 0.743243,
+          "frequencyPerThousand": 16.5
+        },
+        {
+          "codon": "TTG",
+          "aminoAcid": "L",
+          "relativeAdaptiveness": 0.256121,
+          "frequencyPerThousand": 13.6
+        },
+        {
+          "codon": "TTT",
+          "aminoAcid": "F",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 22.2
+        }
+      ]
+    },
+    {
+      "id": "hsapiens",
+      "name": "Homo sapiens",
+      "geneticCodeId": 1,
+      "source": "Kazusa Codon Usage Database (Nakamura, Gojobori and Ikemura, compiled from GenBank coding sequences): Homo sapiens [gbpri]: 93487 CDS's (40662582 codons). frequencyPerThousand is taken verbatim from that table; relativeAdaptiveness (w_ij) is computed here as the codon's frequency divided by the highest frequency in its synonymous family under NCBI translation table 1.",
+      "entries": [
+        {
+          "codon": "AAA",
+          "aminoAcid": "K",
+          "relativeAdaptiveness": 0.76489,
+          "frequencyPerThousand": 24.4
+        },
+        {
+          "codon": "AAC",
+          "aminoAcid": "N",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 19.1
+        },
+        {
+          "codon": "AAG",
+          "aminoAcid": "K",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 31.9
+        },
+        {
+          "codon": "AAT",
+          "aminoAcid": "N",
+          "relativeAdaptiveness": 0.890052,
+          "frequencyPerThousand": 17.0
+        },
+        {
+          "codon": "ACA",
+          "aminoAcid": "T",
+          "relativeAdaptiveness": 0.798942,
+          "frequencyPerThousand": 15.1
+        },
+        {
+          "codon": "ACC",
+          "aminoAcid": "T",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 18.9
+        },
+        {
+          "codon": "ACG",
+          "aminoAcid": "T",
+          "relativeAdaptiveness": 0.322751,
+          "frequencyPerThousand": 6.1
+        },
+        {
+          "codon": "ACT",
+          "aminoAcid": "T",
+          "relativeAdaptiveness": 0.693122,
+          "frequencyPerThousand": 13.1
+        },
+        {
+          "codon": "AGA",
+          "aminoAcid": "R",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 12.2
+        },
+        {
+          "codon": "AGC",
+          "aminoAcid": "S",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 19.5
+        },
+        {
+          "codon": "AGG",
+          "aminoAcid": "R",
+          "relativeAdaptiveness": 0.983607,
+          "frequencyPerThousand": 12.0
+        },
+        {
+          "codon": "AGT",
+          "aminoAcid": "S",
+          "relativeAdaptiveness": 0.620513,
+          "frequencyPerThousand": 12.1
+        },
+        {
+          "codon": "ATA",
+          "aminoAcid": "I",
+          "relativeAdaptiveness": 0.360577,
+          "frequencyPerThousand": 7.5
+        },
+        {
+          "codon": "ATC",
+          "aminoAcid": "I",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 20.8
+        },
+        {
+          "codon": "ATG",
+          "aminoAcid": "M",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 22.0
+        },
+        {
+          "codon": "ATT",
+          "aminoAcid": "I",
+          "relativeAdaptiveness": 0.769231,
+          "frequencyPerThousand": 16.0
+        },
+        {
+          "codon": "CAA",
+          "aminoAcid": "Q",
+          "relativeAdaptiveness": 0.359649,
+          "frequencyPerThousand": 12.3
+        },
+        {
+          "codon": "CAC",
+          "aminoAcid": "H",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 15.1
+        },
+        {
+          "codon": "CAG",
+          "aminoAcid": "Q",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 34.2
+        },
+        {
+          "codon": "CAT",
+          "aminoAcid": "H",
+          "relativeAdaptiveness": 0.721854,
+          "frequencyPerThousand": 10.9
+        },
+        {
+          "codon": "CCA",
+          "aminoAcid": "P",
+          "relativeAdaptiveness": 0.853535,
+          "frequencyPerThousand": 16.9
+        },
+        {
+          "codon": "CCC",
+          "aminoAcid": "P",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 19.8
+        },
+        {
+          "codon": "CCG",
+          "aminoAcid": "P",
+          "relativeAdaptiveness": 0.348485,
+          "frequencyPerThousand": 6.9
+        },
+        {
+          "codon": "CCT",
+          "aminoAcid": "P",
+          "relativeAdaptiveness": 0.883838,
+          "frequencyPerThousand": 17.5
+        },
+        {
+          "codon": "CGA",
+          "aminoAcid": "R",
+          "relativeAdaptiveness": 0.508197,
+          "frequencyPerThousand": 6.2
+        },
+        {
+          "codon": "CGC",
+          "aminoAcid": "R",
+          "relativeAdaptiveness": 0.852459,
+          "frequencyPerThousand": 10.4
+        },
+        {
+          "codon": "CGG",
+          "aminoAcid": "R",
+          "relativeAdaptiveness": 0.934426,
+          "frequencyPerThousand": 11.4
+        },
+        {
+          "codon": "CGT",
+          "aminoAcid": "R",
+          "relativeAdaptiveness": 0.368852,
+          "frequencyPerThousand": 4.5
+        },
+        {
+          "codon": "CTA",
+          "aminoAcid": "L",
+          "relativeAdaptiveness": 0.181818,
+          "frequencyPerThousand": 7.2
+        },
+        {
+          "codon": "CTC",
+          "aminoAcid": "L",
+          "relativeAdaptiveness": 0.494949,
+          "frequencyPerThousand": 19.6
+        },
+        {
+          "codon": "CTG",
+          "aminoAcid": "L",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 39.6
+        },
+        {
+          "codon": "CTT",
+          "aminoAcid": "L",
+          "relativeAdaptiveness": 0.333333,
+          "frequencyPerThousand": 13.2
+        },
+        {
+          "codon": "GAA",
+          "aminoAcid": "E",
+          "relativeAdaptiveness": 0.732323,
+          "frequencyPerThousand": 29.0
+        },
+        {
+          "codon": "GAC",
+          "aminoAcid": "D",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 25.1
+        },
+        {
+          "codon": "GAG",
+          "aminoAcid": "E",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 39.6
+        },
+        {
+          "codon": "GAT",
+          "aminoAcid": "D",
+          "relativeAdaptiveness": 0.868526,
+          "frequencyPerThousand": 21.8
+        },
+        {
+          "codon": "GCA",
+          "aminoAcid": "A",
+          "relativeAdaptiveness": 0.570397,
+          "frequencyPerThousand": 15.8
+        },
+        {
+          "codon": "GCC",
+          "aminoAcid": "A",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 27.7
+        },
+        {
+          "codon": "GCG",
+          "aminoAcid": "A",
+          "relativeAdaptiveness": 0.267148,
+          "frequencyPerThousand": 7.4
+        },
+        {
+          "codon": "GCT",
+          "aminoAcid": "A",
+          "relativeAdaptiveness": 0.66426,
+          "frequencyPerThousand": 18.4
+        },
+        {
+          "codon": "GGA",
+          "aminoAcid": "G",
+          "relativeAdaptiveness": 0.743243,
+          "frequencyPerThousand": 16.5
+        },
+        {
+          "codon": "GGC",
+          "aminoAcid": "G",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 22.2
+        },
+        {
+          "codon": "GGG",
+          "aminoAcid": "G",
+          "relativeAdaptiveness": 0.743243,
+          "frequencyPerThousand": 16.5
+        },
+        {
+          "codon": "GGT",
+          "aminoAcid": "G",
+          "relativeAdaptiveness": 0.486486,
+          "frequencyPerThousand": 10.8
+        },
+        {
+          "codon": "GTA",
+          "aminoAcid": "V",
+          "relativeAdaptiveness": 0.252669,
+          "frequencyPerThousand": 7.1
+        },
+        {
+          "codon": "GTC",
+          "aminoAcid": "V",
+          "relativeAdaptiveness": 0.516014,
+          "frequencyPerThousand": 14.5
+        },
+        {
+          "codon": "GTG",
+          "aminoAcid": "V",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 28.1
+        },
+        {
+          "codon": "GTT",
+          "aminoAcid": "V",
+          "relativeAdaptiveness": 0.391459,
+          "frequencyPerThousand": 11.0
+        },
+        {
+          "codon": "TAA",
+          "aminoAcid": "*",
+          "relativeAdaptiveness": 0.625,
+          "frequencyPerThousand": 1.0
+        },
+        {
+          "codon": "TAC",
+          "aminoAcid": "Y",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 15.3
+        },
+        {
+          "codon": "TAG",
+          "aminoAcid": "*",
+          "relativeAdaptiveness": 0.5,
+          "frequencyPerThousand": 0.8
+        },
+        {
+          "codon": "TAT",
+          "aminoAcid": "Y",
+          "relativeAdaptiveness": 0.797386,
+          "frequencyPerThousand": 12.2
+        },
+        {
+          "codon": "TCA",
+          "aminoAcid": "S",
+          "relativeAdaptiveness": 0.625641,
+          "frequencyPerThousand": 12.2
+        },
+        {
+          "codon": "TCC",
+          "aminoAcid": "S",
+          "relativeAdaptiveness": 0.907692,
+          "frequencyPerThousand": 17.7
+        },
+        {
+          "codon": "TCG",
+          "aminoAcid": "S",
+          "relativeAdaptiveness": 0.225641,
+          "frequencyPerThousand": 4.4
+        },
+        {
+          "codon": "TCT",
+          "aminoAcid": "S",
+          "relativeAdaptiveness": 0.779487,
+          "frequencyPerThousand": 15.2
+        },
+        {
+          "codon": "TGA",
+          "aminoAcid": "*",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 1.6
+        },
+        {
+          "codon": "TGC",
+          "aminoAcid": "C",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 12.6
+        },
+        {
+          "codon": "TGG",
+          "aminoAcid": "W",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 13.2
+        },
+        {
+          "codon": "TGT",
+          "aminoAcid": "C",
+          "relativeAdaptiveness": 0.84127,
+          "frequencyPerThousand": 10.6
+        },
+        {
+          "codon": "TTA",
+          "aminoAcid": "L",
+          "relativeAdaptiveness": 0.194444,
+          "frequencyPerThousand": 7.7
+        },
+        {
+          "codon": "TTC",
+          "aminoAcid": "F",
+          "relativeAdaptiveness": 1.0,
+          "frequencyPerThousand": 20.3
+        },
+        {
+          "codon": "TTG",
+          "aminoAcid": "L",
+          "relativeAdaptiveness": 0.325758,
+          "frequencyPerThousand": 12.9
+        },
+        {
+          "codon": "TTT",
+          "aminoAcid": "F",
+          "relativeAdaptiveness": 0.866995,
+          "frequencyPerThousand": 17.6
+        }
+      ]
+    }
+  ]
+}
