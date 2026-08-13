@@ -332,6 +332,7 @@
   "targets": [
     {
       "id": "DAT",
+      "panels": ["safetyscreen44"],
       "name": "DAT (dopamine transporter)",
       "pdb": "4M48",
       "uniprot": "Q01959",
@@ -341,6 +342,7 @@
     },
     {
       "id": "NET",
+      "panels": ["safetyscreen44"],
       "name": "NET (norepinephrine transporter)",
       "pdb": "5I6X",
       "uniprot": "P23975",
@@ -350,6 +352,7 @@
     },
     {
       "id": "SERT",
+      "panels": ["safetyscreen44"],
       "name": "SERT (serotonin transporter)",
       "pdb": "5I73",
       "uniprot": "P31645",
@@ -367,6 +370,7 @@
     },
     {
       "id": "hERG",
+      "panels": ["safetyscreen44"],
       "name": "hERG (Kv11.1 cardiac safety)",
       "pdb": "5VA2",
       "uniprot": "Q12809",
@@ -375,6 +379,7 @@
     },
     {
       "id": "D1",
+      "panels": ["safetyscreen44"],
       "name": "Dopamine D1 receptor",
       "pdb": "7CKW",
       "uniprot": "P21728",
@@ -383,6 +388,7 @@
     },
     {
       "id": "D2",
+      "panels": ["safetyscreen44"],
       "name": "Dopamine D2 receptor",
       "pdb": "6CM4",
       "uniprot": "P14416",
@@ -399,6 +405,7 @@
     },
     {
       "id": "5HT2A",
+      "panels": ["safetyscreen44"],
       "name": "5-HT2A receptor",
       "pdb": "6A93",
       "uniprot": "P28223",
@@ -415,6 +422,7 @@
     },
     {
       "id": "ADRA2A",
+      "panels": ["safetyscreen44"],
       "name": "Alpha-2A adrenergic receptor",
       "pdb": "6KUX",
       "uniprot": "P08913",
@@ -423,6 +431,7 @@
     },
     {
       "id": "ADRB1",
+      "panels": ["safetyscreen44"],
       "name": "Beta-1 adrenergic receptor",
       "pdb": "2VT4",
       "chembl": "CHEMBL213",
@@ -430,6 +439,7 @@
     },
     {
       "id": "ADRB2",
+      "panels": ["safetyscreen44"],
       "name": "Beta-2 adrenergic receptor",
       "pdb": "2RH1",
       "uniprot": "P07550",
@@ -438,6 +448,7 @@
     },
     {
       "id": "H1",
+      "panels": ["safetyscreen44"],
       "name": "Histamine H1 receptor",
       "pdb": "3RZE",
       "uniprot": "P35367",
@@ -454,6 +465,7 @@
     },
     {
       "id": "M1",
+      "panels": ["safetyscreen44"],
       "name": "Muscarinic M1 receptor",
       "pdb": "5CXV",
       "uniprot": "P11229",
@@ -462,6 +474,7 @@
     },
     {
       "id": "M2",
+      "panels": ["safetyscreen44"],
       "name": "Muscarinic M2 receptor",
       "pdb": "3UON",
       "uniprot": "P08172",
@@ -470,6 +483,7 @@
     },
     {
       "id": "M3",
+      "panels": ["safetyscreen44"],
       "name": "Muscarinic M3 receptor",
       "pdb": "4U15",
       "uniprot": "P20309",
@@ -478,6 +492,7 @@
     },
     {
       "id": "MOR",
+      "panels": ["safetyscreen44"],
       "name": "Mu-opioid receptor",
       "pdb": "4DKL",
       "uniprot": "P35372",
@@ -494,6 +509,7 @@
     },
     {
       "id": "CB1",
+      "panels": ["safetyscreen44"],
       "name": "Cannabinoid CB1 receptor",
       "pdb": "5TGZ",
       "uniprot": "P21554",
@@ -502,12 +518,14 @@
     },
     {
       "id": "NMDA",
+      "panels": ["safetyscreen44"],
       "name": "NMDA receptor (GluN1/GluN2B)",
       "pdb": "4PE5",
       "box": { "cx": 18.50, "cy": 44.30, "cz": 72.10, "sx": 22.0, "sy": 22.0, "sz": 22.0 }
     },
     {
       "id": "MAOA",
+      "panels": ["safetyscreen44"],
       "name": "Monoamine oxidase A",
       "pdb": "2Z5X",
       "uniprot": "P21397",
@@ -532,6 +550,7 @@
     },
     {
       "id": "AChE",
+      "panels": ["safetyscreen44"],
       "name": "Acetylcholinesterase",
       "pdb": "4EY7",
       "uniprot": "P22303",

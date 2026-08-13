@@ -133,6 +133,8 @@ provisioning, receptor-prep and scoring story is in [docs/docking.md](docs/docki
 | [docs/biologics.md](docs/biologics.md) | IMGT numbering and the anchor refusal, sequence liabilities, developability descriptors, mass ladders, interfaces, and the geometric alanine scan |
 | [docs/systems.md](docs/systems.md) | Reaction networks, the solvers and their reported settings, chemical kinetics, the SBML subset, flux, and pathway enrichment |
 | [docs/nucleic.md](docs/nucleic.md) | The DNA/RNA workbench, the nearest-neighbour parameter set, the guide-search honesty rule, and the biosecurity boundary |
+| [docs/variants.md](docs/variants.md) | Conservation scoring and its homolog minimum, the rotamer pack's derived provenance, and why no stability ddG ships |
+| [docs/mechanism.md](docs/mechanism.md) | Retrieved mechanism of action, off-target panel coverage, pathway context, the stack checker, and the source-by-source licence verdicts |
 | [docs/data-sources.md](docs/data-sources.md) | Every external service, its endpoint, its licence, and what may be cached or committed |
 | [docs/limitations.md](docs/limitations.md) | The do-not-ship list, descriptor fidelity, and the honesty rules |
 
@@ -232,7 +234,8 @@ src/
 └── workflow/   DAG execution and job scheduling
 
 assets/packs/   built-in compound and target catalogs
-docs/           architecture, provenance, cheminformatics, packs, docking, pkpd, protein, data sources, limits
+docs/           architecture, provenance, cheminformatics, packs, docking, pkpd, population PK,
+                assay, protein, rendering, biologics, systems, nucleic, variants, mechanism, sources, limits
 tests/          Catch2 suite
 scripts/        build, CI, packaging, signing, capture helpers
 ```

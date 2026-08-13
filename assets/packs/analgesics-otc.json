@@ -193,6 +193,7 @@
   "targets": [
     {
       "id": "PTGS1",
+      "panels": ["safetyscreen44"],
       "name": "COX-1 (prostaglandin G/H synthase 1)",
       "pdb": "1EQG",
       "uniprot": "P23219",
@@ -200,6 +201,7 @@
     },
     {
       "id": "PTGS2",
+      "panels": ["safetyscreen44"],
       "name": "COX-2 (prostaglandin G/H synthase 2)",
       "pdb": "5KIR",
       "uniprot": "P35354",
@@ -207,6 +209,7 @@
     },
     {
       "id": "HTR3A",
+      "panels": ["safetyscreen44"],
       "name": "5-HT3A receptor (serotonin-gated ion channel)",
       "pdb": "6DG8",
       "uniprot": "P46098"
