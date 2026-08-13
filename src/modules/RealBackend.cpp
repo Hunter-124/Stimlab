@@ -11,6 +11,7 @@
 #include "chem/Descriptors.h"
 #include "chem/Embed3D.h"
 #include "chem/Smiles.h"
+#include "modules/BioModules.h"
 #include "modules/docking/Backends.h"
 #include "modules/docking/Presets.h"
 #include "modules/docking/ReceptorPrep.h"
@@ -507,6 +508,8 @@ struct RealBackend::Impl {
     RealDocking docking;
     SqliteRunStore runs;
     pkpd::RealPharmacodynamics pharmacodynamics;
+    RealSequence sequence;
+    RealStructure structure;
 };
 
 RealBackend::RealBackend() : impl_(std::make_unique<Impl>()) {}
@@ -523,6 +526,8 @@ Services RealBackend::services() {
     s.docking = &impl_->docking;
     s.runs = &impl_->runs;
     s.pharmacodynamics = &impl_->pharmacodynamics;
+    s.sequence = &impl_->sequence;
+    s.structure = &impl_->structure;
     return s;
 }
 

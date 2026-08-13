@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <optional>
@@ -15,6 +16,7 @@
 #include <imgui.h>
 #include <implot.h>
 
+#include "bio/Structure.h"
 #include "chem/Descriptors.h"
 #include "chem/Embed3D.h"
 #include "chem/Smiles.h"
@@ -1050,6 +1052,226 @@ void pkpd(AppShell& shell) {
         pkParamRow("##Vm", "Vmax (0 = linear)",      spec.vmax);
         pkParamRow("##Km", "Km",                     spec.km);
         pkParamRow("##Kd", "Target Kd (occupancy)",  kd);
+        ImGui::EndTable();
+    }
+}
+
+// ------------------------------------------------------- Sequence Compare
+namespace {
+
+// The app loads Segoe UI, which is proportional, so a plain TextUnformatted would
+// stagger the three alignment rows against each other and make the midline point at
+// the wrong column. Each glyph is therefore placed at a fixed advance, which is what
+// makes the block readable as an alignment rather than as three sentences.
+float monoCell() { return ImGui::CalcTextSize("M").x; }
+
+void monoRow(const std::string& text, std::size_t from, std::size_t count, ImU32 col,
+             float cell) {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    char buf[2] = {0, 0};
+    for (std::size_t i = 0; i < count && from + i < text.size(); ++i) {
+        buf[0] = text[from + i];
+        dl->AddText(ImVec2(origin.x + static_cast<float>(i) * cell, origin.y), col, buf, buf + 1);
+    }
+    ImGui::Dummy(ImVec2(static_cast<float>(count) * cell, ImGui::GetTextLineHeight()));
+}
+
+void alignmentBlock(const SequenceAlignment& a) {
+    const float cell = monoCell();
+    if (cell <= 0.0f || a.aligned1.empty()) {
+        ImGui::TextDisabled("(no alignment)");
+        return;
+    }
+    const float avail = ImGui::GetContentRegionAvail().x - 60.0f;
+    std::size_t perRow = static_cast<std::size_t>(avail / cell);
+    if (perRow < 20) perRow = 20;
+
+    for (std::size_t off = 0; off < a.aligned1.size(); off += perRow) {
+        const std::size_t n = std::min(perRow, a.aligned1.size() - off);
+        monoRow(a.aligned1, off, n, theme::kTextHi, cell);
+        monoRow(a.midline, off, n, theme::kAccent2, cell);
+        monoRow(a.aligned2, off, n, theme::kTextHi, cell);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextFaint));
+        ImGui::Text("columns %zu-%zu", off + 1, off + n);
+        ImGui::PopStyleColor();
+        ImGui::Spacing();
+    }
+}
+
+}  // namespace
+
+void sequenceCompare(AppShell& shell) {
+    Services& s = shell.services();
+    if (!s.sequence) return;
+
+    // The two sequences are the user's scenario, not a property of the selected
+    // molecule, so they live in panel state like the PK regimen does.
+    static char seqA[8192] =
+        "MKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQAPILSRVGDGTQDNLSGAEKAVQVKVKALPDAQFEVVHSLAKWKR";
+    static char seqB[8192] =
+        "MKTAYIAKQRQISFVKSHFSRQEEERLGLIEVQAAILSRVGDGTQDNLSGCEKAVQVKVKALPDAQFEVVHSLAKWKQ";
+    static bool local = true;
+
+    theme::sectionHeader("SEQUENCES (ONE-LETTER, GAPS AND WHITESPACE IGNORED)");
+    ImGui::TextUnformatted("Sequence A");
+    ImGui::InputTextMultiline("##seqA", seqA, sizeof(seqA), ImVec2(-1, 70));
+    ImGui::TextUnformatted("Sequence B");
+    ImGui::InputTextMultiline("##seqB", seqB, sizeof(seqB), ImVec2(-1, 70));
+
+    int mode = local ? 1 : 0;
+    ImGui::RadioButton("Global (Needleman-Wunsch)", &mode, 0);
+    ImGui::SameLine();
+    ImGui::RadioButton("Local (Smith-Waterman)", &mode, 1);
+    local = (mode == 1);
+    ImGui::Spacing();
+
+    // Strip anything that is not a residue letter: a pasted FASTA header or a
+    // wrapped line would otherwise be aligned as if it were sequence.
+    auto clean = [](const char* raw) {
+        std::string out;
+        for (const char* p = raw; *p; ++p)
+            if (std::isalpha(static_cast<unsigned char>(*p)))
+                out += static_cast<char>(std::toupper(static_cast<unsigned char>(*p)));
+        return out;
+    };
+    const std::string a = clean(seqA);
+    const std::string b = clean(seqB);
+    if (a.empty() || b.empty()) {
+        ImGui::TextDisabled("Enter two sequences to align.");
+        return;
+    }
+
+    const SequenceAlignment r = local ? s.sequence->alignLocal(a, b)
+                                      : s.sequence->alignGlobal(a, b);
+
+    statCard("IDENTITY", f2(r.identityPct.value) + "%", "identical / aligned columns", 210.0f);
+    ImGui::SameLine();
+    statCard("SIMILARITY", f2(r.similarityPct.value) + "%", "positive-scoring columns", 220.0f);
+    ImGui::SameLine();
+    statCard("SCORE", f0(r.score.value), "half-bits (BLOSUM62)", 190.0f);
+    ImGui::SameLine();
+    statCard("GAP OPENS", std::to_string(r.gapOpens), "gap runs, both sequences", 190.0f);
+    ImGui::Spacing();
+
+    theme::sectionHeader("ALIGNMENT");
+    alignmentBlock(r);
+
+    theme::sectionHeader("NUMBERS AND THEIR PROVENANCE");
+    drawQuantity("Score", r.score);
+    drawQuantity("Identity", r.identityPct);
+    drawQuantity("Similarity", r.similarityPct);
+    // The E-value ROW IS ABSENT for a global alignment, not blank: Karlin-Altschul
+    // statistics have no global analogue, and an empty row invites the reader to
+    // assume the number merely failed to compute this time.
+    if (!local) drawQuantity("E-value", r.eValue);
+    ImGui::TextColored(theme::provenanceColor(Provenance::Measured),
+                       "Aligned columns: %d", r.alignedLength);
+    if (!r.note.empty()) ImGui::TextWrapped("%s", r.note.c_str());
+}
+
+// ------------------------------------------------------ Protein Structure
+void proteinStructure(AppShell& shell) {
+    Services& s = shell.services();
+    if (!s.structure) return;
+
+    static char pathBuf[1024] = "";
+    static std::optional<bio::Structure> loaded;
+    static std::string loadError;
+
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(theme::provenanceColor(Provenance::Measured),
+                       "This panel reads a LOCAL .pdb / .cif file (including one already "
+                       "downloaded into the cache). It does not fetch anything by itself.");
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+
+    ImGui::SetNextItemWidth(-140.0f);
+    ImGui::InputTextWithHint("##structpath", "Path to a .pdb / .cif file...", pathBuf,
+                             sizeof(pathBuf));
+    ImGui::SameLine();
+    if (ImGui::Button("Load", ImVec2(120, 0))) {
+        loaded = s.structure->load(std::filesystem::path(pathBuf));
+        loadError = loaded ? std::string()
+                           : "Could not read '" + std::string(pathBuf) +
+                                 "'. Expected an existing .pdb, .ent, .cif or .mmcif file.";
+    }
+    if (!loadError.empty()) {
+        ImGui::TextColored(theme::verdictColor(3), "%s", loadError.c_str());
+    }
+    if (!loaded) {
+        ImGui::TextDisabled("No structure loaded.");
+        return;
+    }
+
+    const bio::Structure& st = *loaded;
+    const bio::Model* m = st.model(1);
+    const std::size_t chains = m ? m->chains.size() : 0;
+    std::size_t residues = 0;
+    if (m) for (const auto& c : m->chains) residues += c.residues.size();
+
+    statCard("MODELS", std::to_string(st.models.size()), "MODEL records", 150.0f);
+    ImGui::SameLine();
+    statCard("CHAINS", std::to_string(chains), "in model 1", 150.0f);
+    ImGui::SameLine();
+    statCard("RESIDUES", std::to_string(residues), "in model 1", 170.0f);
+    ImGui::SameLine();
+    statCard("ATOMS", std::to_string(st.atomCount()), "all models", 170.0f);
+    ImGui::Spacing();
+
+    // Residue numbering is ambiguous and the two schemes disagree in most mmCIF
+    // entries, so the panel states which one it is showing every single time.
+    ImGui::TextColored(theme::provenanceColor(Provenance::Measured),
+                       "Residue numbering shown below: AUTHOR (auth_seq_id) - the numbering "
+                       "papers cite. mmCIF label_seq_id is NOT shown here.");
+    ImGui::Text("Entry id: %s", st.id.empty() ? "(none in file)" : st.id.c_str());
+    ImGui::Text("Source: %s", st.source.c_str());
+    ImGui::Spacing();
+
+    if (!st.warnings.empty()) {
+        theme::sectionHeader("PARSE WARNINGS (RECOVERED, NOT FATAL)");
+        for (const auto& w : st.warnings)
+            ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(theme::kWarn), "%s", w.c_str());
+        ImGui::Spacing();
+    }
+
+    theme::sectionHeader("SOLVENT-ACCESSIBLE SURFACE AREA");
+    // drawQuantity prints the full parameter string (probe radius, point count,
+    // radii set, hydrogen policy) that the module put in `source`: a SASA without
+    // them cannot be reproduced or compared against another tool.
+    drawQuantity("Total SASA", s.structure->sasa(st));
+    ImGui::Spacing();
+
+    theme::sectionHeader("CHAINS (AUTHOR NUMBERING)");
+    if (m && ImGui::BeginTable("bio-chains", 4,
+                               ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("Chain", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+        ImGui::TableSetupColumn("Residues", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+        ImGui::TableSetupColumn("First..last auth #", ImGuiTableColumnFlags_WidthFixed, 160.0f);
+        ImGui::TableSetupColumn("Polymer sequence (one-letter)");
+        ImGui::TableHeadersRow();
+        for (const auto& c : m->chains) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(c.id.c_str());
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%zu", c.residues.size());
+            ImGui::TableSetColumnIndex(2);
+            if (c.residues.empty()) {
+                ImGui::TextDisabled("-");
+            } else {
+                ImGui::Text("%d%c..%d%c", c.residues.front().authSeqId,
+                            c.residues.front().insertionCode,
+                            c.residues.back().authSeqId, c.residues.back().insertionCode);
+            }
+            ImGui::TableSetColumnIndex(3);
+            const std::vector<char> seq = bio::sequenceOf(c);
+            if (seq.empty()) {
+                ImGui::TextDisabled("(no polymer residues - ligand, water or ion chain)");
+            } else {
+                ImGui::TextWrapped("%s", std::string(seq.begin(), seq.end()).c_str());
+            }
+        }
         ImGui::EndTable();
     }
 }

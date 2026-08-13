@@ -1,6 +1,7 @@
 # ---- biocad_modules : REAL analysis backend (chem-engine backed) ----
 add_library(biocad_modules STATIC
   RealBackend.cpp
+  BioModules.cpp
   Pipelines.cpp
   docking/Presets.cpp
   docking/PdbqtWriter.cpp
@@ -17,6 +18,7 @@ target_include_directories(biocad_modules PUBLIC
 
 target_link_libraries(biocad_modules PUBLIC
   biocad_contracts
+  biocad_bio
   biocad_data
   biocad_packs
   biocad_chem

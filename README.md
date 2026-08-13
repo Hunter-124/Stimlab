@@ -186,22 +186,25 @@ because they carry the old box marker. API keys are encrypted at rest with Windo
 
 ```text
 src/
-├── app/        Win32 entry point, CLI, and the capture path
 ├── agent/      providers, tool registry, prompts, and web tools
+├── app/        Win32 entry point, CLI, and the capture path
+├── bio/        protein structure/sequence I/O, alignment, superposition, lDDT, SASA
 ├── chem/       molecular graph, descriptors, ADMET/PK model, 3D embedding
 ├── contracts/  frozen service and backend interfaces (the Services seam)
 ├── core/       paths, config, logging, manifests, secrets, generated version
 ├── data/       domain DTOs, Provenance and Quantity
 ├── fakes/      deterministic backend the test suite runs against
 ├── modules/    real backend services and docking backends
+├── numeric/    the one Levenberg-Marquardt fitter and the one RK4 integrator
 ├── packs/      versioned JSON data-pack schema and loader
+├── pkpd/       dose-response fits, Cheng-Prusoff, Schild, PK/occupancy engine
 ├── render/     DirectX 11 device, WIC capture, molecular viewport
 ├── storage/    SQLite run store
 ├── ui/         application shell, panels, theme
 └── workflow/   DAG execution and job scheduling
 
 assets/packs/   built-in compound and target catalogs
-docs/           architecture, provenance, packs, docking, data sources, limits
+docs/           architecture, provenance, packs, docking, pkpd, protein, data sources, limits
 tests/          Catch2 suite
 scripts/        build, CI, packaging, signing, capture helpers
 ```

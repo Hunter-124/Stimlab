@@ -19,6 +19,9 @@ add_executable(biocad_tests
   test_pkpd_fits.cpp
   test_numeric.cpp
   test_pkpd_engine.cpp
+  test_bio_score.cpp
+  test_bio_align.cpp
+  test_bio_io.cpp
 )
 
 target_link_libraries(biocad_tests PRIVATE
@@ -26,6 +29,7 @@ target_link_libraries(biocad_tests PRIVATE
   biocad_core
   biocad_data
   biocad_numeric
+  biocad_bio
   biocad_pkpd
   biocad_packs
   biocad_fakes
@@ -39,6 +43,12 @@ target_link_libraries(biocad_tests PRIVATE
 )
 
 target_compile_features(biocad_tests PRIVATE cxx_std_20)
+
+# The BLOSUM62 matrix pack is data on disk; tests read the in-tree copy.
+target_compile_definitions(biocad_tests PRIVATE
+  BIOCAD_ASSETS_DIR="${CMAKE_SOURCE_DIR}/assets"
+  BIOCAD_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+)
 
 include(Catch)
 catch_discover_tests(biocad_tests)

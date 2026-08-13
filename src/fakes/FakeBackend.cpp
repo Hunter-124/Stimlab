@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "chem/AdmetModel.h"
+#include "modules/BioModules.h"
 #include "packs/Pack.h"
 #include "pkpd/Pharmacodynamics.h"
 
@@ -1001,6 +1002,32 @@ private:
     pkpd::RealPharmacodynamics real_;
 };
 
+// The protein core has no fake numbers either: alignment and geometry are pure
+// functions of their inputs (no clock, no randomness, no network), so the fakes
+// call the SAME bioadapt:: helpers the real modules call. A second implementation
+// here would be a second set of answers that drifts from the shipped one.
+class FakeSequence final : public ISequenceModule {
+public:
+    SequenceAlignment alignGlobal(const std::string& a, const std::string& b) const override {
+        return bioadapt::alignGlobal(a, b);
+    }
+    SequenceAlignment alignLocal(const std::string& a, const std::string& b) const override {
+        return bioadapt::alignLocal(a, b);
+    }
+};
+
+class FakeStructure final : public IStructureModule {
+public:
+    std::optional<bio::Structure> load(const std::filesystem::path& file) const override {
+        return bioadapt::loadStructureFile(file);
+    }
+    StructureComparison compare(const bio::Structure& ref,
+                                const bio::Structure& model) const override {
+        return bioadapt::compare(ref, model);
+    }
+    Quantity sasa(const bio::Structure& s) const override { return bioadapt::sasa(s); }
+};
+
 }  // namespace
 
 // =============================================================== FakeBackend
@@ -1014,6 +1041,8 @@ struct FakeBackend::Impl {
     FakeDocking    docking;
     FakeRuns       runs;
     FakePharmacodynamics pharmacodynamics;
+    FakeSequence   sequence;
+    FakeStructure  structure;
 };
 
 FakeBackend::FakeBackend() : impl_(std::make_unique<Impl>()) {}
@@ -1030,6 +1059,8 @@ Services FakeBackend::services() {
     s.docking    = &impl_->docking;
     s.runs       = &impl_->runs;
     s.pharmacodynamics = &impl_->pharmacodynamics;
+    s.sequence   = &impl_->sequence;
+    s.structure  = &impl_->structure;
     return s;
 }
 

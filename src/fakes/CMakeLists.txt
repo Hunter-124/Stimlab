@@ -9,6 +9,7 @@ target_include_directories(biocad_fakes PUBLIC
 
 target_link_libraries(biocad_fakes PUBLIC
   biocad_contracts
+  biocad_bio
   biocad_data
   biocad_packs
   biocad_pkpd

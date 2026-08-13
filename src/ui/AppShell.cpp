@@ -2,6 +2,7 @@
 
 #include <cctype>
 #include <cmath>
+#include <filesystem>
 #include <utility>
 
 #include <imgui.h>
@@ -13,6 +14,7 @@
 #include "agent/SystemPrompt.h"
 #include "agent/Tools.h"
 #include "agent/WebTools.h"
+#include "bio/Structure.h"
 #include "chem/Descriptors.h"
 #include "chem/Smiles.h"
 #include "core/Config.h"
@@ -86,6 +88,10 @@ AppShell::AppShell(Services services) : svc_(services) {
          "Metabolic routes, risky metabolites, drug interactions, and safety flags (hERG).", "Predict"},
         {"PkPd", "PK / PD",
          "Exposure scenarios: concentration-time and target-occupancy curves under stated assumptions.", "Predict"},
+        {"Sequence", "Sequence Compare",
+         "Pairwise protein sequence alignment (global or local) with identity, similarity and an E-value.", "Discover"},
+        {"Structure3D", "Protein Structure",
+         "Load a local PDB / mmCIF structure: chains, per-chain sequence, SASA and parse warnings.", "Workspace"},
         {"Analog", "Analog Explorer",
          "Model or draw a candidate derivative, preview its structure, and screen it against existing samples.", "Discover"},
         {"Compare", "Compare",
@@ -749,6 +755,120 @@ void AppShell::registerAgentServiceTools() {
             }));
     }
 
+    // ---- Protein core. Alignment is exact combinatorics and structure comparison is
+    // exact geometry, so every number below is Measured - except the TM-score, which
+    // stays not-computed until the reference implementation is vendored.
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"a", {{"type", "string"}, {"description", "First protein sequence, one-letter."}}},
+              {"b", {{"type", "string"}, {"description", "Second protein sequence, one-letter."}}},
+              {"mode", {{"type", "string"}, {"enum", json::array({"global", "local"})},
+                        {"description", "global = Needleman-Wunsch end-to-end; local = "
+                                        "Smith-Waterman best subsegment. Default local."}}}}},
+            {"required", json::array({"a", "b"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "align_sequences",
+            "Align two protein sequences with Gotoh affine gaps over BLOSUM62 (gap open 11, "
+            "extend 1) and return the gapped rows, the midline, percent identity, percent "
+            "similarity and the alignment score. A local alignment also returns a "
+            "Karlin-Altschul E-value; a global alignment does NOT, because an E-value is "
+            "undefined for a global alignment - do not quote one.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.sequence) return {"Sequence service unavailable.", true};
+                const std::string a = args.value("a", "");
+                const std::string b = args.value("b", "");
+                if (a.empty() || b.empty()) return {"Both 'a' and 'b' sequences are required.", true};
+                const bool local = args.value("mode", std::string("local")) != "global";
+                const SequenceAlignment r = local ? svc_.sequence->alignLocal(a, b)
+                                                  : svc_.sequence->alignGlobal(a, b);
+                json j = {{"mode", local ? "local" : "global"},
+                          {"aligned1", r.aligned1}, {"aligned2", r.aligned2},
+                          {"midline", r.midline}, {"alignedLength", r.alignedLength},
+                          {"gapOpens", r.gapOpens}, {"score", r.score},
+                          {"identityPct", r.identityPct}, {"similarityPct", r.similarityPct},
+                          {"note", r.note}};
+                if (local) j["eValue"] = r.eValue;
+                return {j.dump(), false};
+            }));
+    }
+
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"path", {{"type", "string"},
+                        {"description", "Filesystem path to a .pdb / .ent / .cif / .mmcif file."}}}}},
+            {"required", json::array({"path"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "fetch_structure",
+            "Read a protein structure from a LOCAL file on disk - either one the user already "
+            "has or one a previous download cached. This tool does NOT download anything, so a "
+            "PDB id alone will not work; give it a path. Returns chain/residue/atom counts, the "
+            "per-chain one-letter sequence, recoverable parse warnings, and the residue "
+            "numbering scheme the numbers are expressed in.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.structure) return {"Structure service unavailable.", true};
+                const std::string path = args.value("path", "");
+                if (path.empty()) return {"A file 'path' is required.", true};
+                const auto st = svc_.structure->load(std::filesystem::path(path));
+                if (!st)
+                    return {"Could not read '" + path +
+                                "' as a local PDB or mmCIF file (nothing was downloaded).", true};
+                json chains = json::array();
+                if (const bio::Model* m = st->model(1)) {
+                    for (const auto& c : m->chains) {
+                        const std::vector<char> seq = bio::sequenceOf(c);
+                        chains.push_back({{"id", c.id}, {"residues", c.residues.size()},
+                                          {"sequence", std::string(seq.begin(), seq.end())}});
+                    }
+                }
+                return {json{{"id", st->id}, {"source", st->source},
+                             {"models", st->models.size()}, {"atoms", st->atomCount()},
+                             {"chains", chains}, {"warnings", st->warnings},
+                             {"numbering", "author (auth_seq_id) - the numbering papers cite; "
+                                           "mmCIF label_seq_id is not reported here"},
+                             {"origin", "read from a local file or a cached download; no network "
+                                        "fetch was performed"}}
+                            .dump(),
+                        false};
+            }));
+    }
+
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"reference", {{"type", "string"}, {"description", "Path to the reference structure file."}}},
+              {"model", {{"type", "string"}, {"description", "Path to the structure being compared."}}}}},
+            {"required", json::array({"reference", "model"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "compare_structures",
+            "Compare two locally-readable protein structures: CA RMSD after Kabsch "
+            "superposition and superposition-free lDDT, with the count of residues actually "
+            "matched (author numbering) and the count left unmatched. TM-score is reported as "
+            "not computed until the reference TM-align implementation is vendored - do not "
+            "estimate one.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.structure) return {"Structure service unavailable.", true};
+                const auto ref = svc_.structure->load(
+                    std::filesystem::path(args.value("reference", "")));
+                const auto mod = svc_.structure->load(
+                    std::filesystem::path(args.value("model", "")));
+                if (!ref) return {"Could not read the reference structure file.", true};
+                if (!mod) return {"Could not read the model structure file.", true};
+                const StructureComparison c = svc_.structure->compare(*ref, *mod);
+                return {json{{"rmsd", c.rmsd}, {"lddt", c.lddt}, {"tmScore", c.tmScore},
+                             {"alignedResidues", c.alignedResidues},
+                             {"unmatchedResidues", c.unmatchedResidues},
+                             {"numbering", "author (auth_seq_id)"},
+                             {"note", c.note}}
+                            .dump(),
+                        false};
+            }));
+    }
+
     // ---- Pharmacodynamics / PK. Every one of these emits an EXPOSURE SCENARIO or a
     // fitted parameter; none of them has a dose-recommendation entry point, and
     // simulate_exposure additionally refuses to run without an explicit acknowledgement.
@@ -1337,6 +1457,8 @@ void AppShell::drawContent() {
         else if (panel == "Absorption")  panels::absorption(*this);
         else if (panel == "Metabolism")  panels::metabolism(*this);
         else if (panel == "PkPd")        panels::pkpd(*this);
+        else if (panel == "Sequence")    panels::sequenceCompare(*this);
+        else if (panel == "Structure3D") panels::proteinStructure(*this);
         else if (panel == "Similarity")  panels::similarity(*this);
         else if (panel == "Legal")       panels::legal(*this);
         else if (panel == "Docking")     panels::docking(*this);

@@ -7,10 +7,12 @@
 // no synthesis/route/manufacturability interface.
 #pragma once
 
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "bio/Structure.h"
 #include "contracts/IDockingBackend.h"
 #include "data/Domain.h"
 
@@ -113,6 +115,42 @@ public:
 
     // Fractional target occupancy from a free-concentration profile and a Kd.
     virtual OccupancyCurve occupancy(const PkProfile&, const Quantity& kd) const = 0;
+};
+
+// Pairwise sequence alignment (Gotoh affine gaps, BLOSUM62 from a pack).
+//
+// SAFETY SCOPE: alignGlobal() returns a NotComputed E-value. Karlin-Altschul
+// statistics are defined for local alignments only; offering an E-value on a
+// global alignment would attach a significance claim to a number that has none.
+class ISequenceModule {
+public:
+    virtual ~ISequenceModule() = default;
+    virtual SequenceAlignment alignGlobal(const std::string& a, const std::string& b) const = 0;
+    virtual SequenceAlignment alignLocal(const std::string& a, const std::string& b) const = 0;
+};
+
+// Protein structure I/O and comparison.
+//
+// There is deliberately no entry point taking a chem::Conformer: that type is a
+// small-molecule distance-geometry embedding, and comparing it as a protein
+// would yield an lDDT/TM-score that looks meaningful and is not. bio::Structure
+// has no such constructor, so the misuse is a compile error.
+class IStructureModule {
+public:
+    virtual ~IStructureModule() = default;
+
+    // Reads a local .pdb/.cif file (including one previously downloaded into the
+    // cache). std::nullopt when the file is unreadable or the format is unknown;
+    // recoverable problems arrive in Structure::warnings instead.
+    virtual std::optional<bio::Structure> load(const std::filesystem::path& file) const = 0;
+
+    virtual StructureComparison compare(const bio::Structure& ref,
+                                        const bio::Structure& model) const = 0;
+
+    // Solvent-accessible surface area. `source` carries the full parameter
+    // string (algorithm, probe radius, point count, radii set, hydrogen policy)
+    // because a SASA without them is not reproducible.
+    virtual Quantity sasa(const bio::Structure& s) const = 0;
 };
 
 }  // namespace biocad

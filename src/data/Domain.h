@@ -407,4 +407,49 @@ struct OccupancyCurve {
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(OccupancyCurve, timeH, occupancy, peakOccupancy,
                                    timeAbove50Pct, note)
 
+// ---------------------------------------------------------------------------
+// Protein core (Phase 5) results. These are the UI/agent-facing shapes; the
+// geometry and alignment maths live in bio:: and never leak their own types
+// through a contract.
+// ---------------------------------------------------------------------------
+
+// One pairwise sequence alignment, already rendered to strings so the panel and
+// the agent see the same characters. `midline` is the BLAST-style match line
+// ('|' identity, '+' positive substitution, ' ' otherwise) and is exactly as
+// long as the two aligned strings.
+//
+// eValue is notComputed("local alignment required") for a global alignment:
+// Karlin-Altschul statistics are defined for local alignments only, so a global
+// E-value would be a number with no meaning. The UI omits the row entirely.
+struct SequenceAlignment {
+    std::string aligned1;
+    std::string aligned2;
+    std::string midline;
+    Quantity    score;            // alignment score in the matrix' half-bit units
+    Quantity    identityPct;
+    Quantity    similarityPct;    // positive-scoring pairs; a DIFFERENT number to identity
+    Quantity    eValue;
+    int         gapOpens = 0;
+    int         alignedLength = 0;
+    std::string note;
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(SequenceAlignment, aligned1, aligned2, midline, score,
+                                   identityPct, similarityPct, eValue, gapOpens,
+                                   alignedLength, note)
+
+// One structure-vs-structure comparison. rmsd and lddt are exact geometry
+// (Provenance::Measured). tmScore stays notComputed until Phase 5.8 vendors
+// TM-align: an approximated TM-score is worse than none, because the number is
+// read as if it came from the reference implementation.
+struct StructureComparison {
+    Quantity    rmsd;             // Angstrom, over the matched atom set
+    Quantity    lddt;             // 0..1, superposition-free
+    Quantity    tmScore;
+    Quantity    alignedResidues;  // count of residues actually matched
+    int         unmatchedResidues = 0;
+    std::string note;
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(StructureComparison, rmsd, lddt, tmScore, alignedResidues,
+                                   unmatchedResidues, note)
+
 }  // namespace biocad

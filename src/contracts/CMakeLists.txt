@@ -7,5 +7,6 @@ target_include_directories(biocad_contracts INTERFACE
 
 target_link_libraries(biocad_contracts INTERFACE
   biocad_data
+  biocad_bio
   biocad_chem
 )
