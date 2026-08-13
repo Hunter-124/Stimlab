@@ -1,36 +1,91 @@
 # BioCAD
 
-**A native Windows workstation for computational drug discovery.**
+**A native workstation for molecular, protein, and pharmacological analysis.**
 
-BioCAD brings ligand and receptor preparation, molecular analysis, docking, ADMET screening, reusable workflows, and an in-app assistant into one C++20 desktop application. It is designed around CNS-research use cases while keeping targets and presets configurable rather than hard-coded.
+![BioCAD dashboard](docs/media/dashboard.png)
 
-> **Research software notice**
-> BioCAD is intended for lawful research and educational use. Computational predictions are hypotheses—not clinical, safety, efficacy, or regulatory conclusions—and must be validated by qualified professionals and appropriate experimental methods.
+BioCAD is a single C++20 Windows desktop application that takes a compound from a SMILES
+string to a scored binding pose without a browser, a Python runtime, a Docker daemon, or a
+localhost server. Ligand and receptor preparation, an in-house cheminformatics engine, real
+AutoDock Vina docking, ADMET and PK screening, a re-runnable workflow DAG, a SQLite run
+history, and a tool-driven in-app assistant all live in one process and one executable.
 
-## Why BioCAD
+Its distinguishing property is not the feature list. It is that **every derived number
+carries the reason it may be trusted**, and the type system refuses to let a rank-ordering
+score wear physical units. See [docs/provenance.md](docs/provenance.md) - that document is
+the point of the project.
 
-- **Native and self-contained** — a Win32/DX11 desktop application with SQLite-backed local state; release builds can be packaged as a single portable executable.
-- **Real docking paths** — provisions and invokes AutoDock Vina for flexible CPU docking, with Vina-GPU/OpenCL and a native CUDA rigid-body backend available for GPU workflows.
-- **Practical molecular tooling** — SMILES parsing, 3D embedding, descriptors, similarity, structural alerts, property screening, and a 3D molecular viewport.
-- **Reproducible workflows** — a cancellable, content-cached DAG engine models preparation and docking pipelines without blocking the UI.
-- **Local-first data** — projects, artifacts, logs, engine runtimes, and configuration live under `%APPDATA%\BioCAD`.
-- **Optional assistant and web tools** — multi-provider LLM support, encrypted API-key storage through Windows DPAPI, and optional web retrieval in science-enabled builds.
+> **Research software notice.** BioCAD is for lawful research and educational use.
+> Computational output is a hypothesis, not a clinical, safety, efficacy or regulatory
+> conclusion. It does not recommend doses, and it is not a medical device.
+
+## Honest numbers, by construction
+
+Most tools of this kind print a number to two decimal places and let the reader supply the
+confidence. BioCAD attaches a tier to every derived value:
+
+| Tier | Meaning | Rendered |
+| --- | --- | --- |
+| `Measured` | Exact geometry or statistics, or an experimental value with a citation | green |
+| `Predicted` | A published model actually ran; physical units; benchmark error mandatory | blue |
+| `Model` | A constructed artefact (a built structure, a docked pose) with no energy claim | purple |
+| `Heuristic` | Rank ordering only; arbitrary units; physical units are **forbidden** | amber |
+| `NotComputed` | A prerequisite was missing, and the value names which one | grey |
+
+The rule is enforced, not documented: `makeQuantity()` in `src/data/Domain.cpp` throws when a
+`Heuristic` is handed a unit. So a real Vina result is `Model` and reads `-9.30 kcal/mol`,
+while the descriptor fallback is `Heuristic` and *cannot be expressed* in kcal/mol at all.
+That is why the app owns `kdFromDeltaG()` yet deliberately never applies it to a docking
+score: Vina's reported standard error of 2.85 kcal/mol is a factor of about 123 in Kd, so a
+nanomolar affinity derived from a docked pose would be a fabricated precision.
+
+The error bar and the tier are part of the value, never a tooltip.
 
 ## Capabilities
 
-| Area | What it provides |
-| --- | --- |
-| **Ligand preparation** | SMILES validation, molecular graph construction, 3D conformer embedding, descriptors, and format-oriented utilities. |
-| **Receptor preparation** | PDB cleanup, protonation-oriented preparation, docking boxes, and configurable CNS-target presets. |
-| **Docking** | Ranked poses through AutoDock Vina; optional Vina-GPU/OpenCL and first-party CUDA execution paths, with explicit fallback labeling. |
-| **ADMET screening** | Descriptor- and rule-based property and metabolism screening, with optional science-stack extensions. |
-| **Workflows** | Re-runnable, content-cached preparation-to-docking pipelines with progress, cancellation, and a live DAG view. |
-| **Results and storage** | SQLite run history, artifacts, summaries, comparison views, and local project data. |
-| **Assistant** | Tool-driven in-app assistance for navigating and operating supported application workflows; enabled only when configured. |
+| Area | What it provides | |
+| --- | --- | --- |
+| **Structure and properties** | SMILES parsing, molecular graph, descriptors, formula/MW/logP/TPSA, 3D conformer embedding, and a DX11 molecular viewport | ![Structure](docs/media/structure.png) |
+| **Docking** | Ranked poses from real AutoDock Vina / smina, with Vina-GPU (OpenCL) and a first-party CUDA backend; auto-provisioned engines and on-demand receptor prep | ![Docking](docs/media/docking.png) |
+| **Absorption and PK** | Absorbed fraction and hepatic availability under the well-stirred model, with the assumption set printed beside the number | ![Absorption](docs/media/absorption.png) |
+| **ADMET and metabolism** | Structure-derived liability perception driving metabolism, stability and safety endpoints | ![Metabolism](docs/media/metabolism.png) |
+| **Similarity and analogs** | Fingerprint and pharmacophore similarity against the loaded catalog, plus an analog sketch/compare workflow | ![Similarity](docs/media/similarity.png) |
+| **Legal analog** | Substantial-similarity scorecard against controlled references - illustrative, explicitly not legal advice | ![Legal](docs/media/legal.png) |
+| **Workflows** | A cancellable, content-cached prep-to-dock DAG with a live execution view | ![Workflows](docs/media/workflows-dag.gif) |
+| **Data packs** | The compound and target catalog is versioned JSON, not C++; drop a pack in and it appears without a rebuild | ![Presets](docs/media/presets.png) |
+| **Assistant** | A tool registry the model drives: read properties, dock, run a workflow, navigate and highlight the UI | ![Settings](docs/media/settings.png) |
+
+## The catalog is data
+
+There is no hard-coded compound table. Packs are versioned JSON documents under
+`assets/packs/`, overridden by pack id from `%APPDATA%\BioCAD\packs`:
+
+```jsonc
+{
+  "schemaVersion": 1,
+  "id": "my-pack",
+  "title": "My compounds",
+  "compounds": [
+    { "id": "ibuprofen", "name": "Ibuprofen", "smiles": "CC(C)Cc1ccc(cc1)C(C)C(=O)O",
+      "xrefs": { "chembl": "CHEMBL521" } }
+  ],
+  "targets": [
+    { "id": "PTGS2", "name": "COX-2 (prostaglandin G/H synthase 2)", "pdb": "5KIR",
+      "box": { "cx": 0.0, "cy": 0.0, "cz": 0.0, "sx": 22.0, "sy": 22.0, "sz": 22.0 } }
+  ]
+}
+```
+
+An unknown `schemaVersion` is a load error shown in the Presets panel, never a silent skip. A
+binding-site box requires a real PDB entry; a target without one is listed as an honest
+coverage gap rather than given an invented site. Four packs ship built in: 67 compounds and 59
+targets, 29 of them dockable. Full schema in [docs/packs.md](docs/packs.md).
 
 ## Architecture
 
-BioCAD keeps interactive work responsive by separating presentation, services, and native engines in a single process:
+Modules are compile-time dependency injection through a struct of interface pointers
+(`src/contracts/Services.h`), populated by `RealBackend::services()` and mirrored by a
+deterministic `FakeBackend` that the whole test suite runs against. There is no plugin loader.
 
 ```text
 ┌───────────────────────────────────────────────────────────────────────────┐
@@ -40,49 +95,34 @@ BioCAD keeps interactive work responsive by separating presentation, services, a
                                │ commands / snapshots / events
 ┌──────────────────────────────▼────────────────────────────────────────────┐
 │ Worker services: workflow DAG · job system · docking · chemistry · agent  │
-│ SQLite run store · artifact storage · provisioning                         │
+│ SQLite run store · artifact storage · provisioning · data packs           │
 └──────────────────────────────┬────────────────────────────────────────────┘
                                │ native libraries and subprocess engines
 ┌──────────────────────────────▼────────────────────────────────────────────┐
-│ Vina · Vina-GPU · CUDA backend · SQLite · YAML · JSON · optional curl     │
+│ Vina · Vina-GPU · CUDA backend · SQLite · JSON · WIC · optional curl      │
 └───────────────────────────────────────────────────────────────────────────┘
 ```
 
-Long-running preparation, provisioning, and docking jobs run off the UI thread. The application surfaces an engine result as real only when a real engine completed the work; unavailable engines degrade to a clearly labeled estimate rather than silently claiming a docking result.
+Preparation, provisioning and docking run off the UI thread. Details, including the checklist
+for adding a module, are in [docs/architecture.md](docs/architecture.md); the engine
+provisioning, receptor-prep and scoring story is in [docs/docking.md](docs/docking.md).
 
 ## Quick start
 
-### Prerequisites
-
-BioCAD is built and supported on **Windows x64**. Install:
-
-- Visual Studio 2022 Build Tools with the MSVC v143 C++ toolchain and Windows SDK
-- CMake 3.27 or newer and Ninja
-- [vcpkg](https://github.com/microsoft/vcpkg), with `VCPKG_ROOT` set to its installation directory
-- PowerShell 7 or Windows PowerShell
-- NVIDIA CUDA Toolkit only for the CUDA presets (the checked-in CUDA preset targets `sm_86`; adjust it for another GPU)
-
-The repository uses vcpkg manifest mode. Configure and build through the supplied PowerShell wrappers so that the compiler environment and dependency root are prepared consistently.
+BioCAD is built and supported on **Windows x64**. Install Visual Studio 2022 Build Tools
+(MSVC v143 + Windows SDK), CMake 3.27+, Ninja, [vcpkg](https://github.com/microsoft/vcpkg)
+with `VCPKG_ROOT` set, and PowerShell. The CUDA presets additionally need the NVIDIA CUDA
+Toolkit (the checked-in preset targets `sm_86`).
 
 ```powershell
-# Fast development build and test suite
-.\build.ps1
-
-# Static, self-contained release build, tests, and release package
-.\build.ps1 -Release
-
-# Development build with live LLM and web-tool support
-.\build.ps1 -Science
-
-# Static release build with the optional science features
-.\build.ps1 -Release -Science
+.\build.ps1                    # fast dynamic development build + tests
+.\build.ps1 -Release           # static, self-contained release build + package
+.\build.ps1 -Science           # development build with the live LLM and web tools
+.\build.ps1 -Release -Science  # static release with the optional science features
 ```
 
-The development executable is produced at `build\windows\bin\BioCAD.exe`. Static release presets produce an executable that does not require the Visual C++ redistributable beside it.
-
-### CMake presets
-
-Use the presets directly when integrating with your own Windows build environment:
+The development executable lands at `build\windows\bin\BioCAD.exe`, with the data packs copied
+beside it. Static presets produce an executable that needs no Visual C++ redistributable.
 
 ```powershell
 cmake --preset windows
@@ -92,84 +132,120 @@ ctest --preset windows --output-on-failure
 
 | Preset | Purpose |
 | --- | --- |
-| `windows` | Fast dynamic development build with the core application. |
-| `windows-static` | Static-CRT, portable release-oriented build. |
-| `windows-science` | Development build with curl-backed assistant and web-tool features. |
-| `windows-science-static` | Static release build with the optional science features. |
-| `windows-cuda` | Lean CUDA docking build for supported NVIDIA environments. |
-| `windows-cuda-static` | CUDA build with a statically linked CUDA runtime for portable GPU execution. |
+| `windows` | Fast dynamic development build. |
+| `windows-static` | Static-CRT, portable, single-file release build. |
+| `windows-science` | Development build with curl-backed assistant and web tools. |
+| `windows-science-static` | Static release build with the science features. |
+| `windows-cuda` | CUDA docking build for supported NVIDIA environments. |
+| `windows-cuda-static` | CUDA build with a statically linked CUDA runtime. |
 
-## Running a docking self-test
-
-The executable exposes a headless acceptance path that provisions the required assets and runs one docking job:
+### Headless docking self-test
 
 ```powershell
 .\build\windows\bin\BioCAD.exe --selftest-dock --smiles "CC(N)Cc1ccccc1" --target DAT --compute cpu
 ```
 
-`--compute` accepts `auto`, `cpu`, or `gpu`. A zero exit code means a real docking engine completed the run; exit code `2` means BioCAD returned its explicitly labeled descriptor estimate instead. First-run provisioning requires network access and stores downloaded runtime components under `%APPDATA%\BioCAD`.
+`--compute` takes `auto`, `cpu` or `gpu`. Exit `0` means a real engine produced the poses
+(`Provenance::Model`); exit `2` means the run fell back to the labelled descriptor estimate
+(`Provenance::Heuristic`). First-run provisioning needs network access and stores components
+under `%APPDATA%\BioCAD`.
+
+### Deterministic screenshots
+
+The app renders its own back buffer to PNG through WIC, so documentation media can be produced
+on a CI runner with no interactive desktop session:
+
+```powershell
+.\build\windows\bin\BioCAD.exe --shot docs\media\docking.png --shot-panel Docking
+.\scripts\capture-docs.ps1                 # every panel, plus the GIF frame sequences
+```
+
+`--shot-frames N` writes `<stem>-0000.png` onwards for an animation; `--shot-warmup N` sets
+how many frames render before the first capture; `--shot-size W H` fixes the client area
+(1600x1000 by default). Exit `3` means a capture was requested and did not fully succeed.
 
 ## Local data and runtime layout
 
-BioCAD keeps mutable state outside the installation directory:
-
 ```text
 %APPDATA%\BioCAD\
-├── biocad.db       # projects, molecules, receptors, runs, settings
+├── biocad.db        # run history (SQLite, WAL)
 ├── artifacts\       # content-addressed structures, poses, and reports
-├── runtime\         # provisioned engines, runtimes, and models
-├── presets\         # shipped presets plus user overrides
-├── logs\            # rotating logs and crash diagnostics
+├── runtime\         # provisioned engines and prepared receptors
+├── packs\           # user data packs; override a built-in pack by id
+├── presets\         # user preset overrides
+├── logs\            # rotating logs and crash minidumps
 ├── cache\           # download and retrieval cache
 └── manifest.json    # provisioned component versions and checksums
 ```
 
-API keys configured for supported assistant providers are protected with Windows DPAPI. Do not commit keys, generated artifacts, or local runtime data to source control.
+An existing `%APPDATA%\StimLab` tree from the previous name is migrated once on first launch
+so multi-gigabyte provisioned engines are not downloaded again; cached receptors are dropped
+because they carry the old box marker. API keys are encrypted at rest with Windows DPAPI.
 
 ## Repository guide
 
 ```text
 src/
-├── app/        Win32 application entry point
+├── app/        Win32 entry point, CLI, and the capture path
 ├── agent/      providers, tool registry, prompts, and web tools
-├── chem/       molecular graph, descriptors, analysis, and 3D embedding
-├── contracts/  stable service and backend interfaces
-├── core/       configuration, paths, logging, manifests, and secrets
-├── data/       domain models and preset-oriented data
-├── modules/    application services and docking backends
-├── render/     DirectX 11 device and molecular viewport
-├── storage/    SQLite run and artifact storage
-├── ui/         application shell, panels, and theme
+├── chem/       molecular graph, descriptors, ADMET/PK model, 3D embedding
+├── contracts/  frozen service and backend interfaces (the Services seam)
+├── core/       paths, config, logging, manifests, secrets, generated version
+├── data/       domain DTOs, Provenance and Quantity
+├── fakes/      deterministic backend the test suite runs against
+├── modules/    real backend services and docking backends
+├── packs/      versioned JSON data-pack schema and loader
+├── render/     DirectX 11 device, WIC capture, molecular viewport
+├── storage/    SQLite run store
+├── ui/         application shell, panels, theme
 └── workflow/   DAG execution and job scheduling
 
-tests/          Catch2 unit and integration-style coverage
-scripts/        Windows build, CI, packaging, signing, and capture helpers
+assets/packs/   built-in compound and target catalogs
+docs/           architecture, provenance, packs, docking, data sources, limits
+tests/          Catch2 suite
+scripts/        build, CI, packaging, signing, capture helpers
 ```
-
-For implementation details, browse the source tree and automated tests.
 
 ## Testing and CI
 
-The test suite is built with Catch2 and registered through CTest. The GitHub Actions workflow validates the dynamic and static Windows presets, runs CTest, and packages the static release artifact.
+Catch2 through CTest. The GitHub Actions workflow builds and tests the dynamic and static
+presets, asserts that `vcpkg.json` and `project(BioCAD VERSION ...)` agree, packages the static
+release, captures every panel with `--shot`, and encodes the animation sequences to GIF on a
+Linux runner.
 
 ```powershell
-# Run a configured preset's tests
 ctest --preset windows --output-on-failure
-
-# Exercise the local CI workflow
 .\scripts\ci.ps1
 ```
 
-CUDA-capable docking should additionally be checked on a compatible NVIDIA machine with the `--selftest-dock --compute gpu` command above. GitHub-hosted runners do not provide a GPU.
+CUDA docking must be checked on a real NVIDIA machine with `--selftest-dock --compute gpu`;
+hosted runners have no GPU.
 
-## Contribution guidelines
+## What this deliberately does not do
 
-1. Build and test with the supplied PowerShell scripts or the matching CMake preset.
-2. Keep UI work non-blocking; move preparation, provisioning, and docking work onto worker services.
-3. Preserve explicit result provenance—never present a fallback estimate as a real engine result.
-4. Add deterministic tests for behavior changes and run the relevant CTest preset before opening a change.
-5. Keep credentials, downloaded engines, local databases, and generated artifacts out of commits.
+Out of scope by design, and enforced in the assistant's system prompt and tool registry:
+
+- No synthesis routes, reaction steps or conditions, precursor selection or acquisition,
+  yields, equipment, or scale-up guidance. Binding affinity is a target-engagement signal,
+  never a make-it signal.
+- No dose, dose change, or personal regimen recommendation - the app emits exposure scenarios
+  with their assumptions listed, and nothing else.
+- No nanomolar affinity derived from a docking score.
+- No invented binding sites: a target without a real structure is a coverage gap.
+
+The full list, including the third-party tools deliberately not integrated and why, is in
+[docs/limitations.md](docs/limitations.md).
+
+## Contributing
+
+1. Build and test with the PowerShell wrappers or the matching CMake preset.
+2. Keep the UI thread non-blocking; preparation, provisioning and docking belong on workers.
+3. Never present a fallback estimate as a real engine result, and never emit a derived number
+   without a `Provenance`.
+4. Add deterministic tests for behaviour changes and run the relevant CTest preset.
+5. Keep credentials, downloaded engines, local databases and generated artifacts out of commits.
 
 ## License
 
-No license file is currently included in this repository. Until one is added, do not assume permission to redistribute, modify, or use the project beyond the rights granted by its copyright holders.
+Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE); third-party data sources and their
+terms are listed in [docs/data-sources.md](docs/data-sources.md).

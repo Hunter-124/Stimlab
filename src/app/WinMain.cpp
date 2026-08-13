@@ -157,9 +157,40 @@ static LRESULT WINAPI WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
+namespace {
+
+// Deterministic-capture options. --shot renders a fixed number of warm-up frames so
+// async provisioning, layout and animation settle, then writes PNGs and exits. This
+// replaces desktop screen-scraping, which cannot work on a runner with no
+// interactive desktop session.
+struct ShotOptions {
+    std::filesystem::path out;      // empty => capture disabled
+    std::string panel;              // panel id forced before the first frame
+    int frames = 1;                 // >1 writes <stem>-0000.png, <stem>-0001.png, ...
+    int warmup = 120;               // frames rendered before the first capture
+    int width = 1600;
+    int height = 1000;
+
+    [[nodiscard]] bool enabled() const { return !out.empty(); }
+
+    // Path for capture index i: the single-shot case keeps the exact requested name
+    // so callers can predict it.
+    [[nodiscard]] std::filesystem::path pathFor(int i) const {
+        if (frames <= 1) return out;
+        char suffix[16];
+        std::snprintf(suffix, sizeof suffix, "-%04d", i);
+        auto p = out;
+        p.replace_filename(out.stem().string() + suffix + out.extension().string());
+        return p;
+    }
+};
+
+}  // namespace
+
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     // Headless modes (no GUI): "--selftest-dock [--smiles S] [--target T]" provisions
     // the engine + receptors and docks one ligand through the real backend path.
+    ShotOptions shot;
     {
         int argc = 0;
         LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
@@ -173,9 +204,19 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
             else if (a == L"--smiles" && i + 1 < argc) smiles = wToUtf8(argv[++i]);
             else if (a == L"--target" && i + 1 < argc) target = wToUtf8(argv[++i]);
             else if (a == L"--compute" && i + 1 < argc) compute = wToUtf8(argv[++i]);
+            else if (a == L"--shot" && i + 1 < argc) shot.out = std::filesystem::path(argv[++i]);
+            else if (a == L"--shot-panel" && i + 1 < argc) shot.panel = wToUtf8(argv[++i]);
+            else if (a == L"--shot-frames" && i + 1 < argc) shot.frames = std::stoi(wToUtf8(argv[++i]));
+            else if (a == L"--shot-warmup" && i + 1 < argc) shot.warmup = std::stoi(wToUtf8(argv[++i]));
+            else if (a == L"--shot-size" && i + 2 < argc) {
+                shot.width = std::stoi(wToUtf8(argv[++i]));
+                shot.height = std::stoi(wToUtf8(argv[++i]));
+            }
         }
         if (argv) LocalFree(argv);
         if (selftest) return runHeadlessDock(smiles, target, compute);
+        if (shot.frames < 1) shot.frames = 1;
+        if (shot.warmup < 0) shot.warmup = 0;
     }
 
     biocad::AppPaths::instance().ensureLayout();
@@ -206,8 +247,14 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     wc.lpszClassName = L"BioCADWindow";
     RegisterClassExW(&wc);
 
+    // A capture run uses a fixed CLIENT area so every image in docs/media has the
+    // same dimensions regardless of DPI, theme metrics or the runner's desktop.
+    RECT wantClient{0, 0, shot.enabled() ? shot.width : 1480, shot.enabled() ? shot.height : 920};
+    AdjustWindowRect(&wantClient, WS_OVERLAPPEDWINDOW, FALSE);
     HWND hwnd = CreateWindowExW(0, wc.lpszClassName, L"BioCAD",
-                                WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 1480, 920,
+                                WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
+                                wantClient.right - wantClient.left,
+                                wantClient.bottom - wantClient.top,
                                 nullptr, nullptr, hInstance, nullptr);
     if (!hwnd) {
         spdlog::error("CreateWindow failed");
@@ -222,7 +269,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     }
     g_device = &device;
 
-    ShowWindow(hwnd, nCmdShow);
+    // WIC (the --shot PNG encoder) needs an initialised apartment. Harmless when no
+    // capture is requested, and RPC_E_CHANGED_MODE just means someone got here first.
+    const HRESULT comInit = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+
+    // A capture run keeps the window off-screen-ish but realised: SW_SHOWNA avoids
+    // stealing focus on a developer desktop while still giving DXGI a valid target.
+    ShowWindow(hwnd, shot.enabled() ? SW_SHOWNA : nCmdShow);
     UpdateWindow(hwnd);
 
     IMGUI_CHECKVERSION();
@@ -280,10 +333,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     // provider/key/model and the Settings panel can persist them.
     shell.setConfig(&config);
 
+    // --shot-panel wins over BIOCAD_PANEL: an explicit flag beats ambient state.
     // Optional: BIOCAD_PANEL / BIOCAD_MOLECULE select the initial panel + compound
-    // (handy for screenshots/automation; defaults are Dashboard/amphetamine).
+    // (handy for screenshots/automation; the default panel is Dashboard).
     if (char buf[128]; GetEnvironmentVariableA("BIOCAD_PANEL", buf, sizeof(buf)) > 0)
         shell.state().activePanel = buf;
+    if (!shot.panel.empty()) shell.state().activePanel = shot.panel;
     if (char buf[128]; GetEnvironmentVariableA("BIOCAD_MOLECULE", buf, sizeof(buf)) > 0)
         shell.state().selectedMolecule = buf;
     // BIOCAD_TARGET selects the initial docking target (preset id or display name) so a
@@ -306,6 +361,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
 
     const float clear[4] = {0.06f, 0.08f, 0.11f, 1.0f};
     bool running = true;
+    int frameIndex = 0;      // frames rendered so far
+    int captured = 0;        // PNGs written so far
+    bool captureFailed = false;
     while (running) {
         MSG msg;
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
@@ -329,8 +387,21 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         ImGui::Render();
         device.beginFrame(clear);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-        device.present(true);
 
+        // Capture BEFORE present: the swap chain discards on Present, so a
+        // post-present read-back would sample undefined memory.
+        if (shot.enabled() && frameIndex >= shot.warmup && captured < shot.frames) {
+            if (!device.captureBackBufferPng(shot.pathFor(captured))) {
+                captureFailed = true;
+                running = false;
+            }
+            ++captured;
+        }
+
+        device.present(!shot.enabled());  // a capture run must not wait on vsync
+        ++frameIndex;
+
+        if (shot.enabled() && captured >= shot.frames) running = false;
         if (shell.state().quitRequested) running = false;
     }
 
@@ -343,6 +414,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     device.shutdown();
     DestroyWindow(hwnd);
     UnregisterClassW(wc.lpszClassName, hInstance);
+    if (SUCCEEDED(comInit)) CoUninitialize();
     biocad::log::shutdown();
+    // Exit 3 means "a capture was requested and did not produce every PNG": CI must
+    // fail loudly rather than publish a docs artifact with missing or black images.
+    if (shot.enabled() && (captureFailed || captured < shot.frames)) return 3;
     return 0;
 }

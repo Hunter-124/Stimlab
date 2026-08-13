@@ -1,8 +1,9 @@
 name: CI
 
-# Build + test the shipping presets and publish the release zip. Mirrors
-# scripts/ci.ps1 (the local equivalent). No GPU/CUDA job - GitHub-hosted runners have
-# no NVIDIA GPU, so the AutoDock-GPU path is exercised locally only.
+# Build + test the shipping presets, capture the documentation media with the in-app
+# --shot path, and publish the release zip. Mirrors scripts/ci.ps1 (the local
+# equivalent). No GPU/CUDA job - the runners have no NVIDIA GPU, so the AutoDock-GPU
+# path is exercised locally only.
 
 on:
   push:
@@ -21,8 +22,11 @@ env:
 
 jobs:
   build-test:
-    name: build + ctest (windows-latest)
-    runs-on: windows-latest
+    name: build + ctest (windows)
+    # Private CloudCastle runner. If no runner picks this job up within ~10 minutes,
+    # change this single line to `runs-on: windows-latest` - everything else in this
+    # job is runner-agnostic.
+    runs-on: [self-hosted, Windows, X64, cloudcastle-ci]
     steps:
       - uses: actions/checkout@v4
 
@@ -30,7 +34,7 @@ jobs:
         uses: lukka/get-cmake@latest
 
       - name: Set up MSVC (x64)
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756  # v1
         with:
           arch: x64
 
@@ -42,9 +46,23 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-      - name: Point VCPKG_ROOT at the preinstalled vcpkg
+      # A self-hosted runner has no preinstalled vcpkg, so pin one explicitly. The
+      # installed tree and the binary cache live on runner-local storage, outside the
+      # workspace, so they survive the checkout clean between runs.
+      - name: Check out pinned vcpkg
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          ref: 120deac3062162151622ca4860575a33844ba10b
+          path: .vcpkg
+
+      - name: Bootstrap vcpkg and point VCPKG_ROOT at it
         shell: pwsh
-        run: echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+        run: |
+          & "$env:GITHUB_WORKSPACE\.vcpkg\bootstrap-vcpkg.bat" -disableMetrics
+          echo "VCPKG_ROOT=$env:GITHUB_WORKSPACE\.vcpkg" >> $env:GITHUB_ENV
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$env:RUNNER_TOOL_CACHE\vcpkg-bincache" >> $env:GITHUB_ENV
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TOOL_CACHE\vcpkg-bincache" | Out-Null
 
       - name: Assert vcpkg.json version matches project(BioCAD VERSION ...)
         shell: pwsh
@@ -90,4 +108,80 @@ jobs:
         with:
           name: BioCAD-win-x64
           path: dist/BioCAD-*-win-x64.zip
+          if-no-files-found: error
+
+      # The dynamic build is what docs-media captures from, and rebuilding it in a
+      # separate job would double the vcpkg cost, so hand it over as an artifact.
+      - name: Upload dynamic build for the capture job
+        uses: actions/upload-artifact@v4
+        with:
+          name: biocad-windows-build
+          path: build/windows/bin/**
+          if-no-files-found: error
+
+  docs-media:
+    name: capture panel screenshots
+    needs: build-test
+    runs-on: [self-hosted, Windows, X64, cloudcastle-ci]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the dynamic build
+        uses: actions/download-artifact@v4
+        with:
+          name: biocad-windows-build
+          path: build/windows/bin
+
+      # In-app back-buffer readback, so this works with no interactive desktop
+      # session. A black or truncated PNG makes the script throw.
+      - name: Capture every panel
+        shell: pwsh
+        run: ./scripts/capture-docs.ps1 -Preset windows
+
+      - name: Upload media
+        uses: actions/upload-artifact@v4
+        with:
+          name: biocad-docs-media
+          path: docs/media/**
+          if-no-files-found: error
+
+  docs-gif:
+    name: encode GIFs
+    needs: docs-media
+    # ffmpeg ships on the Ubuntu image, so the Windows runner never needs it.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download captured media
+        uses: actions/download-artifact@v4
+        with:
+          name: biocad-docs-media
+          path: media
+
+      - name: Encode frame sequences with a two-pass palette
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          made=0
+          for first in media/*-0000.png; do
+            stem="${first%-0000.png}"
+            name="$(basename "$stem")"
+            echo "encoding $name"
+            filters="fps=15,scale=900:-1:flags=lanczos"
+            ffmpeg -y -framerate 30 -i "${stem}-%04d.png" \
+                   -vf "${filters},palettegen=stats_mode=diff" "/tmp/${name}-palette.png"
+            ffmpeg -y -framerate 30 -i "${stem}-%04d.png" -i "/tmp/${name}-palette.png" \
+                   -lavfi "${filters}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3" \
+                   "media/${name}.gif"
+            made=$((made + 1))
+          done
+          if [ "$made" -eq 0 ]; then
+            echo "no frame sequences found - docs-media produced no <name>-0000.png" >&2
+            exit 1
+          fi
+
+      - name: Upload GIFs
+        uses: actions/upload-artifact@v4
+        with:
+          name: biocad-docs-gifs
+          path: media/*.gif
           if-no-files-found: error

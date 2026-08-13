@@ -2,6 +2,8 @@
 // Owns the device/context/swapchain/backbuffer RTV and handles resize + present.
 #pragma once
 
+#include <filesystem>
+
 struct ID3D11Device;
 struct ID3D11DeviceContext;
 struct IDXGISwapChain;
@@ -24,6 +26,13 @@ public:
     void resize(unsigned width, unsigned height);  // 0,0 = pull from swapchain
     void beginFrame(const float clearColor[4]);
     void present(bool vsync);
+
+    // Copies the current back buffer into a staging texture and writes a PNG via WIC.
+    // Call it AFTER the frame is drawn and BEFORE present(): the swap chain uses
+    // DXGI_SWAP_EFFECT_DISCARD, so back-buffer contents are undefined once Present
+    // has run and a post-present capture yields a black or garbage image.
+    // Returns false and logs the HRESULT on any failure.
+    bool captureBackBufferPng(const std::filesystem::path& out);
 
     [[nodiscard]] ID3D11Device* device() const { return device_; }
     [[nodiscard]] ID3D11DeviceContext* context() const { return context_; }

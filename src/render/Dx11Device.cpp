@@ -5,9 +5,16 @@
 #endif
 #include <windows.h>
 #include <d3d11.h>
+#include <wincodec.h>
+
+#include <cstring>
+#include <vector>
+
+#include <spdlog/spdlog.h>
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "windowscodecs.lib")
 
 namespace biocad {
 
@@ -84,6 +91,118 @@ void Dx11Device::beginFrame(const float clearColor[4]) {
 
 void Dx11Device::present(bool vsync) {
     if (swapChain_) swapChain_->Present(vsync ? 1 : 0, 0);
+}
+
+namespace {
+
+// Minimal scope guard for the COM interfaces this file touches; the render layer
+// deliberately has no WRL/ComPtr dependency.
+template <typename T>
+struct Released {
+    T* p = nullptr;
+    ~Released() { if (p) p->Release(); }
+    T** put() { return &p; }
+    T* operator->() const { return p; }
+    explicit operator bool() const { return p != nullptr; }
+};
+
+bool fail(const char* what, HRESULT hr) {
+    spdlog::error("captureBackBufferPng: {} failed (hr=0x{:08X})", what,
+                  static_cast<unsigned>(hr));
+    return false;
+}
+
+}  // namespace
+
+bool Dx11Device::captureBackBufferPng(const std::filesystem::path& out) {
+    if (!swapChain_ || !device_ || !context_) return fail("device", E_POINTER);
+
+    Released<ID3D11Texture2D> back;
+    HRESULT hr = swapChain_->GetBuffer(0, IID_PPV_ARGS(back.put()));
+    if (FAILED(hr) || !back) return fail("GetBuffer", hr);
+
+    D3D11_TEXTURE2D_DESC desc{};
+    back->GetDesc(&desc);
+    const UINT width = desc.Width;
+    const UINT height = desc.Height;
+
+    // Identical description apart from the CPU-readable staging usage; a staging
+    // texture cannot be bound, so BindFlags and MiscFlags must be cleared.
+    desc.Usage = D3D11_USAGE_STAGING;
+    desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    desc.BindFlags = 0;
+    desc.MiscFlags = 0;
+
+    Released<ID3D11Texture2D> staging;
+    hr = device_->CreateTexture2D(&desc, nullptr, staging.put());
+    if (FAILED(hr) || !staging) return fail("CreateTexture2D(staging)", hr);
+
+    context_->CopyResource(staging.p, back.p);
+
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    hr = context_->Map(staging.p, 0, D3D11_MAP_READ, 0, &mapped);
+    if (FAILED(hr)) return fail("Map", hr);
+
+    // The swap chain is DXGI_FORMAT_R8G8B8A8_UNORM, so the WIC pixel format is
+    // 32bppRGBA - naming it BGRA here would silently swap red and blue.
+    const WICPixelFormatGUID pixelFormat = GUID_WICPixelFormat32bppRGBA;
+    const UINT stride = width * 4;
+    std::vector<BYTE> pixels(static_cast<std::size_t>(stride) * height);
+    const auto* src = static_cast<const BYTE*>(mapped.pData);
+    for (UINT y = 0; y < height; ++y) {
+        std::memcpy(pixels.data() + static_cast<std::size_t>(y) * stride,
+                    src + static_cast<std::size_t>(y) * mapped.RowPitch, stride);
+    }
+    context_->Unmap(staging.p, 0);
+
+    std::error_code ec;
+    if (out.has_parent_path()) std::filesystem::create_directories(out.parent_path(), ec);
+
+    Released<IWICImagingFactory> factory;
+    hr = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+                          IID_PPV_ARGS(factory.put()));
+    if (FAILED(hr) || !factory) return fail("CoCreateInstance(WICImagingFactory)", hr);
+
+    Released<IWICStream> stream;
+    hr = factory->CreateStream(stream.put());
+    if (FAILED(hr)) return fail("CreateStream", hr);
+    hr = stream->InitializeFromFilename(out.wstring().c_str(), GENERIC_WRITE);
+    if (FAILED(hr)) return fail("InitializeFromFilename", hr);
+
+    Released<IWICBitmapEncoder> encoder;
+    hr = factory->CreateEncoder(GUID_ContainerFormatPng, nullptr, encoder.put());
+    if (FAILED(hr)) return fail("CreateEncoder", hr);
+    hr = encoder->Initialize(stream.p, WICBitmapEncoderNoCache);
+    if (FAILED(hr)) return fail("encoder Initialize", hr);
+
+    Released<IWICBitmapFrameEncode> frame;
+    IPropertyBag2* props = nullptr;
+    hr = encoder->CreateNewFrame(frame.put(), &props);
+    if (props) props->Release();
+    if (FAILED(hr)) return fail("CreateNewFrame", hr);
+    hr = frame->Initialize(nullptr);
+    if (FAILED(hr)) return fail("frame Initialize", hr);
+    hr = frame->SetSize(width, height);
+    if (FAILED(hr)) return fail("SetSize", hr);
+
+    WICPixelFormatGUID negotiated = pixelFormat;
+    hr = frame->SetPixelFormat(&negotiated);
+    if (FAILED(hr)) return fail("SetPixelFormat", hr);
+    if (!IsEqualGUID(negotiated, pixelFormat)) {
+        // The encoder refused RGBA. Writing anyway would produce a colour-swapped
+        // image that looks plausible and is wrong, so refuse instead.
+        return fail("SetPixelFormat(negotiated away from 32bppRGBA)", E_FAIL);
+    }
+
+    hr = frame->WritePixels(height, stride, static_cast<UINT>(pixels.size()), pixels.data());
+    if (FAILED(hr)) return fail("WritePixels", hr);
+    hr = frame->Commit();
+    if (FAILED(hr)) return fail("frame Commit", hr);
+    hr = encoder->Commit();
+    if (FAILED(hr)) return fail("encoder Commit", hr);
+
+    spdlog::info("captured {}x{} backbuffer to {}", width, height, out.string());
+    return true;
 }
 
 void Dx11Device::shutdown() {

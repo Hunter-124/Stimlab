@@ -1,0 +1,83 @@
+BioCAD
+Copyright 2026 Hunter
+
+This product includes software and data developed by third parties.
+BioCAD itself is licensed under the Apache License, Version 2.0; see LICENSE.
+
+BioCAD contains no vendored third-party source. Every library below is resolved
+at build time by vcpkg (`vcpkg.json`) or is a Windows platform component; every
+data source below is either referenced by a URL in the source or cited inside
+`assets/packs/*.json`. No third-party dataset is redistributed in this
+repository.
+
+
+1. Build-time library dependencies (vcpkg.json)
+-----------------------------------------------------------------------------
+
+| Component        | Licence            | Used by                                     |
+|------------------|--------------------|---------------------------------------------|
+| nlohmann/json    | MIT                | `biocad_data`, `biocad_core`, `biocad_packs`, `biocad_agent` |
+| spdlog           | MIT                | `biocad_core`, `biocad_render`               |
+| fmt              | MIT                | `biocad_core`                                |
+| SQLite3          | Public domain      | `biocad_storage` (`src/storage/RunStore.cpp`)|
+| yaml-cpp         | MIT                | linked from the top-level `CMakeLists.txt`   |
+| Eigen 3          | MPL-2.0 (weak copyleft; Eigen's MPL-covered files must remain under MPL and modifications to them must be published) | `biocad_chem` (`Embed3D.cpp`) |
+| Dear ImGui       | MIT                | `biocad_ui`, `biocad_render`, `BioCAD`       |
+| ImPlot           | MIT                | `biocad_ui`, `BioCAD`                        |
+| Catch2           | BSL-1.0            | `biocad_tests` (test-only, not shipped)      |
+| libcurl          | curl licence (MIT/X derivative; requires the copyright notice to be retained in redistributions) | `biocad_agent`, feature `science` only |
+| WebView2 SDK / loader | Microsoft proprietary redistributable licence (binary redistribution permitted under its own terms; not Apache-2.0) | `biocad_agent`, feature `webview2` only |
+| Microsoft WIL    | MIT                | pulled in transitively by the `webview2` feature |
+
+Attribution obligations: every MIT, BSL-1.0 and curl-licensed component above
+requires its copyright notice and permission text to be reproduced in binary
+distributions. When packaging BioCAD, ship the licence texts vcpkg installs
+under `installed/<triplet>/share/<port>/copyright`.
+
+
+2. Platform and toolchain components (not redistributed)
+-----------------------------------------------------------------------------
+
+| Component | Licence / terms | Used by |
+|-----------|-----------------|---------|
+| Direct3D 11, DXGI, D3DCompiler, Windows Imaging Component (`windowscodecs`) | Microsoft Windows SDK terms | `biocad_render` (`Dx11Device.cpp`) |
+| DbgHelp, Crypt32 (DPAPI), Shell32, Ole32 | Microsoft Windows SDK terms | `biocad_core` |
+| NVIDIA CUDA Toolkit (`CUDA::cudart`) | NVIDIA CUDA EULA; the runtime is redistributable only under that EULA | `biocad_modules`, `BIOCAD_ENABLE_CUDA` builds only |
+
+
+3. External services called at runtime
+-----------------------------------------------------------------------------
+
+All of these are network calls made by the running application. Nothing is
+bundled; nothing is cached into this repository.
+
+| Service | Endpoint in source | Terms |
+|---------|--------------------|-------|
+| RCSB Protein Data Bank | `https://files.rcsb.org/download/<id>.pdb` (`src/modules/docking/ReceptorPrep.cpp:420`) | PDB data are released without restriction into the public domain; RCSB asks that the entry and the primary citation be cited |
+| AutoDock Vina 1.2.5 (binary provisioning) | `https://github.com/ccsb-scripps/AutoDock-Vina/releases/download/v1.2.5/vina_1.2.5_win.exe` (`src/modules/docking/EngineLocator.cpp:45`) | Apache-2.0 (Trott & Olson 2010, J Comput Chem 31:455-461). Downloaded to the user's app-data directory at runtime; not redistributed by BioCAD |
+| Vina-GPU (OpenCL) | `https://raw.githubusercontent.com/DeltaGroupNJUPT/Vina-GPU/main/` (`src/modules/docking/EngineLocator.cpp:71`) | A derivative of AutoDock Vina; consult the upstream repository for its exact licence before redistributing. BioCAD fetches the prebuilt binaries and the OpenCL kernel at runtime into the user's app-data directory and redistributes nothing |
+| smina | located on PATH or in `runtime/engines`; never downloaded (`EngineLocator.cpp:57`) | GPL-2.0. BioCAD only *executes* a smina binary the user supplies; it neither links nor ships it, so no GPL obligation attaches to BioCAD |
+| Anthropic Messages API | `https://api.anthropic.com/v1/messages` (`src/agent/AnthropicProvider.cpp`) | Anthropic commercial API terms; requires the user's own API key, stored locally via DPAPI |
+| DuckDuckGo HTML endpoint | `https://html.duckduckgo.com/html/?q=` (`src/agent/WebTools.cpp:338`) | Used under DuckDuckGo's terms of use; agent `web_search` tool only, `science` feature only |
+| DigiCert timestamp authority | `http://timestamp.digicert.com` (`scripts/sign.ps1:37`) | Release-signing infrastructure only; not used by the application |
+
+4. Data sources cited by the shipped packs (`assets/packs/*.json`)
+-----------------------------------------------------------------------------
+
+The packs contain BioCAD-authored records. Where a record carries a cross
+reference or follows a published selection, the source is named here.
+
+| Source | Where | Terms |
+|--------|-------|-------|
+| Bowes et al. 2012, "Reducing safety-related drug attrition", Nat Rev Drug Discov 11:909-922 (PMID 23197038) | target selection rationale of `safety-offtarget.json` | Cited work; no text or table is reproduced |
+| Eurofins SafetyScreen44 datasheet | the enumerated 44-member panel membership in `safety-offtarget.json` | Eurofins proprietary document, cited as the source of the panel's membership only. The target identifiers themselves are factual protein names |
+| ChEMBL identifiers (`xrefs.chembl`) | all four packs (59 records) | ChEMBL data are CC BY-SA 3.0. Only accession strings are stored; **if ChEMBL-derived values are ever added to a pack, that pack inherits the share-alike obligation and must carry the ChEMBL attribution** |
+| UniProt accessions (`xrefs.uniprot`) | all four packs (56 records) | UniProt content is CC BY 4.0; attribution required for any UniProt-derived content |
+| PubChem CIDs (`xrefs.pubchemCid`) and InChIKeys | `cns-monoamine.json`, `analgesics-otc.json`, `metabolic-and-nutrition.json` | PubChem is US-government public domain; InChI/InChIKey is an IUPAC open standard |
+| RCSB PDB entry identifiers and binding-box centres | `targets[].pdb` in all packs | PDB entries are public domain; cite the entry and its primary citation when reporting a result |
+
+Attribution and share-alike summary: the only weak-copyleft *code* obligation
+is Eigen's MPL-2.0. The only share-alike *data* obligation that can attach is
+ChEMBL's CC BY-SA 3.0, which today applies to identifiers only. UniProt
+(CC BY 4.0) and the curl licence carry attribution obligations. Everything else
+above is permissive, public domain, or executed rather than distributed.
