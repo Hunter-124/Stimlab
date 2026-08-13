@@ -41,7 +41,7 @@ struct PanelInfo {
 };
 
 struct UiState {
-    std::string selectedMolecule = "amphetamine";
+    std::string selectedMolecule = "caffeine";
     Molecule    customMolecule;             // user-entered SMILES result (id "__custom__")
     bool        hasCustom = false;          // customMolecule analyzed + selectable as active
     std::string activePanel = "Dashboard";
@@ -76,7 +76,7 @@ public:
     [[nodiscard]] docking::Provisioner& provisioner();
     void provisionDocking();  // start a full provision (download engine + headline receptors)
 
-    // On-demand provisioning of a single selected target (any of the 29 CNS presets,
+    // On-demand provisioning of a single selected target (any of the receptor presets,
     // not just the 4 headlines). `target` may be a preset id or display name; returns
     // false if it resolves to no preset. A no-op while a provision is already running.
     bool provisionTarget(const std::string& target);

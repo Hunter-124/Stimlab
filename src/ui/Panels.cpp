@@ -488,7 +488,7 @@ void dashboard(AppShell& shell) {
         // Tile 2 — Oral F
         nextTile();
         theme::metricCard("ORAL F", (f0(abs.bioavailabilityPct) + "%").c_str(),
-                          abs.cnsPenetrant ? "CNS-penetrant" : "low CNS",
+                          abs.cnsPenetrant ? "BBB-permeant" : "low BBB partition",
                           theme::kTextHi, cw);
 
         // Tile 3 — HIA
@@ -781,7 +781,7 @@ void absorption(AppShell& shell) {
     ImGui::SameLine();
     statCard("HIA", f0(r.hiaPct) + "%", "intestinal absorption", 170.0f);
     ImGui::SameLine();
-    statCard("logBB", f2(r.logBB), r.cnsPenetrant ? "CNS-penetrant" : "peripheral", 150.0f);
+    statCard("logBB", f2(r.logBB), r.cnsPenetrant ? "BBB-permeant" : "low BBB partition", 150.0f);
     ImGui::SameLine();
     statCard("P-gp", r.pgpSubstrate ? "substrate" : "no", "efflux", 150.0f);
     ImGui::Spacing();
@@ -990,7 +990,7 @@ void docking(AppShell& shell) {
             }
             if (!selReady) {
                 // The selected target isn't prepared yet: offer an on-demand provision
-                // of just this receptor (any of the 29 CNS presets, not only headlines).
+                // of just this receptor (any of the 29 receptor presets, not only headlines).
                 ImGui::SameLine();
                 const std::string lbl = "Provision " + st.dockTarget;
                 if (ImGui::Button(lbl.c_str()) && shell.provisionTarget(st.dockTarget))
@@ -1475,14 +1475,91 @@ void runs(AppShell& shell) {
 
 // --------------------------------------------------------------------- Presets
 void presets(AppShell& shell) {
-    Services& s = shell.services();
+    (void)shell;
+    const auto& report = docking::targetPackReport();
+
     ImGui::TextWrapped(
-        "CNS target presets used for docking/pharmacology. The full set of 29 curated presets "
-        "(each with a real PDB reference + a binding-site box) is a built-in C++ table; receptor "
-        "PDBQTs are prepared on demand into %APPDATA%/BioCAD/runtime/receptors.");
-    ImGui::Separator();
-    if (s.docking) {
-        for (const auto& t : s.docking->targets()) ImGui::BulletText("%s", t.c_str());
+        "The compound and target catalog is DATA, not code. Built-in packs ship as "
+        "assets/packs/*.json beside the executable; your own packs go in "
+        "%%APPDATA%%/BioCAD/packs and override a built-in pack with the same id. Receptor "
+        "PDBQTs are prepared on demand into %%APPDATA%%/BioCAD/runtime/receptors.");
+    ImGui::Spacing();
+    if (ImGui::Button("Reload packs")) docking::reloadTargetPacks();
+    ImGui::SameLine();
+    ImGui::TextDisabled("re-reads every pack from disk without restarting");
+    ImGui::Spacing();
+
+    // Load failures are the whole point of this panel: a pack that silently
+    // vanished is indistinguishable from a broken application.
+    if (!report.errors.empty()) {
+        theme::sectionHeader("LOAD ERRORS");
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(3));
+        for (const auto& e : report.errors) ImGui::TextWrapped("%s", e.c_str());
+        ImGui::PopStyleColor();
+        ImGui::Spacing();
+    }
+
+    theme::sectionHeader("LOADED PACKS");
+    if (report.packs.empty()) {
+        ImGui::TextDisabled("No packs loaded - the application has no catalog.");
+        return;
+    }
+    if (ImGui::BeginTable("packs", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                                          ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("Pack", ImGuiTableColumnFlags_WidthFixed, 190.0f);
+        ImGui::TableSetupColumn("Origin", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+        ImGui::TableSetupColumn("Compounds", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+        ImGui::TableSetupColumn("Targets", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+        ImGui::TableSetupColumn("Source");
+        ImGui::TableHeadersRow();
+        for (const auto& pk : report.packs) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted(pk.id.c_str());
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextDisabled("%s", pk.builtin ? "built-in" : "user");
+            ImGui::TableSetColumnIndex(2); ImGui::Text("%zu", pk.compounds.size());
+            ImGui::TableSetColumnIndex(3); ImGui::Text("%zu", pk.targets.size());
+            ImGui::TableSetColumnIndex(4);
+            ImGui::TextDisabled("%s", pk.sourcePath.c_str());
+        }
+        ImGui::EndTable();
+    }
+    ImGui::Spacing();
+
+    theme::sectionHeader("TARGETS");
+    ImGui::TextDisabled(
+        "A target without a binding-site box is a coverage gap, listed honestly rather "
+        "than filled in with an invented site. Only boxed targets are dockable.");
+    if (ImGui::BeginTable("packtargets", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                                                ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("Id", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+        ImGui::TableSetupColumn("Name");
+        ImGui::TableSetupColumn("PDB", ImGuiTableColumnFlags_WidthFixed, 60.0f);
+        ImGui::TableSetupColumn("Box", ImGuiTableColumnFlags_WidthFixed, 110.0f);
+        ImGui::TableSetupColumn("Tags", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+        ImGui::TableHeadersRow();
+        for (const auto& pk : report.packs) {
+            for (const auto& t : pk.targets) {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted(t.target.id.c_str());
+                ImGui::TableSetColumnIndex(1); ImGui::TextUnformatted(t.target.name.c_str());
+                ImGui::TableSetColumnIndex(2);
+                ImGui::TextDisabled("%s", t.target.pdb.empty() ? "-" : t.target.pdb.c_str());
+                ImGui::TableSetColumnIndex(3);
+                ImGui::TextColored(theme::provenanceColor(t.hasBox ? Provenance::Model
+                                                                   : Provenance::NotComputed),
+                                   "%s", t.hasBox ? "dockable" : "no box");
+                ImGui::TableSetColumnIndex(4);
+                std::string tags;
+                for (const auto& tag : t.panels) {
+                    if (!tags.empty()) tags += ", ";
+                    tags += tag;
+                }
+                if (t.headline) tags = tags.empty() ? "headline" : "headline, " + tags;
+                ImGui::TextDisabled("%s", tags.c_str());
+            }
+        }
+        ImGui::EndTable();
     }
 }
 
@@ -1628,7 +1705,20 @@ void compare(AppShell& shell) {
     const auto lib = s.library->all();
     if (lib.size() < 2) return;
 
-    static int slot[3] = {1, 2, 13};  // amphetamine vs methamphetamine vs nicotine-ish defaults
+    // Defaults resolved by compound id, not by index: a pack edit reorders the
+    // library, and a raw index would silently start comparing something else.
+    static int slot[3] = {-1, -1, -1};
+    static bool slotInit = false;
+    if (!slotInit) {
+        slotInit = true;
+        const char* wanted[3] = {"caffeine", "theobromine", "acetaminophen"};
+        for (int i = 0; i < 3; ++i) {
+            for (int k = 0; k < static_cast<int>(lib.size()); ++k) {
+                if (lib[k].id == wanted[i]) { slot[i] = k; break; }
+            }
+            if (slot[i] < 0 && i < static_cast<int>(lib.size())) slot[i] = i;
+        }
+    }
     ImGui::TextDisabled("Pick up to three compounds to compare an analog against existing samples.");
     for (int i = 0; i < 3; ++i) {
         ImGui::PushID(i);
@@ -1704,7 +1794,7 @@ void compare(AppShell& shell) {
         rowD("Shelf life", [](const Row& r) { return r.st.shelfLifeEstimate; });
         rowD("Oral F%", [](const Row& r) { return f0(r.ab.bioavailabilityPct) + "%"; });
         rowD("HIA%", [](const Row& r) { return f0(r.ab.hiaPct) + "%"; });
-        rowD("logBB", [](const Row& r) { return f2(r.ab.logBB) + (r.ab.cnsPenetrant ? " (CNS)" : ""); });
+        rowD("logBB", [](const Row& r) { return f2(r.ab.logBB) + (r.ab.cnsPenetrant ? " (BBB+)" : ""); });
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0); ImGui::TextDisabled("ADMET");  // inline table cell label, not a section header
         for (int i = 0; i < static_cast<int>(rows.size()); ++i) {
@@ -2234,7 +2324,7 @@ void analogExplorer(AppShell& shell) {
         statCard("STABILITY", f0(st.overallScore) + "/100", st.shelfLifeEstimate.c_str(), 190.0f);
         ImGui::SameLine();
         statCard("ORAL F", f0(ab.bioavailabilityPct) + "%",
-                 ab.cnsPenetrant ? "CNS-penetrant" : "peripheral", 160.0f);
+                 ab.cnsPenetrant ? "BBB-permeant" : "low BBB partition", 160.0f);
         ImGui::SameLine();
         statCard("HIA", f0(ab.hiaPct) + "%", "intestinal abs.", 150.0f);
         ImGui::SameLine();

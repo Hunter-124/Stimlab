@@ -40,6 +40,14 @@ Copy-Item $exe $stage
 $dlls = Get-ChildItem $binDir -Filter *.dll -ErrorAction SilentlyContinue
 foreach ($d in $dlls) { Copy-Item $d.FullName $stage }
 
+# The compound/target catalog is data, not code: without assets/packs the app has
+# no library and no receptor presets, so this is a required part of the payload.
+$packSrc = Join-Path $root "assets\packs"
+if (-not (Test-Path $packSrc)) { throw "assets\packs not found at $packSrc - the release would ship with no catalog." }
+$packDst = Join-Path $stage "assets\packs"
+New-Item -ItemType Directory -Force -Path $packDst | Out-Null
+Copy-Item (Join-Path $packSrc "*.json") $packDst
+
 # The science presets statically bundle libcurl, so the live Anthropic provider + web
 # tools ship inside this exe; the plain presets are curl-free (offline assistant only).
 $science = $Preset -like "*science*"

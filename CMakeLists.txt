@@ -75,11 +75,19 @@ configure_file(
   "${CMAKE_BINARY_DIR}/generated/core/Version.h"
   @ONLY)
 
+# The data packs must sit beside every binary that reads them (the app and the test
+# runner share ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}). Copy at configure time so a test
+# build that never builds the exe still finds a catalog; src/app re-copies after each
+# build so edits during development take effect.
+file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/assets/packs"
+     DESTINATION "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/assets")
+
 # ---- Project modules ------------------------------------------------------
 add_subdirectory(src/core)
 add_subdirectory(src/data)
 add_subdirectory(src/chem)
 add_subdirectory(src/contracts)
+add_subdirectory(src/packs)
 add_subdirectory(src/storage)
 add_subdirectory(src/workflow)
 add_subdirectory(src/agent)

@@ -164,7 +164,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         int argc = 0;
         LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
         bool selftest = false;
-        std::string smiles = "CC(N)Cc1ccccc1";  // amphetamine
+        std::string smiles = "Cn1cnc2c1c(=O)n(C)c(=O)n2C";  // caffeine
         std::string target = "DAT";
         std::string compute = "auto";  // auto | gpu | cpu
         for (int i = 1; i < argc; ++i) {

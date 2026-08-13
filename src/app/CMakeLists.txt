@@ -20,3 +20,12 @@ target_link_libraries(BioCAD PRIVATE
 )
 
 set_target_properties(BioCAD PROPERTIES OUTPUT_NAME "BioCAD")
+
+# The compound/target catalog is data, so it has to travel with the binary: copy
+# assets/packs next to the exe after every build. packs::builtinPackDir() looks
+# here first, then falls back to the source tree for a dev run from elsewhere.
+add_custom_command(TARGET BioCAD POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+          "${CMAKE_SOURCE_DIR}/assets/packs"
+          "$<TARGET_FILE_DIR:BioCAD>/assets/packs"
+  COMMENT "Copying data packs beside BioCAD.exe")

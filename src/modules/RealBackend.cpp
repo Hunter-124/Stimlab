@@ -14,6 +14,7 @@
 #include "modules/docking/Backends.h"
 #include "modules/docking/Presets.h"
 #include "modules/docking/ReceptorPrep.h"
+#include "packs/Pack.h"
 #ifdef BIOCAD_HAVE_CUDA
 #  include "modules/docking/CudaBackend.h"
 #endif
@@ -26,85 +27,16 @@ namespace chem = biocad::chem;
 
 double clampd(double v, double lo, double hi) { return std::max(lo, std::min(hi, v)); }
 
-// Library seed: identity + STRUCTURE + metadata only. All numbers are computed.
-struct Seed {
-    const char* id;
-    const char* name;
-    const char* smiles;
-    const char* drugClass;
-    const char* legal;
-    const char* notes;
-};
+// Library compounds come from the loaded data packs (assets/packs/*.json plus the
+// %APPDATA%/BioCAD/packs overlay). There is no hard-coded catalog: the domain is
+// whatever the packs say it is.
 
-const std::vector<Seed>& seeds() {
-    static const std::vector<Seed> s = {
-        {"caffeine", "Caffeine", "CN1C=NC2=C1C(=O)N(C(=O)N2C)C", "Xanthine stimulant",
-         "Unscheduled (US)", "Adenosine receptor antagonist; common reference stimulant."},
-        {"amphetamine", "Amphetamine", "CC(N)Cc1ccccc1", "Phenethylamine stimulant",
-         "Schedule II (US)", "Releaser/reuptake inhibitor at DAT/NET."},
-        {"methamphetamine", "Methamphetamine", "CNC(C)Cc1ccccc1", "Phenethylamine stimulant",
-         "Schedule II (US)", "N-methyl amphetamine; higher CNS penetration."},
-        {"mdma", "MDMA", "CNC(C)Cc1ccc2OCOc2c1", "Entactogen (phenethylamine)",
-         "Schedule I (US)", "3,4-methylenedioxy substitution; serotonergic releaser."},
-        {"methylphenidate", "Methylphenidate", "COC(=O)C(c1ccccc1)C1CCCCN1", "Piperidine stimulant",
-         "Schedule II (US)", "DAT/NET reuptake inhibitor; methyl ester (hydrolysis-labile)."},
-        {"modafinil", "Modafinil", "NC(=O)CS(=O)C(c1ccccc1)c1ccccc1", "Eugeroic (wakefulness)",
-         "Schedule IV (US)", "Atypical DAT inhibitor; sulfinyl + primary amide."},
-        {"cocaine", "Cocaine", "COC(=O)C1C(OC(=O)c2ccccc2)CC3CCC1N3C", "Tropane stimulant",
-         "Schedule II (US)", "Two ester groups -> hydrolysis to benzoylecgonine/ecgonine."},
-        {"pseudoephedrine", "Pseudoephedrine", "CNC(C)C(O)c1ccccc1", "Phenethylamine decongestant",
-         "OTC/Schedule V (US)", "Beta-hydroxy amphetamine analog; sympathomimetic."},
-        {"ephedrine", "Ephedrine", "CNC(C)C(O)c1ccccc1", "Phenethylamine sympathomimetic",
-         "Schedule (varies)", "Diastereomer of pseudoephedrine."},
-        {"cathinone", "Cathinone", "CC(N)C(=O)c1ccccc1", "Beta-keto phenethylamine",
-         "Schedule I (US)", "Beta-keto group reduces stability (oxidation/condensation)."},
-        {"methcathinone", "Methcathinone", "CNC(C)C(=O)c1ccccc1", "Cathinone stimulant",
-         "Schedule I (US)", "N-methyl cathinone."},
-        {"mephedrone", "Mephedrone (4-MMC)", "CNC(C)C(=O)c1ccc(C)cc1", "Substituted cathinone",
-         "Schedule I (US)", "4-methyl methcathinone; 'bath salts' class."},
-        {"mda", "MDA", "CC(N)Cc1ccc2OCOc2c1", "Entactogen (phenethylamine)",
-         "Schedule I (US)", "3,4-methylenedioxyamphetamine; MDMA's primary metabolite."},
-        {"methylone", "Methylone (bk-MDMA)", "CNC(C)C(=O)c1ccc2OCOc2c1", "Substituted cathinone",
-         "Schedule I (US)", "Beta-keto MDMA analog."},
-        {"mdpv", "MDPV", "O=C(C(CCC)N1CCCC1)c1ccc2OCOc2c1", "Substituted cathinone",
-         "Schedule I (US)", "Potent DAT/NET inhibitor; pyrrolidinophenone."},
-        {"alpha-pvp", "alpha-PVP", "O=C(C(CCC)N1CCCC1)c1ccccc1", "Pyrrolidinophenone stimulant",
-         "Schedule I (US)", "'Flakka'; MDPV des-methylenedioxy analog."},
-        {"4-fa", "4-Fluoroamphetamine", "CC(N)Cc1ccc(F)cc1", "Phenethylamine stimulant",
-         "Schedule (varies)", "Para-fluoro amphetamine; releaser."},
-        {"dmaa", "Methylhexanamine (DMAA)", "CCCC(C)CC(C)N", "Aliphatic amine stimulant",
-         "Banned supplement (US)", "Non-aromatic sympathomimetic."},
-        {"bupropion", "Bupropion", "CC(NC(C)(C)C)C(=O)c1cccc(Cl)c1", "Aminoketone (NDRI)",
-         "Rx (US)", "Antidepressant/cessation aid; cathinone-like aminoketone."},
-        {"phenethylamine", "Phenethylamine (parent)", "NCCc1ccccc1", "Phenethylamine (trace amine)",
-         "Endogenous", "Structural parent of the amphetamine class; TAAR1 agonist."},
-        {"tyramine", "Tyramine", "NCCc1ccc(O)cc1", "Phenethylamine (trace amine)",
-         "Endogenous", "Dietary; MAO substrate (MAOI 'cheese' interaction)."},
-        {"dopamine", "Dopamine", "NCCc1ccc(O)c(O)c1", "Catecholamine neurotransmitter",
-         "Endogenous", "Catechol -> rapid autoxidation; COMT/MAO substrate."},
-        {"theobromine", "Theobromine", "Cn1cnc2c1c(=O)[nH]c(=O)n2C", "Xanthine stimulant",
-         "Unscheduled (US)", "Cocoa alkaloid; milder than caffeine."},
-        {"theophylline", "Theophylline", "Cn1c(=O)c2[nH]cnc2n(C)c1=O", "Xanthine bronchodilator",
-         "Rx (US)", "Narrow therapeutic index; CYP1A2 substrate."},
-        {"norepinephrine", "Norepinephrine", "NCC(O)c1ccc(O)c(O)c1", "Catecholamine neurotransmitter",
-         "Endogenous", "Catechol; COMT/MAO substrate; poor oral/CNS absorption."},
-        {"epinephrine", "Epinephrine", "CNCC(O)c1ccc(O)c(O)c1", "Catecholamine hormone",
-         "Rx (US)", "Adrenaline; catechol; not orally bioavailable."},
-        {"lisdexamfetamine", "Lisdexamfetamine", "CC(Cc1ccccc1)NC(=O)C(N)CCCCN", "Amphetamine prodrug",
-         "Schedule II (US)", "L-lysine amide prodrug of dexamphetamine."},
-        {"atomoxetine", "Atomoxetine (reference)", "CNCCC(Oc1ccccc1C)c1ccccc1", "Selective NRI (non-stimulant)",
-         "Rx (US)", "Non-controlled ADHD reference; NET-selective."},
-        {"acetaminophen", "Acetaminophen (reference)", "CC(=O)Nc1ccc(O)cc1", "Analgesic (reference)",
-         "OTC (US)", "Metabolism reference: bioactivation to reactive NAPQI."},
-    };
-    return s;
-}
-
-Molecule computeMolecule(const Seed& s) {
-    Molecule m;
-    m.id = s.id; m.name = s.name; m.smiles = s.smiles;
-    m.drugClass = s.drugClass; m.legalStatus = s.legal; m.notes = s.notes;
-    if (auto pm = chem::parseSmiles(s.smiles)) {
+// The real engine always recomputes descriptors from the SMILES: any property a
+// pack authored is metadata for the pack browser, never a substitute for running
+// the in-house chem engine.
+Molecule computeMolecule(const packs::PackCompound& c) {
+    Molecule m = c.molecule();
+    if (auto pm = chem::parseSmiles(c.smiles)) {
         m.formula = chem::molecularFormula(*pm);
         m.molWeight = chem::molecularWeight(*pm);
         m.logP = chem::crippenLogP(*pm);
@@ -292,7 +224,7 @@ AbsorptionReport realAbsorption(const Molecule& m) {
         {"Caco-2 permeability", r.caco2LogPapp, "log(cm/s)", band(r.caco2LogPapp, -5.0, -6.0),
          "Higher (less negative) = more permeable."},
         {"BBB partition", r.logBB, "logBB", r.cnsPenetrant ? Verdict::Good : Verdict::Info,
-         r.cnsPenetrant ? "CNS-penetrant - relevant for central action." : "Limited CNS penetration."},
+         r.cnsPenetrant ? "Crosses the blood-brain barrier; central site of action plausible." : "Limited blood-brain-barrier partition."},
         {"Aqueous solubility", r.logS, "logS", band(r.logS, -4.0, -5.0),
          "Low solubility can dissolution-limit absorption."},
         {"P-gp efflux substrate", r.pgpSubstrate ? 1.0 : 0.0, "bool",
@@ -303,7 +235,7 @@ AbsorptionReport realAbsorption(const Molecule& m) {
                 chem::fmt0(r.bioavailabilityPct) + "% (HIA ~" + chem::fmt0(r.hiaPct) +
                 "%, F_H ~" + chem::fmt0(bio.firstPassSurvival * 100.0) +
                 "% from an ASSUMED fu.CLint; " + bio.limitingRoute + "). " +
-                (r.cnsPenetrant ? "CNS-penetrant." : "Low CNS penetration.");
+                (r.cnsPenetrant ? "BBB-permeant." : "Low BBB partition.");
     return r;
 }
 
@@ -455,7 +387,7 @@ class RealDocking final : public IDockingModule {
 public:
     std::vector<std::string> targets() const override { return docking::presetNames(); }
 
-    std::vector<ReceptorTarget> presets() const override { return docking::cnsPresets(); }
+    std::vector<ReceptorTarget> presets() const override { return docking::targetPresets(); }
 
     DockJobResult dockDetailed(const Molecule& m, const std::string& target) const override {
         ReceptorTarget tgt;
@@ -558,9 +490,12 @@ private:
 }  // namespace
 
 struct RealBackend::Impl {
-    RealLibrary library{[] {
+    // The loaded packs are the catalog. A pack that failed to load is reported
+    // here, surfaced by the Presets panel, and never silently dropped.
+    packs::LoadReport packReport = packs::loadBuiltin();
+    RealLibrary library{[this] {
         std::vector<Molecule> v;
-        for (const auto& s : seeds()) v.push_back(computeMolecule(s));
+        for (const auto& c : packReport.compounds()) v.push_back(computeMolecule(c));
         return v;
     }()};
     RealStability stability;

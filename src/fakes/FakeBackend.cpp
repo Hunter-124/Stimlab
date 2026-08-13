@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "chem/AdmetModel.h"
+#include "packs/Pack.h"
 
 namespace biocad {
 namespace {
@@ -18,104 +19,595 @@ bool contains(std::string_view hay, std::string_view needle) {
 double clampd(double v, double lo, double hi) { return std::max(lo, std::min(hi, v)); }
 
 // ------------------------------------------------------------------ defaults
-// Curated reference library. Property values are approximate public-data values,
-// sufficient for the heuristic models below. Extend freely.
+// The fake's catalog is a data pack like any other - the same schema, parsed by
+// the same packs::parse() - just embedded in the binary so tests stay hermetic and
+// deterministic and never touch the filesystem. There is no second catalog format.
+constexpr const char* kFixturePack = R"PACK({
+  "schemaVersion": 1,
+  "id": "fake-reference",
+  "title": "Deterministic test fixture pack",
+  "description": "Hermetic in-binary catalog used by FakeBackend so tests never touch the filesystem. Same schema, same parser, same code path as a shipped pack.",
+  "compounds": [
+    {
+      "id": "caffeine",
+      "name": "Caffeine",
+      "smiles": "CN1C=NC2=C1C(=O)N(C(=O)N2C)C",
+      "drugClass": "Xanthine stimulant",
+      "legalUs": "Unscheduled (US)",
+      "notes": "Adenosine receptor antagonist; common reference stimulant.",
+      "properties": {
+        "formula": "C8H10N4O2",
+        "molWeight": 194.19,
+        "logP": -0.07,
+        "tpsa": 58.4,
+        "hbd": 0,
+        "hba": 6,
+        "rotatableBonds": 0
+      }
+    },
+    {
+      "id": "amphetamine",
+      "name": "Amphetamine",
+      "smiles": "CC(N)Cc1ccccc1",
+      "drugClass": "Phenethylamine stimulant",
+      "legalUs": "Schedule II (US)",
+      "notes": "Releaser/reuptake inhibitor at DAT/NET.",
+      "properties": {
+        "formula": "C9H13N",
+        "molWeight": 135.21,
+        "logP": 1.76,
+        "tpsa": 26.0,
+        "hbd": 1,
+        "hba": 1,
+        "rotatableBonds": 2
+      }
+    },
+    {
+      "id": "methamphetamine",
+      "name": "Methamphetamine",
+      "smiles": "CNC(C)Cc1ccccc1",
+      "drugClass": "Phenethylamine stimulant",
+      "legalUs": "Schedule II (US)",
+      "notes": "N-methyl amphetamine; higher CNS penetration.",
+      "properties": {
+        "formula": "C10H15N",
+        "molWeight": 149.23,
+        "logP": 2.07,
+        "tpsa": 12.0,
+        "hbd": 1,
+        "hba": 1,
+        "rotatableBonds": 2
+      }
+    },
+    {
+      "id": "mdma",
+      "name": "MDMA",
+      "smiles": "CNC(C)Cc1ccc2OCOc2c1",
+      "drugClass": "Entactogen (phenethylamine)",
+      "legalUs": "Schedule I (US)",
+      "notes": "3,4-methylenedioxy substitution; serotonergic releaser.",
+      "properties": {
+        "formula": "C11H15NO2",
+        "molWeight": 193.24,
+        "logP": 1.06,
+        "tpsa": 30.0,
+        "hbd": 1,
+        "hba": 3,
+        "rotatableBonds": 3
+      }
+    },
+    {
+      "id": "methylphenidate",
+      "name": "Methylphenidate",
+      "smiles": "COC(=O)C(c1ccccc1)C1CCCCN1",
+      "drugClass": "Piperidine stimulant",
+      "legalUs": "Schedule II (US)",
+      "notes": "DAT/NET reuptake inhibitor; methyl ester (hydrolysis-labile).",
+      "properties": {
+        "formula": "C14H19NO2",
+        "molWeight": 233.31,
+        "logP": 2.3,
+        "tpsa": 38.3,
+        "hbd": 1,
+        "hba": 3,
+        "rotatableBonds": 4
+      }
+    },
+    {
+      "id": "modafinil",
+      "name": "Modafinil",
+      "smiles": "NC(=O)CS(=O)C(c1ccccc1)c1ccccc1",
+      "drugClass": "Eugeroic (wakefulness)",
+      "legalUs": "Schedule IV (US)",
+      "notes": "Atypical DAT inhibitor; sulfinyl + primary amide.",
+      "properties": {
+        "formula": "C15H15NO2S",
+        "molWeight": 273.35,
+        "logP": 1.4,
+        "tpsa": 79.1,
+        "hbd": 1,
+        "hba": 3,
+        "rotatableBonds": 4
+      }
+    },
+    {
+      "id": "cocaine",
+      "name": "Cocaine",
+      "smiles": "COC(=O)C1C(OC(=O)c2ccccc2)CC3CCC1N3C",
+      "drugClass": "Tropane stimulant",
+      "legalUs": "Schedule II (US)",
+      "notes": "Two ester groups -> hydrolysis to benzoylecgonine/ecgonine.",
+      "properties": {
+        "formula": "C17H21NO4",
+        "molWeight": 303.35,
+        "logP": 2.3,
+        "tpsa": 55.8,
+        "hbd": 0,
+        "hba": 5,
+        "rotatableBonds": 5
+      }
+    },
+    {
+      "id": "pseudoephedrine",
+      "name": "Pseudoephedrine",
+      "smiles": "CNC(C)C(O)c1ccccc1",
+      "drugClass": "Phenethylamine decongestant",
+      "legalUs": "OTC/Schedule V (US)",
+      "notes": "Beta-hydroxy amphetamine analog; sympathomimetic.",
+      "properties": {
+        "formula": "C10H15NO",
+        "molWeight": 165.23,
+        "logP": 0.9,
+        "tpsa": 32.3,
+        "hbd": 2,
+        "hba": 2,
+        "rotatableBonds": 3
+      }
+    },
+    {
+      "id": "ephedrine",
+      "name": "Ephedrine",
+      "smiles": "CNC(C)C(O)c1ccccc1",
+      "drugClass": "Phenethylamine sympathomimetic",
+      "legalUs": "Schedule (varies)",
+      "notes": "Diastereomer of pseudoephedrine.",
+      "properties": {
+        "formula": "C10H15NO",
+        "molWeight": 165.23,
+        "logP": 1.0,
+        "tpsa": 32.3,
+        "hbd": 2,
+        "hba": 2,
+        "rotatableBonds": 3
+      }
+    },
+    {
+      "id": "cathinone",
+      "name": "Cathinone",
+      "smiles": "CC(N)C(=O)c1ccccc1",
+      "drugClass": "Beta-keto phenethylamine",
+      "legalUs": "Schedule I (US)",
+      "notes": "Beta-keto group reduces stability (oxidation/condensation).",
+      "properties": {
+        "formula": "C9H11NO",
+        "molWeight": 149.19,
+        "logP": 0.6,
+        "tpsa": 43.1,
+        "hbd": 1,
+        "hba": 2,
+        "rotatableBonds": 2
+      }
+    },
+    {
+      "id": "methcathinone",
+      "name": "Methcathinone",
+      "smiles": "CNC(C)C(=O)c1ccccc1",
+      "drugClass": "Cathinone stimulant",
+      "legalUs": "Schedule I (US)",
+      "notes": "N-methyl cathinone.",
+      "properties": {
+        "formula": "C10H13NO",
+        "molWeight": 163.22,
+        "logP": 0.9,
+        "tpsa": 29.1,
+        "hbd": 1,
+        "hba": 2,
+        "rotatableBonds": 2
+      }
+    },
+    {
+      "id": "mephedrone",
+      "name": "Mephedrone (4-MMC)",
+      "smiles": "CNC(C)C(=O)c1ccc(C)cc1",
+      "drugClass": "Substituted cathinone",
+      "legalUs": "Schedule I (US)",
+      "notes": "4-methyl methcathinone; 'bath salts' class.",
+      "properties": {
+        "formula": "C11H15NO",
+        "molWeight": 177.24,
+        "logP": 1.6,
+        "tpsa": 29.1,
+        "hbd": 1,
+        "hba": 2,
+        "rotatableBonds": 3
+      }
+    },
+    {
+      "id": "mda",
+      "name": "MDA",
+      "smiles": "CC(N)Cc1ccc2OCOc2c1",
+      "drugClass": "Entactogen (phenethylamine)",
+      "legalUs": "Schedule I (US)",
+      "notes": "3,4-methylenedioxyamphetamine; MDMA's primary metabolite.",
+      "properties": {
+        "formula": "C10H13NO2",
+        "molWeight": 179.22,
+        "logP": 1.0,
+        "tpsa": 47.6,
+        "hbd": 1,
+        "hba": 3,
+        "rotatableBonds": 2
+      }
+    },
+    {
+      "id": "methylone",
+      "name": "Methylone (bk-MDMA)",
+      "smiles": "CNC(C)C(=O)c1ccc2OCOc2c1",
+      "drugClass": "Substituted cathinone",
+      "legalUs": "Schedule I (US)",
+      "notes": "Beta-keto MDMA analog.",
+      "properties": {
+        "formula": "C11H13NO3",
+        "molWeight": 207.23,
+        "logP": 0.7,
+        "tpsa": 56.4,
+        "hbd": 1,
+        "hba": 4,
+        "rotatableBonds": 3
+      }
+    },
+    {
+      "id": "mdpv",
+      "name": "MDPV",
+      "smiles": "O=C(C(CCC)N1CCCC1)c1ccc2OCOc2c1",
+      "drugClass": "Substituted cathinone",
+      "legalUs": "Schedule I (US)",
+      "notes": "Potent DAT/NET inhibitor; pyrrolidinophenone.",
+      "properties": {
+        "formula": "C16H21NO3",
+        "molWeight": 275.34,
+        "logP": 2.8,
+        "tpsa": 47.6,
+        "hbd": 0,
+        "hba": 4,
+        "rotatableBonds": 4
+      }
+    },
+    {
+      "id": "alpha-pvp",
+      "name": "alpha-PVP",
+      "smiles": "O=C(C(CCC)N1CCCC1)c1ccccc1",
+      "drugClass": "Pyrrolidinophenone stimulant",
+      "legalUs": "Schedule I (US)",
+      "notes": "'Flakka'; MDPV des-methylenedioxy analog.",
+      "properties": {
+        "formula": "C15H21NO",
+        "molWeight": 231.33,
+        "logP": 3.2,
+        "tpsa": 20.3,
+        "hbd": 0,
+        "hba": 2,
+        "rotatableBonds": 4
+      }
+    },
+    {
+      "id": "4-fa",
+      "name": "4-Fluoroamphetamine",
+      "smiles": "CC(N)Cc1ccc(F)cc1",
+      "drugClass": "Phenethylamine stimulant",
+      "legalUs": "Schedule (varies)",
+      "notes": "Para-fluoro amphetamine; releaser.",
+      "properties": {
+        "formula": "C9H12FN",
+        "molWeight": 153.2,
+        "logP": 1.8,
+        "tpsa": 26.0,
+        "hbd": 1,
+        "hba": 2,
+        "rotatableBonds": 2
+      }
+    },
+    {
+      "id": "dmaa",
+      "name": "Methylhexanamine (DMAA)",
+      "smiles": "CCCC(C)CC(C)N",
+      "drugClass": "Aliphatic amine stimulant",
+      "legalUs": "Banned supplement (US)",
+      "notes": "Non-aromatic sympathomimetic; no arene for CYP2D6/MAO motifs.",
+      "properties": {
+        "formula": "C7H17N",
+        "molWeight": 115.22,
+        "logP": 2.0,
+        "tpsa": 26.0,
+        "hbd": 1,
+        "hba": 1,
+        "rotatableBonds": 4
+      }
+    },
+    {
+      "id": "bupropion",
+      "name": "Bupropion",
+      "smiles": "CC(NC(C)(C)C)C(=O)c1cccc(Cl)c1",
+      "drugClass": "Aminoketone (NDRI)",
+      "legalUs": "Rx (US)",
+      "notes": "Antidepressant/cessation aid; cathinone-like aminoketone.",
+      "properties": {
+        "formula": "C13H18ClNO",
+        "molWeight": 239.74,
+        "logP": 3.2,
+        "tpsa": 29.1,
+        "hbd": 1,
+        "hba": 2,
+        "rotatableBonds": 3
+      }
+    },
+    {
+      "id": "phenethylamine",
+      "name": "Phenethylamine (parent)",
+      "smiles": "NCCc1ccccc1",
+      "drugClass": "Phenethylamine (trace amine)",
+      "legalUs": "Endogenous",
+      "notes": "Structural parent of the amphetamine class; TAAR1 agonist.",
+      "properties": {
+        "formula": "C8H11N",
+        "molWeight": 121.18,
+        "logP": 1.4,
+        "tpsa": 26.0,
+        "hbd": 1,
+        "hba": 1,
+        "rotatableBonds": 2
+      }
+    },
+    {
+      "id": "tyramine",
+      "name": "Tyramine",
+      "smiles": "NCCc1ccc(O)cc1",
+      "drugClass": "Phenethylamine (trace amine)",
+      "legalUs": "Endogenous",
+      "notes": "Dietary; MAO substrate (MAOI 'cheese' interaction).",
+      "properties": {
+        "formula": "C8H11NO",
+        "molWeight": 137.18,
+        "logP": 0.9,
+        "tpsa": 46.2,
+        "hbd": 2,
+        "hba": 2,
+        "rotatableBonds": 2
+      }
+    },
+    {
+      "id": "theobromine",
+      "name": "Theobromine",
+      "smiles": "Cn1cnc2c1c(=O)[nH]c(=O)n2C",
+      "drugClass": "Xanthine stimulant",
+      "legalUs": "Unscheduled (US)",
+      "notes": "Cocoa alkaloid; milder than caffeine.",
+      "properties": {
+        "formula": "C7H8N4O2",
+        "molWeight": 180.16,
+        "logP": -0.8,
+        "tpsa": 67.2,
+        "hbd": 1,
+        "hba": 6,
+        "rotatableBonds": 0
+      }
+    },
+    {
+      "id": "theophylline",
+      "name": "Theophylline",
+      "smiles": "Cn1c(=O)c2[nH]cnc2n(C)c1=O",
+      "drugClass": "Xanthine bronchodilator",
+      "legalUs": "Rx (US)",
+      "notes": "Narrow therapeutic index; CYP1A2 substrate.",
+      "properties": {
+        "formula": "C7H8N4O2",
+        "molWeight": 180.16,
+        "logP": -0.02,
+        "tpsa": 69.3,
+        "hbd": 1,
+        "hba": 6,
+        "rotatableBonds": 0
+      }
+    },
+    {
+      "id": "norepinephrine",
+      "name": "Norepinephrine",
+      "smiles": "NCC(O)c1ccc(O)c(O)c1",
+      "drugClass": "Catecholamine neurotransmitter",
+      "legalUs": "Endogenous",
+      "notes": "Catechol; COMT/MAO substrate; poor oral/CNS absorption.",
+      "properties": {
+        "formula": "C8H11NO3",
+        "molWeight": 169.18,
+        "logP": -1.2,
+        "tpsa": 86.7,
+        "hbd": 4,
+        "hba": 4,
+        "rotatableBonds": 2
+      }
+    },
+    {
+      "id": "epinephrine",
+      "name": "Epinephrine",
+      "smiles": "CNCC(O)c1ccc(O)c(O)c1",
+      "drugClass": "Catecholamine hormone",
+      "legalUs": "Rx (US)",
+      "notes": "Adrenaline; catechol; not orally bioavailable.",
+      "properties": {
+        "formula": "C9H13NO3",
+        "molWeight": 183.2,
+        "logP": -1.4,
+        "tpsa": 75.7,
+        "hbd": 3,
+        "hba": 4,
+        "rotatableBonds": 2
+      }
+    },
+    {
+      "id": "lisdexamfetamine",
+      "name": "Lisdexamfetamine",
+      "smiles": "CC(Cc1ccccc1)NC(=O)C(N)CCCCN",
+      "drugClass": "Amphetamine prodrug",
+      "legalUs": "Schedule II (US)",
+      "notes": "L-lysine amide prodrug of dexamphetamine; amide hydrolysis activates.",
+      "properties": {
+        "formula": "C15H25N3O",
+        "molWeight": 263.38,
+        "logP": 0.8,
+        "tpsa": 95.0,
+        "hbd": 3,
+        "hba": 4,
+        "rotatableBonds": 8
+      }
+    },
+    {
+      "id": "atomoxetine",
+      "name": "Atomoxetine (reference)",
+      "smiles": "CNCCC(Oc1ccccc1C)c1ccccc1",
+      "drugClass": "Selective NRI (non-stimulant)",
+      "legalUs": "Rx (US)",
+      "notes": "Non-controlled ADHD reference; NET-selective.",
+      "properties": {
+        "formula": "C17H21NO",
+        "molWeight": 255.35,
+        "logP": 3.9,
+        "tpsa": 21.3,
+        "hbd": 1,
+        "hba": 2,
+        "rotatableBonds": 5
+      }
+    },
+    {
+      "id": "dopamine",
+      "name": "Dopamine",
+      "smiles": "NCCc1ccc(O)c(O)c1",
+      "drugClass": "Catecholamine neurotransmitter",
+      "legalUs": "Endogenous",
+      "notes": "Catechol -> rapid autoxidation; COMT/MAO substrate.",
+      "properties": {
+        "formula": "C8H11NO2",
+        "molWeight": 153.18,
+        "logP": -0.98,
+        "tpsa": 66.5,
+        "hbd": 3,
+        "hba": 3,
+        "rotatableBonds": 2
+      }
+    },
+    {
+      "id": "nicotine",
+      "name": "Nicotine",
+      "smiles": "CN1CCCC1c1cccnc1",
+      "drugClass": "Pyridine alkaloid stimulant",
+      "legalUs": "Unscheduled (US)",
+      "notes": "nAChR agonist.",
+      "properties": {
+        "formula": "C10H14N2",
+        "molWeight": 162.23,
+        "logP": 1.17,
+        "tpsa": 16.1,
+        "hbd": 0,
+        "hba": 2,
+        "rotatableBonds": 1
+      }
+    },
+    {
+      "id": "phentermine",
+      "name": "Phentermine",
+      "smiles": "CC(C)(N)Cc1ccccc1",
+      "drugClass": "Phenethylamine anorectic",
+      "legalUs": "Schedule IV (US)",
+      "notes": "Alpha,alpha-dimethyl amphetamine; resists MAO.",
+      "properties": {
+        "formula": "C10H15N",
+        "molWeight": 149.23,
+        "logP": 1.9,
+        "tpsa": 26.0,
+        "hbd": 1,
+        "hba": 1,
+        "rotatableBonds": 1
+      }
+    },
+    {
+      "id": "acetaminophen",
+      "name": "Acetaminophen (reference)",
+      "smiles": "CC(=O)Nc1ccc(O)cc1",
+      "drugClass": "Analgesic (non-stimulant reference)",
+      "legalUs": "OTC (US)",
+      "notes": "Metabolism reference: bioactivation to reactive NAPQI.",
+      "properties": {
+        "formula": "C8H9NO2",
+        "molWeight": 151.16,
+        "logP": 0.46,
+        "tpsa": 49.3,
+        "hbd": 2,
+        "hba": 2,
+        "rotatableBonds": 1
+      }
+    }
+  ],
+  "targets": [
+    {
+      "id": "DAT",
+      "name": "DAT (dopamine transporter)",
+      "pdb": "4M48",
+      "box": {
+        "cx": -2.1,
+        "cy": 12.4,
+        "cz": -6.8,
+        "sx": 20.0,
+        "sy": 20.0,
+        "sz": 20.0
+      },
+      "headline": true
+    },
+    {
+      "id": "NET",
+      "name": "NET (norepinephrine transporter)",
+      "pdb": "5I6X",
+      "box": {
+        "cx": 8.3,
+        "cy": -4.2,
+        "cz": 14.1,
+        "sx": 20.0,
+        "sy": 20.0,
+        "sz": 20.0
+      },
+      "headline": true
+    },
+    {
+      "id": "SERT",
+      "name": "SERT (serotonin transporter)",
+      "pdb": "5I73",
+      "box": {
+        "cx": -7.4,
+        "cy": 16.2,
+        "cz": 9.5,
+        "sx": 22.0,
+        "sy": 22.0,
+        "sz": 22.0
+      },
+      "headline": true
+    }
+  ]
+})PACK";
+
 std::vector<Molecule> buildLibrary() {
-    return {
-        {"caffeine", "Caffeine", "CN1C=NC2=C1C(=O)N(C(=O)N2C)C", "C8H10N4O2",
-         194.19, -0.07, 58.4, 0, 6, 0, "Xanthine stimulant", "Unscheduled (US)",
-         "Adenosine receptor antagonist; common reference stimulant."},
-        {"amphetamine", "Amphetamine", "CC(N)Cc1ccccc1", "C9H13N",
-         135.21, 1.76, 26.0, 1, 1, 2, "Phenethylamine stimulant", "Schedule II (US)",
-         "Releaser/reuptake inhibitor at DAT/NET."},
-        {"methamphetamine", "Methamphetamine", "CNC(C)Cc1ccccc1", "C10H15N",
-         149.23, 2.07, 12.0, 1, 1, 2, "Phenethylamine stimulant", "Schedule II (US)",
-         "N-methyl amphetamine; higher CNS penetration."},
-        {"mdma", "MDMA", "CNC(C)Cc1ccc2OCOc2c1", "C11H15NO2",
-         193.24, 1.06, 30.0, 1, 3, 3, "Entactogen (phenethylamine)", "Schedule I (US)",
-         "3,4-methylenedioxy substitution; serotonergic releaser."},
-        {"methylphenidate", "Methylphenidate", "COC(=O)C(c1ccccc1)C1CCCCN1", "C14H19NO2",
-         233.31, 2.30, 38.3, 1, 3, 4, "Piperidine stimulant", "Schedule II (US)",
-         "DAT/NET reuptake inhibitor; methyl ester (hydrolysis-labile)."},
-        {"modafinil", "Modafinil", "NC(=O)CS(=O)C(c1ccccc1)c1ccccc1", "C15H15NO2S",
-         273.35, 1.40, 79.1, 1, 3, 4, "Eugeroic (wakefulness)", "Schedule IV (US)",
-         "Atypical DAT inhibitor; sulfinyl + primary amide."},
-        {"cocaine", "Cocaine", "COC(=O)C1C(OC(=O)c2ccccc2)CC3CCC1N3C", "C17H21NO4",
-         303.35, 2.30, 55.8, 0, 5, 5, "Tropane stimulant", "Schedule II (US)",
-         "Two ester groups -> hydrolysis to benzoylecgonine/ecgonine."},
-        {"pseudoephedrine", "Pseudoephedrine", "CNC(C)C(O)c1ccccc1", "C10H15NO",
-         165.23, 0.90, 32.3, 2, 2, 3, "Phenethylamine decongestant", "OTC/Schedule V (US)",
-         "Beta-hydroxy amphetamine analog; sympathomimetic."},
-        {"ephedrine", "Ephedrine", "CNC(C)C(O)c1ccccc1", "C10H15NO",
-         165.23, 1.00, 32.3, 2, 2, 3, "Phenethylamine sympathomimetic", "Schedule (varies)",
-         "Diastereomer of pseudoephedrine."},
-        {"cathinone", "Cathinone", "CC(N)C(=O)c1ccccc1", "C9H11NO",
-         149.19, 0.60, 43.1, 1, 2, 2, "Beta-keto phenethylamine", "Schedule I (US)",
-         "Beta-keto group reduces stability (oxidation/condensation)."},
-        {"methcathinone", "Methcathinone", "CNC(C)C(=O)c1ccccc1", "C10H13NO",
-         163.22, 0.90, 29.1, 1, 2, 2, "Cathinone stimulant", "Schedule I (US)",
-         "N-methyl cathinone."},
-        {"mephedrone", "Mephedrone (4-MMC)", "CNC(C)C(=O)c1ccc(C)cc1", "C11H15NO",
-         177.24, 1.60, 29.1, 1, 2, 3, "Substituted cathinone", "Schedule I (US)",
-         "4-methyl methcathinone; 'bath salts' class."},
-        {"mda", "MDA", "CC(N)Cc1ccc2OCOc2c1", "C10H13NO2",
-         179.22, 1.00, 47.6, 1, 3, 2, "Entactogen (phenethylamine)", "Schedule I (US)",
-         "3,4-methylenedioxyamphetamine; MDMA's primary metabolite."},
-        {"methylone", "Methylone (bk-MDMA)", "CNC(C)C(=O)c1ccc2OCOc2c1", "C11H13NO3",
-         207.23, 0.70, 56.4, 1, 4, 3, "Substituted cathinone", "Schedule I (US)",
-         "Beta-keto MDMA analog."},
-        {"mdpv", "MDPV", "O=C(C(CCC)N1CCCC1)c1ccc2OCOc2c1", "C16H21NO3",
-         275.34, 2.80, 47.6, 0, 4, 4, "Substituted cathinone", "Schedule I (US)",
-         "Potent DAT/NET inhibitor; pyrrolidinophenone."},
-        {"alpha-pvp", "alpha-PVP", "O=C(C(CCC)N1CCCC1)c1ccccc1", "C15H21NO",
-         231.33, 3.20, 20.3, 0, 2, 4, "Pyrrolidinophenone stimulant", "Schedule I (US)",
-         "'Flakka'; MDPV des-methylenedioxy analog."},
-        {"4-fa", "4-Fluoroamphetamine", "CC(N)Cc1ccc(F)cc1", "C9H12FN",
-         153.20, 1.80, 26.0, 1, 2, 2, "Phenethylamine stimulant", "Schedule (varies)",
-         "Para-fluoro amphetamine; releaser."},
-        {"dmaa", "Methylhexanamine (DMAA)", "CCCC(C)CC(C)N", "C7H17N",
-         115.22, 2.00, 26.0, 1, 1, 4, "Aliphatic amine stimulant", "Banned supplement (US)",
-         "Non-aromatic sympathomimetic; no arene for CYP2D6/MAO motifs."},
-        {"bupropion", "Bupropion", "CC(NC(C)(C)C)C(=O)c1cccc(Cl)c1", "C13H18ClNO",
-         239.74, 3.20, 29.1, 1, 2, 3, "Aminoketone (NDRI)", "Rx (US)",
-         "Antidepressant/cessation aid; cathinone-like aminoketone."},
-        {"phenethylamine", "Phenethylamine (parent)", "NCCc1ccccc1", "C8H11N",
-         121.18, 1.40, 26.0, 1, 1, 2, "Phenethylamine (trace amine)", "Endogenous",
-         "Structural parent of the amphetamine class; TAAR1 agonist."},
-        {"tyramine", "Tyramine", "NCCc1ccc(O)cc1", "C8H11NO",
-         137.18, 0.90, 46.2, 2, 2, 2, "Phenethylamine (trace amine)", "Endogenous",
-         "Dietary; MAO substrate (MAOI 'cheese' interaction)."},
-        {"theobromine", "Theobromine", "Cn1cnc2c1c(=O)[nH]c(=O)n2C", "C7H8N4O2",
-         180.16, -0.80, 67.2, 1, 6, 0, "Xanthine stimulant", "Unscheduled (US)",
-         "Cocoa alkaloid; milder than caffeine."},
-        {"theophylline", "Theophylline", "Cn1c(=O)c2[nH]cnc2n(C)c1=O", "C7H8N4O2",
-         180.16, -0.02, 69.3, 1, 6, 0, "Xanthine bronchodilator", "Rx (US)",
-         "Narrow therapeutic index; CYP1A2 substrate."},
-        {"norepinephrine", "Norepinephrine", "NCC(O)c1ccc(O)c(O)c1", "C8H11NO3",
-         169.18, -1.20, 86.7, 4, 4, 2, "Catecholamine neurotransmitter", "Endogenous",
-         "Catechol; COMT/MAO substrate; poor oral/CNS absorption."},
-        {"epinephrine", "Epinephrine", "CNCC(O)c1ccc(O)c(O)c1", "C9H13NO3",
-         183.20, -1.40, 75.7, 3, 4, 2, "Catecholamine hormone", "Rx (US)",
-         "Adrenaline; catechol; not orally bioavailable."},
-        {"lisdexamfetamine", "Lisdexamfetamine", "CC(Cc1ccccc1)NC(=O)C(N)CCCCN", "C15H25N3O",
-         263.38, 0.80, 95.0, 3, 4, 8, "Amphetamine prodrug", "Schedule II (US)",
-         "L-lysine amide prodrug of dexamphetamine; amide hydrolysis activates."},
-        {"atomoxetine", "Atomoxetine (reference)", "CNCCC(Oc1ccccc1C)c1ccccc1", "C17H21NO",
-         255.35, 3.90, 21.3, 1, 2, 5, "Selective NRI (non-stimulant)", "Rx (US)",
-         "Non-controlled ADHD reference; NET-selective."},
-        {"dopamine", "Dopamine", "NCCc1ccc(O)c(O)c1", "C8H11NO2",
-         153.18, -0.98, 66.5, 3, 3, 2, "Catecholamine neurotransmitter", "Endogenous",
-         "Catechol -> rapid autoxidation; COMT/MAO substrate."},
-        {"nicotine", "Nicotine", "CN1CCCC1c1cccnc1", "C10H14N2",
-         162.23, 1.17, 16.1, 0, 2, 1, "Pyridine alkaloid stimulant", "Unscheduled (US)",
-         "nAChR agonist."},
-        {"phentermine", "Phentermine", "CC(C)(N)Cc1ccccc1", "C10H15N",
-         149.23, 1.90, 26.0, 1, 1, 1, "Phenethylamine anorectic", "Schedule IV (US)",
-         "Alpha,alpha-dimethyl amphetamine; resists MAO."},
-        {"acetaminophen", "Acetaminophen (reference)", "CC(=O)Nc1ccc(O)cc1", "C8H9NO2",
-         151.16, 0.46, 49.3, 2, 2, 1, "Analgesic (non-stimulant reference)", "OTC (US)",
-         "Metabolism reference: bioactivation to reactive NAPQI."},
-    };
+    static const packs::Pack pack = packs::parseString(kFixturePack, "<embedded fixture pack>");
+    std::vector<Molecule> v;
+    v.reserve(pack.compounds.size());
+    for (const auto& c : pack.compounds) v.push_back(c.molecule());
+    return v;
 }
 
 // ----------------------------------------------------------- feature sniffing
@@ -263,8 +755,8 @@ AbsorptionReport computeAbsorption(const Molecule& m) {
         {"Caco-2 permeability", r.caco2LogPapp, "log(cm/s)", band(r.caco2LogPapp, -5.0, -6.0),
          "Higher (less negative) = more permeable monolayer flux."},
         {"BBB partition", r.logBB, "logBB", r.cnsPenetrant ? Verdict::Good : Verdict::Info,
-         r.cnsPenetrant ? "CNS-penetrant - relevant for central stimulant action."
-                        : "Limited CNS penetration predicted."},
+         r.cnsPenetrant ? "Crosses the blood-brain barrier; relevant for a central site of action."
+                        : "Limited blood-brain-barrier partition."},
         {"Aqueous solubility", r.logS, "logS", band(r.logS, -4.0, -5.0),
          "Low solubility can dissolution-limit absorption."},
         {"P-gp efflux substrate", r.pgpSubstrate ? 1.0 : 0.0, "bool",
@@ -277,7 +769,7 @@ AbsorptionReport computeAbsorption(const Molecule& m) {
                 chem::fmt0(r.bioavailabilityPct) + "% (HIA ~" + chem::fmt0(r.hiaPct) +
                 "%, F_H ~" + chem::fmt0(bio.firstPassSurvival * 100.0) +
                 "% from an ASSUMED fu.CLint; " + bio.limitingRoute + "). " +
-                (r.cnsPenetrant ? "CNS-penetrant." : "Low CNS penetration.");
+                (r.cnsPenetrant ? "BBB-permeant." : "Low BBB partition.");
     return r;
 }
 
@@ -470,7 +962,7 @@ public:
     std::vector<RunRecord> recent() const override {
         return {
             {"run-0007", "Absorption", "Methamphetamine", "complete", "2026-06-08 02:40",
-             "F ~90%, CNS-penetrant."},
+             "F ~90%, BBB-permeant."},
             {"run-0006", "Stability", "Cocaine", "complete", "2026-06-08 02:31",
              "62/100 - ester hydrolysis limiting."},
             {"run-0005", "ADMET", "Amphetamine", "complete", "2026-06-08 02:20",

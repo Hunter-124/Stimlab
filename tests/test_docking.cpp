@@ -65,8 +65,8 @@ std::string syntheticPdb() {
 }
 }  // namespace
 
-TEST_CASE("CNS receptor presets are populated with boxes", "[docking][presets]") {
-    const auto& presets = docking::cnsPresets();
+TEST_CASE("Receptor presets load from the data packs with real boxes", "[docking][presets]") {
+    const auto& presets = docking::targetPresets();
     REQUIRE(presets.size() >= 25);
     for (const auto& t : presets) {
         INFO(t.name);
@@ -86,7 +86,7 @@ TEST_CASE("Every listed target resolves for on-demand provisioning", "[docking][
     // The Docking/Workflows combos list presetNames(); selecting one and provisioning
     // it on demand resolves that display name back to a preset via findPreset - exactly
     // the path AppShell::provisionTarget / receptorReady take. Guard that round-trip for
-    // ALL 29 presets so a rename cannot silently break the on-demand UI.
+    // every preset so a pack edit cannot silently break the on-demand UI.
     const auto names = docking::presetNames();
     REQUIRE(names.size() >= 25);
     for (const auto& n : names) {

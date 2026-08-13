@@ -1,0 +1,181 @@
+{
+  "schemaVersion": 1,
+  "id": "metabolic-and-nutrition",
+  "title": "Metabolic, nutritional and performance compounds",
+  "description": "Vitamins and cofactors, amino acids and their derivatives, and small-molecule metabolic drugs, with the energy-sensing and metabolic enzyme targets they are discussed against.",
+  "compounds": [
+    {
+      "id": "ascorbic-acid",
+      "name": "Ascorbic acid (vitamin C)",
+      "smiles": "OCC(O)C1OC(=O)C(O)=C1O",
+      "drugClass": "Water-soluble vitamin",
+      "legalUs": "Dietary supplement (US)",
+      "notes": "Redox cofactor for prolyl and lysyl hydroxylases; the enediol is readily oxidised to dehydroascorbate in solution."
+    },
+    {
+      "id": "cholecalciferol",
+      "name": "Cholecalciferol (vitamin D3)",
+      "smiles": "CC(C)CCCC(C)C1CCC2C1(C)CCCC2=CC=C1CC(O)CCC1=C",
+      "drugClass": "Fat-soluble secosteroid vitamin",
+      "legalUs": "Dietary supplement (US)",
+      "notes": "Hydroxylated by CYP2R1 to 25-hydroxyvitamin D and then by CYP27B1 to the active 1,25-dihydroxy hormone."
+    },
+    {
+      "id": "nicotinamide",
+      "name": "Nicotinamide",
+      "smiles": "NC(=O)c1cccnc1",
+      "drugClass": "NAD precursor vitamer (B3)",
+      "legalUs": "Dietary supplement (US)",
+      "notes": "Salvage-pathway NAD+ precursor via nicotinamide phosphoribosyltransferase; also a product inhibitor of sirtuins and PARPs."
+    },
+    {
+      "id": "nicotinic-acid",
+      "name": "Nicotinic acid (niacin)",
+      "smiles": "OC(=O)c1cccnc1",
+      "drugClass": "NAD precursor vitamer (B3)",
+      "legalUs": "Dietary supplement / Rx (US)",
+      "notes": "Agonist of HCAR2 (GPR109A), which mediates the characteristic prostaglandin-driven flushing response."
+    },
+    {
+      "id": "nmn",
+      "name": "Nicotinamide mononucleotide (NMN)",
+      "smiles": "NC(=O)c1ccc[n+](c1)C1OC(COP(=O)(O)[O-])C(O)C1O",
+      "drugClass": "NAD precursor nucleotide",
+      "legalUs": "Contested supplement status (US)",
+      "notes": "Direct NMNAT substrate one step from NAD+; its phosphate is dephosphorylated extracellularly before uptake."
+    },
+    {
+      "id": "thiamine",
+      "name": "Thiamine (vitamin B1)",
+      "smiles": "Cc1ncc(C[n+]2csc(CCO)c2C)c(N)n1",
+      "drugClass": "Water-soluble vitamin",
+      "legalUs": "Dietary supplement (US)",
+      "notes": "Precursor of thiamine pyrophosphate, the cofactor for pyruvate and alpha-ketoglutarate dehydrogenase and transketolase."
+    },
+    {
+      "id": "pyridoxine",
+      "name": "Pyridoxine (vitamin B6)",
+      "smiles": "Cc1ncc(CO)c(CO)c1O",
+      "drugClass": "Water-soluble vitamin",
+      "legalUs": "Dietary supplement (US)",
+      "notes": "Converted to pyridoxal 5'-phosphate, the cofactor for transaminases and aromatic amino acid decarboxylase."
+    },
+    {
+      "id": "folic-acid",
+      "name": "Folic acid",
+      "smiles": "Nc1nc2ncc(CNc3ccc(cc3)C(=O)NC(CCC(=O)O)C(=O)O)nc2c(=O)[nH]1",
+      "drugClass": "Water-soluble vitamin",
+      "legalUs": "Dietary supplement / Rx (US)",
+      "notes": "Reduced by dihydrofolate reductase to tetrahydrofolate, the one-carbon carrier for thymidylate and methionine synthesis."
+    },
+    {
+      "id": "creatine",
+      "name": "Creatine",
+      "smiles": "CN(CC(=O)O)C(N)=N",
+      "drugClass": "Guanidino amino acid derivative",
+      "legalUs": "Dietary supplement (US)",
+      "notes": "Phosphorylated by creatine kinase to phosphocreatine, buffering ATP resynthesis; cyclises non-enzymatically to creatinine."
+    },
+    {
+      "id": "l-theanine",
+      "name": "L-Theanine",
+      "smiles": "CCNC(=O)CCC(N)C(=O)O",
+      "drugClass": "Glutamine analog amino acid",
+      "legalUs": "Dietary supplement (US)",
+      "notes": "Tea-derived glutamine analog hydrolysed by intestinal and renal glutaminase to glutamate and ethylamine."
+    },
+    {
+      "id": "taurine",
+      "name": "Taurine",
+      "smiles": "NCCS(=O)(=O)O",
+      "drugClass": "Sulfonic acid amino acid derivative",
+      "legalUs": "Dietary supplement (US)",
+      "notes": "Conjugates bile acids and contributes to cell-volume osmoregulation; not incorporated into proteins."
+    },
+    {
+      "id": "n-acetylcysteine",
+      "name": "N-Acetylcysteine",
+      "smiles": "CC(=O)NC(CS)C(=O)O",
+      "drugClass": "Thiol / cysteine prodrug",
+      "legalUs": "Rx / supplement, contested (US)",
+      "notes": "Deacetylated to cysteine and thereby replenishes glutathione, the basis of its use after acetaminophen overdose."
+    },
+    {
+      "id": "l-carnitine",
+      "name": "L-Carnitine",
+      "smiles": "C[N+](C)(C)CC(O)CC(=O)[O-]",
+      "drugClass": "Quaternary ammonium metabolite",
+      "legalUs": "Dietary supplement / Rx (US)",
+      "notes": "Carries long-chain acyl groups across the inner mitochondrial membrane through the CPT1/CPT2 shuttle."
+    },
+    {
+      "id": "beta-alanine",
+      "name": "Beta-alanine",
+      "smiles": "NCCC(=O)O",
+      "drugClass": "Non-proteinogenic amino acid",
+      "legalUs": "Dietary supplement (US)",
+      "notes": "Rate-limiting precursor of muscle carnosine; transient paraesthesia arises from MRGPRD activation."
+    },
+    {
+      "id": "l-citrulline",
+      "name": "L-Citrulline",
+      "smiles": "NC(CCCNC(N)=O)C(=O)O",
+      "drugClass": "Urea-cycle amino acid",
+      "legalUs": "Dietary supplement (US)",
+      "notes": "Converted to arginine in the kidney, raising plasma arginine more effectively than oral arginine itself."
+    },
+    {
+      "id": "alpha-lipoic-acid",
+      "name": "Alpha-lipoic acid",
+      "smiles": "OC(=O)CCCCC1CCSS1",
+      "drugClass": "Dithiolane cofactor",
+      "legalUs": "Dietary supplement (US)",
+      "notes": "Covalently bound lipoamide cofactor of 2-oxoacid dehydrogenase complexes; the free dithiolane is redox active and photolabile."
+    },
+    {
+      "id": "metformin",
+      "name": "Metformin",
+      "smiles": "CN(C)C(=N)N=C(N)N",
+      "drugClass": "Biguanide antihyperglycaemic",
+      "legalUs": "Rx (US)",
+      "notes": "Highly hydrophilic cation taken up by OCT1/OCT2 and excreted unchanged renally; inhibits mitochondrial complex I with downstream AMPK activation.",
+      "xrefs": { "chembl": "CHEMBL1431", "pubchemCid": 4091 }
+    },
+    {
+      "id": "berberine",
+      "name": "Berberine",
+      "smiles": "COc1ccc2cc3[n+](cc2c1OC)CCc1cc2OCOc2cc1-3",
+      "drugClass": "Isoquinoline alkaloid",
+      "legalUs": "Dietary supplement (US)",
+      "notes": "Quaternary protoberberine alkaloid with low oral bioavailability and clinically relevant CYP3A4 and P-glycoprotein inhibition."
+    }
+  ],
+  "targets": [
+    {
+      "id": "PRKAA1",
+      "name": "AMPK alpha-1 catalytic subunit",
+      "pdb": "4CFE",
+      "uniprot": "Q13131",
+      "chembl": "CHEMBL5613"
+    },
+    {
+      "id": "HMGCR",
+      "name": "HMG-CoA reductase",
+      "pdb": "1HW9",
+      "uniprot": "P04035",
+      "chembl": "CHEMBL402"
+    },
+    {
+      "id": "DPP4",
+      "name": "Dipeptidyl peptidase-4",
+      "pdb": "1X70",
+      "uniprot": "P27487",
+      "chembl": "CHEMBL284"
+    },
+    {
+      "id": "NAMPT",
+      "name": "Nicotinamide phosphoribosyltransferase",
+      "uniprot": "P43490"
+    }
+  ]
+}

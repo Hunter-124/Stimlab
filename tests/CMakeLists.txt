@@ -14,6 +14,7 @@ add_executable(biocad_tests
   test_workflow.cpp
   test_pipelines.cpp
   test_manifest.cpp
+  test_packs.cpp
   test_provenance.cpp
 )
 
@@ -21,6 +22,7 @@ target_link_libraries(biocad_tests PRIVATE
   Catch2::Catch2WithMain
   biocad_core
   biocad_data
+  biocad_packs
   biocad_fakes
   biocad_chem
   biocad_modules

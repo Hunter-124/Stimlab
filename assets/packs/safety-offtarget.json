@@ -1,0 +1,207 @@
+{
+  "schemaVersion": 1,
+  "id": "safety-offtarget",
+  "title": "Safety and off-target panel",
+  "description": "SafetyScreen44 off-target liability panel. Target selection follows Bowes et al. 2012, Nat Rev Drug Discov 11:909-922 (PMID 23197038); the enumerated 44-member list is taken from the Eurofins SafetyScreen44 datasheet. This pack defines only the 25 panel members not already covered elsewhere. The following 19 SafetyScreen44 members are already provided by the cns-monoamine pack and are deliberately not redefined here: DAT, NET, SERT, hERG, D1, D2, 5HT1A, 5HT2A, ADRA2A, ADRB1, ADRB2, H1, M1, M2, M3, MOR, CB1, AChE, MAOA. Most entries carry no binding box: a box is present only where a real experimental structure and a real orthosteric-site centre are known, and no box is fabricated. Targets without a box are honest coverage gaps. PTGS1, PTGS2 and HTR3A are part of the panel but are defined by the analgesics-otc pack; the CNS monoamine members (DAT, NET, SERT, hERG, D1, D2, 5HT1A, 5HT2A, ADRA2A, ADRB1, ADRB2, H1, M1, M2, M3, MOR, CB1, AChE, MAOA) are defined by the cns-monoamine pack.",
+  "compounds": [],
+  "targets": [
+    {
+      "id": "ADORA2A",
+      "name": "Adenosine A2A receptor",
+      "pdb": "3EML",
+      "uniprot": "P29274",
+      "chembl": "CHEMBL251",
+      "panels": [
+        "safetyscreen44"
+      ]
+    },
+    {
+      "id": "ADRA1A",
+      "name": "Alpha-1A adrenergic receptor",
+      "uniprot": "P35348",
+      "chembl": "CHEMBL229",
+      "panels": [
+        "safetyscreen44"
+      ]
+    },
+    {
+      "id": "CCKAR",
+      "name": "Cholecystokinin CCK-A (CCK1) receptor",
+      "uniprot": "P32238",
+      "panels": [
+        "safetyscreen44"
+      ]
+    },
+    {
+      "id": "OPRD1",
+      "name": "Delta opioid receptor",
+      "pdb": "4N6H",
+      "uniprot": "P41143",
+      "chembl": "CHEMBL236",
+      "panels": [
+        "safetyscreen44"
+      ]
+    },
+    {
+      "id": "OPRK1",
+      "name": "Kappa opioid receptor",
+      "pdb": "4DJH",
+      "uniprot": "P41145",
+      "chembl": "CHEMBL237",
+      "panels": [
+        "safetyscreen44"
+      ]
+    },
+    {
+      "id": "EDNRA",
+      "name": "Endothelin ETA receptor",
+      "uniprot": "P25101",
+      "chembl": "CHEMBL252",
+      "panels": [
+        "safetyscreen44"
+      ]
+    },
+    {
+      "id": "HRH2",
+      "name": "Histamine H2 receptor",
+      "uniprot": "P25021",
+      "panels": [
+        "safetyscreen44"
+      ]
+    },
+    {
+      "id": "TACR1",
+      "name": "Tachykinin NK1 (substance P) receptor",
+      "uniprot": "P25103",
+      "chembl": "CHEMBL249",
+      "panels": [
+        "safetyscreen44"
+      ]
+    },
+    {
+      "id": "HTR1B",
+      "name": "Serotonin 5-HT1B receptor",
+      "pdb": "4IAR",
+      "uniprot": "P28222",
+      "chembl": "CHEMBL1898",
+      "panels": [
+        "safetyscreen44"
+      ]
+    },
+    {
+      "id": "HTR2B",
+      "name": "Serotonin 5-HT2B receptor",
+      "pdb": "4IB4",
+      "uniprot": "P41595",
+      "chembl": "CHEMBL1833",
+      "notes": "Agonism at this receptor is associated with valvular heart disease; a core off-target liability flag.",
+      "panels": [
+        "safetyscreen44"
+      ]
+    },
+    {
+      "id": "AVPR1A",
+      "name": "Vasopressin V1A receptor",
+      "uniprot": "P37288",
+      "panels": [
+        "safetyscreen44"
+      ]
+    },
+    {
+      "id": "GABRA1",
+      "name": "GABA-A receptor, central benzodiazepine site (alpha-1 subunit)",
+      "uniprot": "P14867",
+      "panels": [
+        "safetyscreen44"
+      ]
+    },
+    {
+      "id": "GABAA_CL",
+      "name": "GABA-A receptor chloride channel, TBPS (picrotoxin) site",
+      "notes": "Assayed as a channel-site radioligand displacement rather than a single gene product.",
+      "panels": [
+        "safetyscreen44"
+      ]
+    },
+    {
+      "id": "CHRNA4",
+      "name": "Nicotinic acetylcholine receptor alpha4beta2 (alpha-4 subunit)",
+      "uniprot": "P43681",
+      "panels": [
+        "safetyscreen44"
+      ]
+    },
+    {
+      "id": "CACNA1C",
+      "name": "L-type calcium channel Cav1.2 (alpha-1C subunit)",
+      "uniprot": "Q13936",
+      "panels": [
+        "safetyscreen44"
+      ]
+    },
+    {
+      "id": "KCNQ1",
+      "name": "Potassium channel KCNQ1 (KvLQT1)",
+      "uniprot": "P51787",
+      "panels": [
+        "safetyscreen44"
+      ]
+    },
+    {
+      "id": "SCN5A",
+      "name": "Cardiac sodium channel Nav1.5",
+      "uniprot": "Q14524",
+      "notes": "Cardiac conduction liability; assayed at the local-anaesthetic site 2.",
+      "panels": [
+        "safetyscreen44"
+      ]
+    },
+    {
+      "id": "AR",
+      "name": "Androgen receptor",
+      "pdb": "2AM9",
+      "uniprot": "P10275",
+      "chembl": "CHEMBL1871",
+      "panels": [
+        "safetyscreen44"
+      ]
+    },
+    {
+      "id": "NR3C1",
+      "name": "Glucocorticoid receptor",
+      "pdb": "1M2Z",
+      "uniprot": "P04150",
+      "chembl": "CHEMBL2034",
+      "panels": [
+        "safetyscreen44"
+      ]
+    },
+    {
+      "id": "PDE3A",
+      "name": "Phosphodiesterase 3A",
+      "uniprot": "Q14432",
+      "notes": "Inhibition raises cardiac cAMP and is linked to inotropic and arrhythmic liability.",
+      "panels": [
+        "safetyscreen44"
+      ]
+    },
+    {
+      "id": "PDE4D",
+      "name": "Phosphodiesterase 4D",
+      "uniprot": "Q08499",
+      "notes": "Inhibition is associated with emesis in preclinical species.",
+      "panels": [
+        "safetyscreen44"
+      ]
+    },
+    {
+      "id": "LCK",
+      "name": "Lymphocyte-specific protein tyrosine kinase (Lck)",
+      "uniprot": "P06239",
+      "chembl": "CHEMBL258",
+      "panels": [
+        "safetyscreen44"
+      ]
+    }
+  ]
+}

@@ -18,6 +18,7 @@ target_include_directories(biocad_modules PUBLIC
 target_link_libraries(biocad_modules PUBLIC
   biocad_contracts
   biocad_data
+  biocad_packs
   biocad_chem
   biocad_core
   biocad_storage

@@ -81,7 +81,7 @@ AppShell::AppShell(Services services) : svc_(services) {
         {"Stability", "Stability",
          "Degradation liabilities (hydrolysis, oxidation, photolysis, thermal, pH) and a shelf-life estimate.", "Predict"},
         {"Absorption", "Absorption / PK",
-         "Permeability, oral bioavailability, brain penetration, and efflux.", "Predict"},
+         "Permeability, oral bioavailability, blood-brain-barrier partition, and efflux.", "Predict"},
         {"Metabolism", "Metabolism (ADMET)",
          "Metabolic routes, risky metabolites, drug interactions, and safety flags (hERG).", "Predict"},
         {"Analog", "Analog Explorer",
@@ -91,15 +91,15 @@ AppShell::AppShell(Services services) : svc_(services) {
         {"Similarity", "Similarity",
          "Structural and pharmacophore similarity to known substances.", "Discover"},
         {"Docking", "Docking",
-         "Predicted binding affinity of the compound against CNS targets.", "Discover"},
+         "Binding-pose scoring of a compound against a selected receptor.", "Discover"},
         {"Workflows", "Workflows",
          "Re-runnable prep to dock pipeline you can watch run live.", "Discover"},
         {"Legal", "Legal Analog",
-         "Substantial-similarity scorecard vs controlled references (illustrative, not legal advice).", "Reference"},
+         "Illustrative only, not legal advice: substantial-similarity scorecard vs controlled references.", "Reference"},
         {"Runs", "Runs",
          "History of analyses with status and summaries.", "Reference"},
         {"Presets", "Presets / Targets",
-         "CNS target presets and reusable analysis configurations.", "Reference"},
+         "Target packs, receptor presets, and reusable analysis configurations.", "Reference"},
         {"Settings", "Settings",
          "AI provider and API keys, GPU mode, and storage paths.", "System"},
     };
@@ -498,12 +498,14 @@ void AppShell::buildAgent() {
             "describe_capabilities",
             "Summarize what BioCAD can and cannot do (its capabilities and its safety scope).",
             schema, [](const json&) -> ToolResult {
-                return {"BioCAD predicts what a CNS-stimulant compound IS and DOES: structure and "
-                        "physicochemical properties, molecular stability, absorption/PK, "
-                        "ADMET/metabolism, target binding affinity (docking), similarity to known "
-                        "substances, and legal-analog scoring. It does NOT and will not provide "
-                        "synthesis routes, reaction conditions, precursors, or manufacturability "
-                        "guidance - that is out of scope by design.",
+                return {"BioCAD is a workstation for molecular, protein, and pharmacological "
+                        "analysis: structure and physicochemical properties, molecular stability, "
+                        "absorption/PK, ADMET/metabolism, binding-pose scoring of a compound "
+                        "against a selected receptor, structural and pharmacophore similarity, "
+                        "legal-analog scoring, and an assistant that drives the UI for you. It "
+                        "does NOT recommend doses, dose changes, or personal regimens, and it does "
+                        "NOT and will not provide synthesis routes, reaction conditions, "
+                        "precursors, or manufacturability guidance - that is out of scope by design.",
                         false};
             }));
     }
@@ -566,7 +568,7 @@ void AppShell::registerAgentServiceTools() {
         registry_->add(std::make_unique<FunctionTool>(
             "analyze_compound",
             "Analyze a compound: identity + physicochemical properties (formula, MW, logP, TPSA, "
-            "HBD/HBA), overall molecular stability, absorption/PK (oral F, HIA, CNS penetration) and "
+            "HBD/HBA), overall molecular stability, absorption/PK (oral F, HIA, BBB partition) and "
             "the overall ADMET verdict. Structure-derived; analysis only.",
             schema, [this](const json& args) -> ToolResult {
                 const auto mo = resolveAgentCompound(args.value("compound", ""));
@@ -612,12 +614,12 @@ void AppShell::registerAgentServiceTools() {
     {
         json props = compoundProp();
         props["target"] = {{"type", "string"},
-                           {"description", "CNS target id or name, e.g. 'DAT', 'SERT', 'TAAR1'."}};
+                           {"description", "Receptor target id or name, e.g. 'DAT', 'SERT', 'TAAR1'."}};
         json schema = {{"type", "object"}, {"properties", props},
                        {"required", json::array({"target"})}};
         registry_->add(std::make_unique<FunctionTool>(
             "dock_compound",
-            "Dock a compound into a CNS target's binding site and return the predicted binding "
+            "Dock a compound into a receptor target's binding site and return the predicted binding "
             "affinity (kcal/mol, more negative = stronger), pose count, and the provenance of the "
             "number: 'model' means a real docking engine produced it, 'heuristic' means it is the "
             "labeled descriptor estimate and is rank-ordering only. Binding affinity is a "
@@ -641,7 +643,7 @@ void AppShell::registerAgentServiceTools() {
     // run_workflow: kick the prep->dock DAG and focus the Workflows panel.
     {
         json props = compoundProp();
-        props["target"] = {{"type", "string"}, {"description", "CNS target id or name (e.g. 'DAT')."}};
+        props["target"] = {{"type", "string"}, {"description", "Receptor target id or name (e.g. 'DAT')."}};
         json schema = {{"type", "object"}, {"properties", props},
                        {"required", json::array({"target"})}};
         registry_->add(std::make_unique<FunctionTool>(
@@ -718,7 +720,7 @@ void AppShell::registerAgentServiceTools() {
         registry_->add(std::make_unique<FunctionTool>(
             "compare_compounds",
             "Compare two or more compounds side by side on physicochemical properties (MW, logP, "
-            "TPSA), molecular stability, oral bioavailability / CNS penetration, and the overall "
+            "TPSA), molecular stability, oral bioavailability / BBB partition, and the overall "
             "ADMET verdict. Use to rank or contrast candidates.",
             schema, [this](const json& args) -> ToolResult {
                 if (!args.contains("compounds") || !args["compounds"].is_array())
