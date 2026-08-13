@@ -228,3 +228,140 @@ TEST_CASE("trapezoid is exact on a line and empty-safe", "[numeric]") {
     REQUIRE(trapezoid({1.0}, {5.0}) == 0.0);
     REQUIRE(trapezoid({}, {}) == 0.0);
 }
+
+// ---------------------------------------------------------------------------
+// Phase 10 prerequisites: the rank guard, robust regression, profile intervals
+// and the model-selection criterion, all in the one fitter rather than a second.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("the SVD guard refuses error bars for an unidentifiable parameter pair", "[numeric]") {
+    // y = (a + b) * x: the data constrain the sum and nothing else, so a Wald
+    // error bar on either parameter alone would be pure fiction.
+    const std::vector<double> xs{1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+    auto evaluate = [&](const std::vector<double>& p, std::vector<double>& r,
+                        std::vector<double>& j) {
+        for (std::size_t i = 0; i < xs.size(); ++i) {
+            r[i] = (p[0] + p[1]) * xs[i] - 3.0 * xs[i];
+            j[i * 2 + 0] = xs[i];
+            j[i * 2 + 1] = xs[i];
+        }
+    };
+
+    const LmResult fit = levenbergMarquardt({0.5, 0.5}, xs.size(), evaluate);
+    REQUIRE_THAT(fit.params[0] + fit.params[1], WithinAbs(3.0, 1e-9));
+    REQUIRE(fit.rank == 1);
+    REQUIRE(fit.standardErrors.empty());
+    REQUIRE(fit.covariance.empty());
+    REQUIRE(fit.note.find("rank 1 of 2") != std::string::npos);
+}
+
+TEST_CASE("a full-rank fit reports its rank, condition number and covariance", "[numeric]") {
+    std::vector<double> xs, ys;
+    for (int i = 0; i < 20; ++i) {
+        xs.push_back(0.1 * i);
+        ys.push_back(2.5 * std::exp(-0.7 * xs.back()));
+    }
+    auto evaluate = [&](const std::vector<double>& p, std::vector<double>& r,
+                        std::vector<double>& j) {
+        for (std::size_t i = 0; i < xs.size(); ++i) {
+            const double e = std::exp(p[1] * xs[i]);
+            r[i] = p[0] * e - ys[i];
+            j[i * 2 + 0] = e;
+            j[i * 2 + 1] = p[0] * xs[i] * e;
+        }
+    };
+
+    const LmResult fit = levenbergMarquardt({1.0, -0.1}, xs.size(), evaluate);
+    REQUIRE_THAT(fit.params[0], WithinAbs(2.5, 1e-9));
+    REQUIRE_THAT(fit.params[1], WithinAbs(-0.7, 1e-9));
+    REQUIRE(fit.rank == 2);
+    REQUIRE(std::isfinite(fit.conditionNumber));
+    REQUIRE(fit.covariance.size() == 4);
+}
+
+TEST_CASE("Tukey-biweight IRLS rejects one ruined point without deleting it", "[numeric]") {
+    std::vector<double> xs, ys;
+    for (int i = 0; i < 21; ++i) {
+        xs.push_back(i);
+        ys.push_back(1.0 + 2.0 * i);
+    }
+    ys[10] = 500.0;  // one ruined well, sitting at the mean of x
+
+    auto evaluate = [&](const std::vector<double>& p, std::vector<double>& r,
+                        std::vector<double>& j) {
+        for (std::size_t i = 0; i < xs.size(); ++i) {
+            r[i] = p[0] + p[1] * xs[i] - ys[i];
+            j[i * 2 + 0] = 1.0;
+            j[i * 2 + 1] = xs[i];
+        }
+    };
+
+    const LmResult ols = levenbergMarquardt({0.0, 1.0}, xs.size(), evaluate);
+    const IrlsResult robust = tukeyBiweight({0.0, 1.0}, xs.size(), evaluate);
+
+    // Least squares absorbs 479/21 = 22.8 of the outlier into the intercept.
+    REQUIRE(std::abs(ols.params[0] - 1.0) > 20.0);
+    REQUIRE_THAT(robust.fit.params[0], WithinAbs(1.0, 1e-6));
+    REQUIRE_THAT(robust.fit.params[1], WithinAbs(2.0, 1e-6));
+    REQUIRE(robust.converged);
+
+    // The outlier is at weight zero, and it is still in the data set: a hollow
+    // marker on the plot, not a deleted row.
+    REQUIRE(robust.robustWeights.size() == xs.size());
+    REQUIRE(robust.robustWeights[10] == 0.0);
+    for (std::size_t i = 0; i < robust.robustWeights.size(); ++i) {
+        if (i != 10) {
+            REQUIRE(robust.robustWeights[i] > 0.9);
+        }
+    }
+}
+
+TEST_CASE("a profile interval brackets the estimate and refuses an untabulated level",
+          "[numeric]") {
+    // Deterministic pseudo-noise: the interval must be a real interval, so the
+    // residual variance cannot be zero.
+    const double noise[20] = {0.03, -0.02, 0.01, 0.04, -0.03, 0.02, -0.01, 0.00,
+                              0.03, -0.04, 0.02, 0.01, -0.02, 0.03, -0.01, 0.02,
+                              -0.03, 0.01, 0.00, -0.02};
+    std::vector<double> xs, ys;
+    for (int i = 0; i < 20; ++i) {
+        xs.push_back(0.1 * i);
+        ys.push_back(2.5 * std::exp(-0.7 * xs.back()) + noise[i]);
+    }
+    auto evaluate = [&](const std::vector<double>& p, std::vector<double>& r,
+                        std::vector<double>& j) {
+        for (std::size_t i = 0; i < xs.size(); ++i) {
+            const double e = std::exp(p[1] * xs[i]);
+            r[i] = p[0] * e - ys[i];
+            j[i * 2 + 0] = e;
+            j[i * 2 + 1] = p[0] * xs[i] * e;
+        }
+    };
+
+    const LmResult fit = levenbergMarquardt({1.0, -0.1}, xs.size(), evaluate);
+    REQUIRE(fit.standardErrors.size() == 2);
+
+    const ProfileInterval pi = profileLikelihood(fit.params, xs.size(), evaluate, 1, 0.95);
+    REQUIRE(pi.lowerFound);
+    REQUIRE(pi.upperFound);
+    REQUIRE(pi.lower < fit.params[1]);
+    REQUIRE(pi.upper > fit.params[1]);
+
+    // This parameter is close enough to linear that the profile and Wald widths
+    // should agree to well within 15%; a large disagreement here would mean the
+    // profile is not profiling.
+    const double wald = 2.0 * 1.959964 * fit.standardErrors[1];
+    REQUIRE(std::abs((pi.upper - pi.lower) / wald - 1.0) < 0.15);
+
+    const ProfileInterval bad = profileLikelihood(fit.params, xs.size(), evaluate, 1, 0.925);
+    REQUIRE_FALSE(bad.lowerFound);
+    REQUIRE(bad.note.find("unsupported confidence level") != std::string::npos);
+}
+
+TEST_CASE("aicc matches its formula and is infinite where the correction is undefined",
+          "[numeric]") {
+    const double expected = 10.0 * std::log(0.1) + 4.0 + 2.0 * 2.0 * 3.0 / 7.0;
+    REQUIRE_THAT(aicc(1.0, 10, 2), WithinAbs(expected, 1e-12));
+    REQUIRE(std::isinf(aicc(1.0, 3, 2)));   // n <= k + 1
+    REQUIRE(std::isinf(aicc(0.0, 10, 2)));  // log(0) is not a model comparison
+}
