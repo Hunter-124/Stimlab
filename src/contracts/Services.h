@@ -26,12 +26,20 @@ struct Services {
     IIonizationModule*  ionization = nullptr;
     INucleicAcidModule* nucleicAcid = nullptr;
     IAssayModule*       assay      = nullptr;
+    IBiologicsModule*   biologics  = nullptr;
+    IPopulationPkModule* populationPk = nullptr;
+    // Phase 14. `flux` stays a nullptr in a build without BIOCAD_ENABLE_FBA and is
+    // deliberately NOT required by valid(): the constraint-based path is an optional
+    // feature, so requiring it would make every default build invalid.
+    ISimulationModule*  simulation = nullptr;
+    IEnrichmentModule*  enrichment = nullptr;
+    IFluxModule*        flux       = nullptr;
 
     [[nodiscard]] bool valid() const {
         return library && stability && admet && absorption &&
                similarity && legal && docking && runs && pharmacodynamics &&
                sequence && structure && metabolismFacts && alerts && ionization &&
-               nucleicAcid && assay;
+               nucleicAcid && assay && biologics && populationPk && simulation && enrichment;
     }
 };
 

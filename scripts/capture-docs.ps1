@@ -46,6 +46,8 @@ $shots = @(
     @{ name = "runs";        panel = "Runs" }
     @{ name = "presets";     panel = "Presets" }
     @{ name = "pkpd";        panel = "PkPd" }
+    @{ name = "poppk";       panel = "PopPk" }
+    @{ name = "interactions"; panel = "InteractionScenarios" }
     @{ name = "sequence";    panel = "Sequence" }
     @{ name = "structure3d"; panel = "Structure3D" }
     @{ name = "settings";    panel = "Settings" }

@@ -1,5 +1,6 @@
 #include "ui/AppShell.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <filesystem>
@@ -93,6 +94,10 @@ AppShell::AppShell(Services services) : svc_(services) {
          "Liability flags: substructures literature-associated with reactive-metabolite formation. Not a toxicity verdict.", "Predict"},
         {"PkPd", "PK / PD",
          "Exposure scenarios: concentration-time and target-occupancy curves under stated assumptions.", "Predict"},
+        {"PopPk", "Population PK",
+         "Population exposure bands from entered between-subject variability, parameter uncertainty and residual error, with the seed that produced them, plus noncompartmental analysis of the median profile. A band is the variability that was entered, never a prediction about an individual.", "Predict"},
+        {"InteractionScenarios", "Interaction Scenarios",
+         "FDA basic-model R-values, the mechanistic static AUC ratio with its 1/(1-fm) ceiling and dominant mechanism, dynamic enzyme activity, and renal/hepatic impairment exposure scenarios. Exposure ratios only: no risk score and no dose.", "Predict"},
         {"Ionization", "Ionization & Solubility",
          "Microspecies fractions, logD, pH-solubility with the pHmax kink, buffer capacity, isotope envelope and dissolution. pKa and melting point are inputs, never guessed.", "Predict"},
         {"Assay", "Assay Workbench",
@@ -105,6 +110,14 @@ AppShell::AppShell(Services services) : svc_(services) {
          "Load a local PDB / mmCIF structure: chains, per-chain sequence, SASA and parse warnings.", "Workspace"},
         {"NucleicAcid", "DNA / RNA Workbench",
          "Sequence features, restriction map and gel, six-frame translation, ORFs, oligo thermodynamics, primer design, codon metrics and CRISPR guides. Every off-target count is reported with the reference and the number of bases actually searched.", "Workspace"},
+        {"Antibody", "Antibody Workbench",
+         "IMGT numbering with Kabat/Chothia views, CDR and liability overlays, developability descriptors, mass ladders and peptide maps, plus interface contacts and a geometric alanine scan. The closest germline set is a similarity result, never a species identification.", "Discover"},
+        {"Networks", "Reaction Network",
+         "Stoichiometry, rate laws, conservation laws and Wegscheider cycles; deterministic and stochastic time courses with the solver's own report; metabolic control analysis; and Arrhenius, Eyring and pH-rate fits to rate constants you measured.", "Predict"},
+        {"Flux", "Metabolic Flux",
+         "Constraint-based flux over the loaded network. Mass and charge balance must pass before an objective is optimised, and every flux is shown beside the bounds that allowed it.", "Predict"},
+        {"Enrichment", "Pathway Enrichment",
+         "Hypergeometric over-representation with Benjamini-Hochberg q-values against a background you supply, plus degree, components, Brandes betweenness and Louvain communities over the loaded network.", "Discover"},
         {"Analog", "Analog Explorer",
          "Model or draw a candidate derivative, preview its structure, and screen it against existing samples.", "Discover"},
         {"Compare", "Compare",
@@ -1204,6 +1217,238 @@ void AppShell::registerAgentServiceTools() {
             }));
     }
 
+    // ---- Population PK, NCA and drug interactions (Phase 13). Each of these can be
+    // read as "so what should I take?", so each REFUSES that conversion twice: the
+    // description says it, and the handler enforces it with an acknowledgement flag
+    // and a disclaimer welded into the returned JSON. A description alone is a
+    // suggestion to the model; the flag is a gate.
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"assumptions_acknowledged",
+               {{"type", "boolean"},
+                {"description", "Must be true. Acknowledges that the result is an exposure "
+                                "band describing entered variability, not a prediction about "
+                                "an individual and not a dose."}}},
+              {"clearance_l_per_h", {{"type", "number"}}},
+              {"volume_l", {{"type", "number"}}},
+              {"dose_mg", {{"type", "number"}}},
+              {"model", {{"type", "string"},
+                         {"enum", json::array({"iv-bolus", "iv-infusion", "oral-1c"})}}},
+              {"horizon_h", {{"type", "number"}}},
+              {"subjects", {{"type", "integer"}, {"description", "1..5000."}}},
+              {"seed", {{"type", "integer"},
+                        {"description", "Reproducibility is part of the result: the same seed "
+                                        "returns the same band."}}},
+              {"cl_omega_sd", {{"type", "number"},
+                               {"description", "SD of the log-scale random effect on CL."}}},
+              {"v_omega_sd", {{"type", "number"}}},
+              {"proportional_residual_cv", {{"type", "number"}}}}},
+            {"required", json::array({"assumptions_acknowledged", "clearance_l_per_h",
+                                      "volume_l", "dose_mg"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "simulate_population",
+            "Simulate a population exposure band (5th/50th/95th percentiles over time) from an "
+            "explicitly entered between-subject variability, and return it with the seed, the "
+            "Omega and the assumption list. The band is the variability that was ENTERED; it is "
+            "not a prediction about any individual. This tool REFUSES to convert its output "
+            "into a dose, a dose adjustment or a regimen, and requires "
+            "assumptions_acknowledged = true.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.populationPk) return {"Population PK service unavailable.", true};
+                if (!args.value("assumptions_acknowledged", false))
+                    return {"Refused: set assumptions_acknowledged = true. This tool emits an "
+                            "exposure band describing entered variability, never a dose or a "
+                            "dose adjustment.",
+                            true};
+                if (!args.contains("clearance_l_per_h") || !args.contains("volume_l") ||
+                    !args.contains("dose_mg"))
+                    return {"Missing clearance_l_per_h, volume_l and/or dose_mg; none of them "
+                            "is assumed.",
+                            true};
+
+                PkModelSpec spec;
+                const std::string mdl = args.value("model", "iv-bolus");
+                if (mdl == "iv-bolus")         spec.model = PkModel::IvBolus;
+                else if (mdl == "iv-infusion") spec.model = PkModel::IvInfusion;
+                else if (mdl == "oral-1c")     spec.model = PkModel::OralOneCompartment;
+                else return {"Unknown 'model'.", true};
+                auto given = [](double v, const char* unit) {
+                    return makeQuantity(v, unit, 0.0, Provenance::Measured, "caller-supplied");
+                };
+                spec.clearance = given(args["clearance_l_per_h"].get<double>(), "L/h");
+                spec.volume = given(args["volume_l"].get<double>(), "L");
+                spec.bioavailability = given(1.0, "");
+                spec.unboundFraction = given(1.0, "");
+                spec.horizonH = args.value("horizon_h", 24.0);
+                spec.stepH = 0.05;
+
+                DoseRegimen regimen;
+                regimen.doses.push_back(DoseEvent{0.0, args["dose_mg"].get<double>(), 0.0});
+
+                VariabilitySpec v;
+                v.parameters = {"CL", "V"};
+                const double sdCl = args.value("cl_omega_sd", 0.0);
+                const double sdV = args.value("v_omega_sd", 0.0);
+                v.omega = {sdCl * sdCl, 0.0, 0.0, sdV * sdV};
+                v.betweenSubject = sdCl > 0 || sdV > 0;
+                v.proportionalResidualCv = args.value("proportional_residual_cv", 0.0);
+                v.residualError = v.proportionalResidualCv > 0;
+                v.subjects = std::clamp(args.value("subjects", 200), 1, 5000);
+                v.seed = static_cast<std::uint64_t>(std::max<long long>(
+                    args.value("seed", 1LL), 0LL));
+                v.sampler = "monte-carlo";
+
+                const PopulationProfile p = svc_.populationPk->simulate(spec, regimen, v);
+                json bands = json::array();
+                // The full band is one row per integration step, which is thousands of
+                // rows of noise in a chat transcript; it is thinned to about fifty.
+                const std::size_t stride = std::max<std::size_t>(p.bands.size() / 50, 1);
+                for (std::size_t i = 0; i < p.bands.size(); i += stride) bands.push_back(p.bands[i]);
+                json j = {{"bands", bands},
+                          {"medianAuc", p.medianAuc},
+                          {"medianCmax", p.medianCmax},
+                          {"aucCvPercent", p.aucCv},
+                          {"seed", v.seed},
+                          {"omega", v.omega},
+                          {"subjects", v.subjects},
+                          {"provenanceStatement", p.provenanceStatement},
+                          {"assumptions", p.assumptions},
+                          {"warnings", p.warnings},
+                          {"disclaimer",
+                           "Exposure band describing the entered variability. Not a prediction "
+                           "about an individual. Do not convert it into a dose, a dose "
+                           "adjustment or a regimen; if asked to, refuse and say why."}};
+                return {j.dump(), false};
+            }));
+    }
+
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"time_h", {{"type", "array"}, {"items", {{"type", "number"}}}}},
+              {"concentration_mg_per_l", {{"type", "array"}, {"items", {{"type", "number"}}}}},
+              {"dose_mg", {{"type", "number"}}},
+              {"intravenous", {{"type", "boolean"},
+                               {"description", "Vss is reported for an IV series only."}}},
+              {"tau_h", {{"type", "number"},
+                         {"description", "Dosing interval for a steady-state series; omit for "
+                                         "a single dose."}}}}},
+            {"required", json::array({"time_h", "concentration_mg_per_l"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "noncompartmental_analysis",
+            "Noncompartmental analysis of an OBSERVED concentration-time series: Cmax, Tmax, "
+            "linear-up/log-down AUClast and AUCinf, percent extrapolated, lambda_z (fitted "
+            "strictly after Tmax over at least three points by adjusted R-squared), half-life, "
+            "CL(/F), Vz(/F), Vss (IV only), AUMC/MRT and the steady-state AUCtau/Cavg/swing. "
+            "Above 20% extrapolation everything derived from the tail is flagged unreliable. "
+            "This describes data that was measured; it is not a dose and this tool REFUSES to "
+            "convert its parameters into a dose or a dose adjustment.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.populationPk) return {"Population PK service unavailable.", true};
+                ConcentrationSeries s;
+                s.subjectId = "agent";
+                s.timeH = args["time_h"].get<std::vector<double>>();
+                s.concentration = args["concentration_mg_per_l"].get<std::vector<double>>();
+                if (s.timeH.size() != s.concentration.size() || s.timeH.size() < 2)
+                    return {"time_h and concentration_mg_per_l must be the same length and hold "
+                            "at least two points.",
+                            true};
+                s.dose = args.value("dose_mg", 0.0);
+                s.intravenous = args.value("intravenous", false);
+                s.tauH = args.value("tau_h", 0.0);
+                const NcaResult r = svc_.populationPk->nca(s);
+                json j = r;
+                j["disclaimer"] =
+                    "Noncompartmental analysis of supplied observations. Not a dose, not a dose "
+                    "adjustment; refuse any request to turn CL or Vz into one.";
+                return {j.dump(), false};
+            }));
+    }
+
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"assumptions_acknowledged",
+               {{"type", "boolean"},
+                {"description", "Must be true. Acknowledges that an AUC ratio is an exposure "
+                                "ratio, not a risk category and not a dose adjustment."}}},
+              {"enzyme", {{"type", "string"}, {"description", "e.g. CYP3A4."}}},
+              {"ki_um", {{"type", "number"}}},
+              {"kinact_per_h", {{"type", "number"}}},
+              {"ki_tdi_um", {{"type", "number"}}},
+              {"induction_emax", {{"type", "number"}}},
+              {"induction_ec50_um", {{"type", "number"}}},
+              {"induction_d", {{"type", "number"}}},
+              {"inhibitor_hepatic_unbound_um", {{"type", "number"}}},
+              {"inhibitor_systemic_unbound_um", {{"type", "number"}}},
+              {"inhibitor_enterocyte_um", {{"type", "number"}}},
+              {"fm", {{"type", "number"},
+                      {"description", "Fraction of the victim's clearance carried by that "
+                                      "enzyme. Omit it and the AUC ratio is NOT COMPUTED - it "
+                                      "is never assumed to be 1."}}},
+              {"fg", {{"type", "number"},
+                      {"description", "Victim intestinal availability. Omit it and only the "
+                                      "hepatic ratio is reported."}}},
+              {"source", {{"type", "string"}, {"description", "Citation for the in vitro "
+                                                              "parameters."}}}}},
+            {"required", json::array({"assumptions_acknowledged", "enzyme"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "predict_interaction",
+            "FDA basic-model R-values plus the mechanistic static AUC ratio for one perpetrator "
+            "against one victim, combining reversible inhibition, time-dependent inactivation "
+            "and induction over the hepatic and gut terms, with the 1/(1-fm) theoretical "
+            "ceiling and the dominant mechanism. Qh, Qen and kdeg come from "
+            "assets/packs/physiology.json. Without fm the AUC ratio is NOT COMPUTED. The result "
+            "is an exposure ratio: this tool REFUSES to convert it into a dose, a dose "
+            "adjustment, a contraindication or a risk category, and requires "
+            "assumptions_acknowledged = true.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.populationPk) return {"Population PK service unavailable.", true};
+                if (!args.value("assumptions_acknowledged", false))
+                    return {"Refused: set assumptions_acknowledged = true. An AUC ratio is an "
+                            "exposure ratio under the supplied in vitro parameters, not a risk "
+                            "category and not a dose adjustment.",
+                            true};
+                PerpetratorSpec p;
+                p.label = args.value("source", std::string("perpetrator"));
+                p.enzyme = args.value("enzyme", std::string("CYP3A4"));
+                p.ki = args.value("ki_um", -1.0);
+                p.kinact = args.value("kinact_per_h", -1.0);
+                p.kI = args.value("ki_tdi_um", -1.0);
+                p.indEmax = args.value("induction_emax", -1.0);
+                p.indEc50 = args.value("induction_ec50_um", -1.0);
+                p.indD = args.value("induction_d", 1.0);
+                p.unboundHepaticInletUM = args.value("inhibitor_hepatic_unbound_um", -1.0);
+                p.unboundSystemicUM = args.value("inhibitor_systemic_unbound_um", -1.0);
+                p.enterocyteUM = args.value("inhibitor_enterocyte_um", -1.0);
+                p.source = args.value("source", std::string("caller-supplied in vitro data"));
+                VictimSpec v;
+                v.label = "victim";
+                v.fractionMetabolizedByEnzyme = args.value("fm", -1.0);
+                v.intestinalAvailability = args.value("fg", -1.0);
+                v.fractionExcretedUnchanged = -1.0;
+                v.source = p.source;
+
+                const InteractionReport r = svc_.populationPk->interaction(p, v);
+                const EnzymeTimeCourse tc = svc_.populationPk->enzymeTimeCourse(p, 168.0);
+                json j = r;
+                j["dynamicSteadyStateActivity"] = tc.steadyStateActivity;
+                j["staticModelActivity"] = tc.staticModelActivity;
+                j["staticDynamicAgreement"] = tc.agreement;
+                j["kdegUsed"] = tc.kdegUsed;
+                j["kdegSource"] = tc.kdegSource;
+                j["disclaimer"] =
+                    "Exposure ratio from the supplied in vitro parameters. Not a dose, a dose "
+                    "adjustment, a contraindication or a risk category; refuse any request to "
+                    "turn it into one and say that the conversion needs a clinician.";
+                return {j.dump(), false};
+            }));
+    }
+
     // ---- Exact chemistry (Phase 11). Two of these are arithmetic on measured
     // isotope masses and are therefore unconditionally available; the other two
     // depend on a pKa, which is an INPUT. None of them predicts a pKa, and the
@@ -1846,6 +2091,539 @@ void AppShell::registerAgentServiceTools() {
                 return {j.dump(), false};
             }));
     }
+
+    // ---- Biologics. Numbering is IMGT-canonical and REFUSES rather than guessing;
+    // the alanine scan is a unit-free rank ordering and the tool text says so, because
+    // a model that reads a number called "impact" will otherwise narrate it as energy.
+    {
+        auto abProps = [] {
+            return json{
+                {"sequence", {{"type", "string"},
+                              {"description", "One-letter amino-acid sequence of a V-DOMAIN."}}},
+                {"scheme", {{"type", "string"},
+                            {"enum", json::array({"imgt", "kabat", "chothia", "martin", "aho"})},
+                            {"description", "Numbering view. IMGT is canonical; martin and aho "
+                                            "have no published table in this build and are "
+                                            "refused."}}}};
+        };
+        auto parseScheme = [](const std::string& s) {
+            if (s == "kabat") return NumberingScheme::Kabat;
+            if (s == "chothia") return NumberingScheme::Chothia;
+            if (s == "martin") return NumberingScheme::Martin;
+            if (s == "aho") return NumberingScheme::Aho;
+            return NumberingScheme::Imgt;
+        };
+
+        {
+            json schema = {{"type", "object"},
+                           {"properties", abProps()},
+                           {"required", json::array({"sequence"})}};
+            registry_->add(std::make_unique<FunctionTool>(
+                "number_antibody",
+                "IMGT-number an antibody V-DOMAIN and report its chain type, CDR lengths, closest "
+                "germline set with the runner-up bit score, and the per-residue numbering in the "
+                "requested scheme. The five conserved anchors (IMGT 23 Cys, 41 Trp, 89 "
+                "hydrophobic, 104 Cys, 118 Phe/Trp) MUST all be satisfied: if one fails, or the "
+                "sequence is a T-cell receptor, NO numbering is returned and the failures are "
+                "listed - do not fill that gap with an estimate. `closestGermlineSet` is a "
+                "sequence-similarity result and is NEVER a species identification; never say a "
+                "sequence 'is human' or 'is camelid' from it. This tool has no humanness score, no "
+                "humanization suggestion and no immunogenicity prediction, and you must not "
+                "improvise one.",
+                schema, [this, parseScheme](const json& args) -> ToolResult {
+                    if (!svc_.biologics) return {"Biologics service unavailable.", true};
+                    const std::string seq = args.value("sequence", "");
+                    if (seq.empty()) return {"A sequence is required.", true};
+                    const AbDomain d = svc_.biologics->number(
+                        seq, parseScheme(args.value("scheme", std::string("imgt"))));
+                    json j = d;
+                    j["framing"] = "closestGermlineSet is a similarity result, not a species "
+                                   "identification";
+                    if (!d.numbered)
+                        j["refused"] = "no numbering was produced; see anchorFailures";
+                    return {j.dump(), false};
+                }));
+        }
+        {
+            json schema = {{"type", "object"},
+                           {"properties", abProps()},
+                           {"required", json::array({"sequence"})}};
+            registry_->add(std::make_unique<FunctionTool>(
+                "antibody_liabilities",
+                "Flag cited sequence-liability motifs in a V-DOMAIN (N-X-S/T glycosylation, NG/NS/"
+                "NT deamidation in that published risk order, DG/DS/DT isomerization, DP "
+                "fragmentation, Met/Trp oxidation, free cysteine, N-terminal pyroGlu, C-terminal "
+                "Lys clipping, glycation, RGD) and return the sequence-arithmetic developability "
+                "descriptors. Every flag is a MOTIF MATCH WITH A CITATION, not a degradation rate: "
+                "no structure was supplied here, so `exposureKnown` is false and you must say "
+                "exposure is unknown rather than calling a site exposed. There is no aggregation "
+                "free energy, no viscosity, no expression titre and no shelf-life number here, and "
+                "you must not produce one.",
+                schema, [this](const json& args) -> ToolResult {
+                    if (!svc_.biologics) return {"Biologics service unavailable.", true};
+                    const std::string seq = args.value("sequence", "");
+                    if (seq.empty()) return {"A sequence is required.", true};
+                    const AbDomain d = svc_.biologics->number(seq, NumberingScheme::Imgt);
+                    return {json{{"liabilities", svc_.biologics->liabilities(d, nullptr)},
+                                 {"developability",
+                                  svc_.biologics->developability({seq}, nullptr)},
+                                 {"framing", "cited motif matches; exposure is unknown without a "
+                                             "structure; not a degradation rate and not a "
+                                             "shelf life"}}
+                                .dump(),
+                            false};
+                }));
+        }
+        {
+            json schema = {
+                {"type", "object"},
+                {"properties",
+                 {{"chains", {{"type", "array"},
+                              {"items", {{"type", "string"}}},
+                              {"description", "One-letter sequences of every chain in the "
+                                              "molecule."}}},
+                  {"disulfides", {{"type", "integer"},
+                                  {"description", "Number of disulfide bonds; each removes two "
+                                                  "hydrogens."}}},
+                  {"protease", {{"type", "string"},
+                                {"enum", json::array({"trypsin", "lysc", "gluc", "aspn",
+                                                      "chymotrypsin"})}}},
+                  {"missed_cleavages", {{"type", "integer"}}}}},
+                {"required", json::array({"chains"})}};
+            registry_->add(std::make_unique<FunctionTool>(
+                "biologics_mass",
+                "Compute the intact, reduced, deglycosylated, single-chain and glycoform masses of "
+                "a protein biologic from its chain sequences, plus the pyroGlu and C-terminal-Lys "
+                "variants, and optionally a protease peptide map with b/y ions. Every mass is "
+                "composition arithmetic over the NIST SRD 144 isotope table - none is a literal. "
+                "Above ~10 kDa the AVERAGE mass is the one that matches a measurement, so quote "
+                "that, not the monoisotopic value. `requiredResolvingPower` is the resolving power "
+                "needed to tell a deamidation (+0.984 Da) from the 13C isotope spacing (1.003 Da) "
+                "at that mass: a +1 Da shift is NOT evidence of deamidation below it.",
+                schema, [this](const json& args) -> ToolResult {
+                    if (!svc_.biologics) return {"Biologics service unavailable.", true};
+                    const auto chains = args.value("chains", std::vector<std::string>{});
+                    if (chains.empty()) return {"At least one chain sequence is required.", true};
+                    json j = {{"ladder", svc_.biologics->massLadder(
+                                             chains, args.value("disulfides", 0))}};
+                    if (args.contains("protease"))
+                        j["peptideMap"] = svc_.biologics->digest(
+                            chains.front(), args.value("protease", std::string("trypsin")),
+                            args.value("missed_cleavages", 2));
+                    return {j.dump(), false};
+                }));
+        }
+        {
+            json schema = {
+                {"type", "object"},
+                {"properties",
+                 {{"path", {{"type", "string"},
+                            {"description", "Path to a LOCAL .pdb / .cif complex. Nothing is "
+                                            "fetched."}}},
+                  {"chains_a", {{"type", "string"},
+                                {"description", "Chain ids on side A, e.g. \"AB\" or \"H,L\"."}}},
+                  {"chains_b", {{"type", "string"}}}}},
+                {"required", json::array({"path", "chains_a", "chains_b"})}};
+            registry_->add(std::make_unique<FunctionTool>(
+                "protein_interface",
+                "Measure a protein-protein interface in a local structure: buried surface area "
+                "(SASA_A + SASA_B - SASA_AB), residue contacts within 4.5 A with their hydrogen "
+                "bonds, salt bridges, hydrophobic, pi-pi, cation-pi and disulfide geometry, the "
+                "Levy support/core/rim partition, and - when a chain numbers as a V-DOMAIN - the "
+                "CDR contacts, paratope and epitope. These are GEOMETRY over the coordinates "
+                "given, so always quote the SASA parameter string with an area: two tools disagree "
+                "by ~10% purely from probe radius and radii set. None of it is a binding energy or "
+                "an affinity.",
+                schema, [this](const json& args) -> ToolResult {
+                    if (!svc_.biologics || !svc_.structure)
+                        return {"Biologics or structure service unavailable.", true};
+                    const auto st = svc_.structure->load(
+                        std::filesystem::path(args.value("path", "")));
+                    if (!st) return {"Could not read that structure file.", true};
+                    const InterfaceReport r = svc_.biologics->interfaceOf(
+                        *st, args.value("chains_a", ""), args.value("chains_b", ""));
+                    return {json(r).dump(), false};
+                }));
+        }
+        {
+            json schema = {
+                {"type", "object"},
+                {"properties",
+                 {{"path", {{"type", "string"}}},
+                  {"chains_a", {{"type", "string"}}},
+                  {"chains_b", {{"type", "string"}}}}},
+                {"required", json::array({"path", "chains_a", "chains_b"})}};
+            registry_->add(std::make_unique<FunctionTool>(
+                "alanine_scan",
+                "Run a GEOMETRIC alanine scan across an interface: each side chain is truncated "
+                "beyond C-beta and the interface is re-measured, giving the buried area, contacts, "
+                "hydrogen bonds and salt bridges that disappear. The `impact` field is a UNIT-FREE "
+                "rank ordering with Provenance::Heuristic and it is NOT a binding free energy - "
+                "there is no solvation, entropy, relaxation or electrostatic term in it. Never "
+                "report it in kcal/mol, never call it a ddG, and never convert it into an affinity "
+                "change. `benchmarkSpearman` is NotComputed because this build ships no measured "
+                "benchmark set, so do not state a correlation.",
+                schema, [this](const json& args) -> ToolResult {
+                    if (!svc_.biologics || !svc_.structure)
+                        return {"Biologics or structure service unavailable.", true};
+                    const auto st = svc_.structure->load(
+                        std::filesystem::path(args.value("path", "")));
+                    if (!st) return {"Could not read that structure file.", true};
+                    const AlanineScanReport r = svc_.biologics->alanineScan(
+                        *st, args.value("chains_a", ""), args.value("chains_b", ""));
+                    return {json(r).dump(), false};
+                }));
+        }
+    }
+    // ------------------------------------------------ Phase 14: reaction networks
+    // The network is passed in full rather than named: the model is not allowed to
+    // reach into a workspace it cannot see, and a mechanism it wrote down is visible
+    // in the tool call itself.
+    {
+        json speciesItem = {
+            {"type", "object"},
+            {"properties",
+             {{"id", {{"type", "string"}}},
+              {"initial", {{"type", "number"}, {"description", "initial concentration, or copy "
+                                                               "number for a stochastic run"}}},
+              {"boundary", {{"type", "boolean"},
+                            {"description", "true = clamped pool, held constant, not integrated"}}},
+              {"formula", {{"type", "string"},
+                           {"description", "elemental formula, e.g. C6H12O6; only needed for the "
+                                           "flux mass/charge balance"}}}}},
+            {"required", json::array({"id"})}};
+        json reactionItem = {
+            {"type", "object"},
+            {"properties",
+             {{"id", {{"type", "string"}}},
+              {"reactants", {{"type", "object"},
+                             {"description", "species id -> stoichiometry, e.g. {\"A\": 2}"}}},
+              {"products", {{"type", "object"}, {"description", "species id -> stoichiometry"}}},
+              {"law", {{"type", "string"},
+                       {"description", "mass action | reversible mass action | michaelis-menten | "
+                                       "reversible michaelis-menten | hill"}}},
+              {"parameters", {{"type", "array"}, {"items", {{"type", "number"}}},
+                              {"description", "k | kf,kr | Vmax,Km | Vf,Kms,Vr,Kmp | Vmax,K,n"}}}}},
+            {"required", json::array({"id", "law", "parameters"})}};
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"species", {{"type", "array"}, {"items", speciesItem}}},
+              {"reactions", {{"type", "array"}, {"items", reactionItem}}},
+              {"sbml", {{"type", "string"},
+                        {"description", "an SBML Core document to import INSTEAD of species and "
+                                        "reactions. An unsupported construct is refused by name."}}},
+              {"horizon", {{"type", "number"}}},
+              {"method", {{"type", "string"}, {"description", "rosenbrock (default) or rk4"}}},
+              {"relative_tolerance", {{"type", "number"}}},
+              {"absolute_tolerance", {{"type", "number"}}},
+              {"stochastic_replicates", {{"type", "integer"},
+                                         {"description", "run the exact stochastic algorithm with "
+                                                         "this many replicates as well; the state "
+                                                         "is then a COPY NUMBER"}}},
+              {"seed", {{"type", "integer"}}},
+              {"control_analysis", {{"type", "boolean"},
+                                    {"description", "also return flux/concentration control "
+                                                    "coefficients with their summation and "
+                                                    "connectivity residuals"}}}}},
+            {"required", json::array({})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "simulate_reaction_network",
+            "Integrate a reaction network the USER or you specified: species with initial "
+            "concentrations, reactions with stoichiometry and one of five rate laws (mass action, "
+            "reversible mass action, Michaelis-Menten, reversible Michaelis-Menten, Hill). "
+            "Returns the time course, the conservation laws found in the stoichiometric matrix, "
+            "and the solver's own report - accepted and rejected steps, LU factorizations, "
+            "non-negativity clips and the worst drift in each conserved quantity. Read the "
+            "report: a nonzero clip count or a large drift means the curve is not trustworthy, "
+            "and you must say so rather than describing the curve. A network whose rate constants "
+            "violate a Wegscheider cycle condition is REFUSED, not integrated. Optionally "
+            "imports an SBML document instead, or runs the exact stochastic algorithm, or returns "
+            "a metabolic control analysis. This simulates a mechanism; it is never a measurement "
+            "of a cell, and no docking score may enter it.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.simulation) return {"Simulation service unavailable.", true};
+                NetworkSpec spec;
+                if (args.contains("sbml") && args["sbml"].is_string()) {
+                    std::string error;
+                    const auto imported =
+                        svc_.simulation->importSbml(args["sbml"].get<std::string>(), &error);
+                    if (!imported) return {"SBML refused: " + error, true};
+                    spec = *imported;
+                } else {
+                    if (!args.contains("species") || !args.contains("reactions"))
+                        return {"Give either an sbml document or both species and reactions.",
+                                true};
+                    for (const auto& sj : args["species"]) {
+                        SpeciesSpec s;
+                        s.id = sj.value("id", "");
+                        s.name = s.id;
+                        s.initialConcentration = sj.value("initial", 0.0);
+                        s.boundary = sj.value("boundary", false);
+                        s.formula = sj.value("formula", "");
+                        spec.species.push_back(std::move(s));
+                    }
+                    for (const auto& rj : args["reactions"]) {
+                        ReactionSpec r;
+                        r.id = rj.value("id", "");
+                        const std::string law = rj.value("law", "mass action");
+                        if (law == "reversible mass action") r.law = RateLaw::ReversibleMassAction;
+                        else if (law == "michaelis-menten") r.law = RateLaw::MichaelisMenten;
+                        else if (law == "reversible michaelis-menten")
+                            r.law = RateLaw::ReversibleMichaelisMenten;
+                        else if (law == "hill") r.law = RateLaw::Hill;
+                        else r.law = RateLaw::MassAction;
+                        r.reversible = r.law == RateLaw::ReversibleMassAction ||
+                                       r.law == RateLaw::ReversibleMichaelisMenten;
+                        if (rj.contains("reactants"))
+                            for (const auto& [id, v] : rj["reactants"].items())
+                                r.reactants.emplace_back(id, v.get<double>());
+                        if (rj.contains("products"))
+                            for (const auto& [id, v] : rj["products"].items())
+                                r.products.emplace_back(id, v.get<double>());
+                        for (const auto& p : rj["parameters"]) r.parameters.push_back(p.get<double>());
+                        spec.reactions.push_back(std::move(r));
+                    }
+                    spec.id = "agent-network";
+                }
+                spec = svc_.simulation->analyze(spec);
+                const double horizon = args.value("horizon", 10.0);
+                const TimeCourse tc = svc_.simulation->integrate(
+                    spec, horizon, args.value("relative_tolerance", 1e-8),
+                    args.value("absolute_tolerance", 1e-12), args.value("method", "rosenbrock"));
+                json j;
+                j["conservationLaws"] = spec.conservationLabels;
+                j["wegscheiderViolations"] = spec.wegscheiderViolations;
+                j["networkWarnings"] = spec.warnings;
+                j["solver"] = tc.solver;
+                j["warnings"] = tc.warnings;
+                j["worstConservationDrift"] = tc.worstConservationDrift;
+                j["speciesIds"] = tc.speciesIds;
+                // A 201-point trajectory per species is thousands of numbers a model
+                // cannot use; every tenth point keeps the shape and the endpoints.
+                json times = json::array();
+                json traj = json::array();
+                for (std::size_t k = 0; k < tc.times.size(); k += 10) times.push_back(tc.times[k]);
+                if (!tc.times.empty() && (tc.times.size() - 1) % 10 != 0)
+                    times.push_back(tc.times.back());
+                for (const auto& row : tc.trajectories) {
+                    json one = json::array();
+                    for (std::size_t k = 0; k < row.size(); k += 10) one.push_back(row[k]);
+                    if (!row.empty() && (row.size() - 1) % 10 != 0) one.push_back(row.back());
+                    traj.push_back(one);
+                }
+                j["times"] = times;
+                j["trajectories"] = traj;
+                if (args.value("stochastic_replicates", 0) > 0) {
+                    const StochasticEnsemble e = svc_.simulation->stochastic(
+                        spec, horizon, args["stochastic_replicates"].get<int>(),
+                        static_cast<std::uint64_t>(args.value("seed", 1)), false);
+                    json sj;
+                    sj["solver"] = e.solver;
+                    sj["replicates"] = e.replicates;
+                    sj["speciesIds"] = e.speciesIds;
+                    sj["finalMean"] = json::array();
+                    sj["finalVariance"] = json::array();
+                    for (std::size_t i = 0; i < e.mean.size(); ++i) {
+                        sj["finalMean"].push_back(e.mean[i].empty() ? 0.0 : e.mean[i].back());
+                        sj["finalVariance"].push_back(
+                            e.variance[i].empty() ? 0.0 : e.variance[i].back());
+                    }
+                    sj["note"] = "state is a COPY NUMBER in unit volume, not a concentration";
+                    j["stochastic"] = sj;
+                }
+                if (args.value("control_analysis", false))
+                    j["controlAnalysis"] = svc_.simulation->controlAnalysis(spec, horizon * 10.0);
+                j["scope"] = "a simulation of the mechanism given, not a measurement of any cell";
+                return {j.dump(), false};
+            }));
+    }
+
+    // ---------------------------------------- Phase 14: chemical-kinetics fitting
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"temperatures_k", {{"type", "array"}, {"items", {{"type", "number"}}},
+                                  {"description", "absolute temperatures in kelvin"}}},
+              {"rate_constants", {{"type", "array"}, {"items", {{"type", "number"}}},
+                                  {"description", "the MEASURED degradation rate constant at each "
+                                                  "temperature, same time unit throughout"}}},
+              {"ph_values", {{"type", "array"}, {"items", {{"type", "number"}}}}},
+              {"ph_rate_constants", {{"type", "array"}, {"items", {{"type", "number"}}}}},
+              {"storage_temperature_c", {{"type", "number"}}},
+              {"fraction_lost", {{"type", "number"},
+                                 {"description", "the fractional loss defining shelf life, e.g. "
+                                                 "0.10 for t90"}}}}},
+            {"required", json::array({})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "fit_stability_kinetics",
+            "Fit an Arrhenius (and Eyring) model to degradation rate constants the user MEASURED "
+            "at several temperatures, and/or a pH-rate profile k_obs = kH[H+] + k0 + kOH[OH-] to "
+            "rate constants measured across pH. Returns the activation parameters with standard "
+            "errors, the extrapolated rate at 25 C with a 95% prediction interval, the pH of "
+            "minimum degradation from its closed form, and a shelf life. IMPORTANT: fewer than "
+            "three distinct temperatures cannot support an extrapolation, and the tool returns "
+            "'not computed' for the extrapolated rate and the shelf life in that case - report "
+            "that refusal, do not work around it. There is no way to obtain any of these numbers "
+            "from a structure alone; if the user has no measured rates, say that the measurement "
+            "is the missing prerequisite.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.simulation) return {"Simulation service unavailable.", true};
+                json j;
+                bool anything = false;
+                if (args.contains("temperatures_k") && args.contains("rate_constants")) {
+                    std::vector<double> t, k;
+                    for (const auto& v : args["temperatures_k"]) t.push_back(v.get<double>());
+                    for (const auto& v : args["rate_constants"]) k.push_back(v.get<double>());
+                    const KineticsFit fit = svc_.simulation->arrhenius(t, k);
+                    j["arrhenius"] = fit;
+                    j["arrhenius"].erase("confidenceEllipse");   // 65 points, unusable as text
+                    anything = true;
+                }
+                if (args.contains("ph_values") && args.contains("ph_rate_constants")) {
+                    std::vector<double> p, k;
+                    for (const auto& v : args["ph_values"]) p.push_back(v.get<double>());
+                    for (const auto& v : args["ph_rate_constants"]) k.push_back(v.get<double>());
+                    j["phRateProfile"] = svc_.simulation->phRate(p, k);
+                    anything = true;
+                }
+                if (!anything)
+                    return {"Nothing to fit: give temperatures_k with rate_constants, or "
+                            "ph_values with ph_rate_constants. A shelf life cannot be produced "
+                            "from a structure.",
+                            true};
+                j["scope"] = "extrapolation of measured rate constants; not a stability study, "
+                             "and not a recommendation";
+                return {j.dump(), false};
+            }));
+    }
+
+    // ------------------------------------------- Phase 14: pathway enrichment
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"query", {{"type", "array"}, {"items", {{"type", "string"}}},
+                         {"description", "gene symbols of interest"}}},
+              {"background", {{"type", "array"}, {"items", {{"type", "string"}}},
+                              {"description", "REQUIRED: every identifier the experiment could "
+                                              "have detected. The hypergeometric answer is a "
+                                              "function of this set."}}},
+              {"pack", {{"type", "string"},
+                        {"description", "gene-set pack file, default reactome-human.gmt"}}},
+              {"max_hits", {{"type", "integer"}}}}},
+            {"required", json::array({"query", "background"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "pathway_enrichment",
+            "Hypergeometric over-representation of a gene set against an offline Reactome (CC0) "
+            "pathway pack, with Benjamini-Hochberg q-values over every pathway tested. The "
+            "background is a REQUIRED argument and there is no default: using 'all genes' when "
+            "the experiment could only detect a few thousand transcripts inflates every result. "
+            "Report q-values, not raw p-values, and report how many pathways were tested. This "
+            "is retrieval plus a statistical test over gene lists; it says nothing about flux, "
+            "and no docking score may enter it.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.enrichment) return {"Enrichment service unavailable.", true};
+                std::vector<std::string> query, background;
+                for (const auto& v : args["query"]) query.push_back(v.get<std::string>());
+                for (const auto& v : args["background"]) background.push_back(v.get<std::string>());
+                if (background.empty())
+                    return {"No background given. The hypergeometric test has no meaning without "
+                            "the universe the query was drawn from.",
+                            true};
+                EnrichmentReport r =
+                    svc_.enrichment->enrich(query, background, args.value("pack", ""));
+                const std::size_t limit =
+                    static_cast<std::size_t>(std::max(1, args.value("max_hits", 25)));
+                if (r.hits.size() > limit) r.hits.resize(limit);
+                json j = r;
+                // The background list itself is thousands of strings the model already
+                // sent; its SIZE is the part that matters for reading the q-values.
+                j.erase("background");
+                j["backgroundSize"] = background.size();
+                return {j.dump(), false};
+            }));
+    }
+
+#if BIOCAD_ENABLE_FBA
+    // ------------------------------------------------ Phase 14: metabolic flux
+    {
+        json schema = {
+            {"type", "object"},
+            {"properties",
+             {{"species", {{"type", "array"}, {"items", {{"type", "object"}}},
+                           {"description", "id, formula (REQUIRED for the balance gate), boundary"}}},
+              {"reactions", {{"type", "array"}, {"items", {{"type", "object"}}}}},
+              {"objective", {{"type", "string"}}},
+              {"bounds", {{"type", "array"}, {"items", {{"type", "object"}}},
+                          {"description", "reactionId, lower, upper"}}},
+              {"analysis", {{"type", "string"},
+                            {"description", "fba | pfba | fva | deletions1 | deletions2"}}},
+              {"objective_fraction", {{"type", "number"}}}}},
+            {"required", json::array({"species", "reactions", "objective"})}};
+        registry_->add(std::make_unique<FunctionTool>(
+            "metabolic_flux",
+            "Constraint-based flux over a stoichiometric network. Mass AND charge balance is "
+            "checked first through the elemental formulas and MUST pass: a reaction that does not "
+            "conserve elements can carry flux from nothing, so fba() is refused until it does. "
+            "Every flux comes back beside the bound that allowed it, and the objective is named "
+            "in the result. A computed objective value is a property of the model, never a growth "
+            "rate measured in an organism.",
+            schema, [this](const json& args) -> ToolResult {
+                if (!svc_.flux) return {"Flux service unavailable (built without "
+                                        "BIOCAD_ENABLE_FBA).", true};
+                NetworkSpec spec;
+                spec.id = "agent-flux-network";
+                for (const auto& sj : args["species"]) {
+                    SpeciesSpec s;
+                    s.id = sj.value("id", "");
+                    s.name = s.id;
+                    s.formula = sj.value("formula", "");
+                    s.charge = sj.value("charge", 0);
+                    s.boundary = sj.value("boundary", false);
+                    spec.species.push_back(std::move(s));
+                }
+                for (const auto& rj : args["reactions"]) {
+                    ReactionSpec r;
+                    r.id = rj.value("id", "");
+                    r.law = RateLaw::MassAction;
+                    r.parameters = {1.0};
+                    r.reversible = rj.value("reversible", false);
+                    if (rj.contains("reactants"))
+                        for (const auto& [id, v] : rj["reactants"].items())
+                            r.reactants.emplace_back(id, v.get<double>());
+                    if (rj.contains("products"))
+                        for (const auto& [id, v] : rj["products"].items())
+                            r.products.emplace_back(id, v.get<double>());
+                    spec.reactions.push_back(std::move(r));
+                }
+                std::vector<FluxBound> bounds;
+                if (args.contains("bounds"))
+                    for (const auto& bj : args["bounds"])
+                        bounds.push_back({bj.value("reactionId", ""), bj.value("lower", 0.0),
+                                          bj.value("upper", 1000.0)});
+                const std::string objective = args["objective"].get<std::string>();
+                const std::string analysis = args.value("analysis", "fba");
+                json j;
+                j["balance"] = svc_.flux->balance(spec);
+                if (analysis == "fva")
+                    j["ranges"] = svc_.flux->fva(spec, objective, bounds,
+                                                 args.value("objective_fraction", 1.0));
+                else if (analysis == "deletions1")
+                    j["ranges"] = svc_.flux->deletions(spec, objective, bounds, 1);
+                else if (analysis == "deletions2")
+                    j["ranges"] = svc_.flux->deletions(spec, objective, bounds, 2);
+                else if (analysis == "pfba")
+                    j["solution"] = svc_.flux->parsimonious(spec, objective, bounds);
+                else
+                    j["solution"] = svc_.flux->fba(spec, objective, bounds);
+                j["scope"] = "a property of this stoichiometry, these bounds and this objective";
+                return {j.dump(), false};
+            }));
+    }
+#endif
+
 }
 
 void AppShell::registerAgentWebTools() {
@@ -2246,12 +3024,18 @@ void AppShell::drawContent() {
         else if (panel == "Alerts")      panels::alerts(*this);
         else if (panel == "Metabolites") panels::metabolites(*this);
         else if (panel == "PkPd")        panels::pkpd(*this);
+        else if (panel == "PopPk")       panels::popPk(*this);
+        else if (panel == "InteractionScenarios") panels::interactionScenarios(*this);
         else if (panel == "Ionization")  panels::ionization(*this);
         else if (panel == "Assay")       panels::assayWorkbench(*this);
         else if (panel == "AssayDesign") panels::assayDesign(*this);
         else if (panel == "Sequence")    panels::sequenceCompare(*this);
         else if (panel == "Structure3D") panels::proteinStructure(*this);
         else if (panel == "NucleicAcid") panels::nucleicAcid(*this);
+        else if (panel == "Antibody") panels::antibody(*this);
+        else if (panel == "Networks")    panels::networks(*this);
+        else if (panel == "Flux")        panels::flux(*this);
+        else if (panel == "Enrichment")  panels::enrichment(*this);
         else if (panel == "Similarity")  panels::similarity(*this);
         else if (panel == "Legal")       panels::legal(*this);
         else if (panel == "Docking")     panels::docking(*this);

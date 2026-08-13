@@ -12,6 +12,7 @@
 
 #include "chem/AdmetModel.h"
 #include "contracts/IDockingBackend.h"
+#include "core/Physiology.h"
 #include "data/Domain.h"
 
 using namespace biocad;
@@ -120,15 +121,19 @@ TEST_CASE("A docking score is never converted into an affinity", "[docking][prov
 TEST_CASE("Hepatic availability follows the well-stirred model", "[chem][pk]") {
     chem::PkLiabilities none;
 
-    // With an explicitly supplied fu.CLint the arithmetic is checkable by hand:
-    // Q_H = 90 L/h, fu.CLint = 30 L/h -> F_H = 90/120 = 0.75, CL_H = 2700/120 = 22.5 L/h.
+    // Q_H is no longer a literal anywhere: it comes from assets/packs/physiology.json,
+    // so the check is written against that value rather than retyping it here. With
+    // fu.CLint = Q_H/3 the model must give F_H = 0.75 and CL_H = Q_H/4 exactly.
+    const double qh = core::physiology().hepaticBloodFlowLPerH;
+    REQUIRE(qh > 0.0);
     chem::HepaticAssumptions measured;
-    measured.unboundIntrinsicClearanceLPerH = 30.0;
+    measured.unboundIntrinsicClearanceLPerH = qh / 3.0;
     measured.clIntMeasured = true;
     const auto p = chem::predictBioavailability(300.0, 2.0, 50.0, 1, none, measured);
     REQUIRE_THAT(p.firstPassSurvival, WithinAbs(0.75, 1e-12));
-    REQUIRE_THAT(p.hepaticClearanceLPerH, WithinAbs(22.5, 1e-12));
+    REQUIRE_THAT(p.hepaticClearanceLPerH, WithinAbs(qh / 4.0, 1e-12));
     REQUIRE(p.clIntMeasured);
+    REQUIRE_THAT(p.hepaticBloodFlowLPerH, WithinAbs(qh, 1e-12));
 
     // A hepatic extraction ratio can never exceed blood flow: CL_H < Q_H always.
     chem::HepaticAssumptions huge;
@@ -151,5 +156,5 @@ TEST_CASE("Hepatic availability follows the well-stirred model", "[chem][pk]") {
     // The rehabilitated model reproduces the old 1/(1+burden) shape exactly, so the
     // rescope changed the units and the honesty, not the ranking.
     REQUIRE_THAT(plain.firstPassSurvival,
-                 WithinAbs(1.0 / (1.0 + plain.unboundIntrinsicClearanceLPerH / 90.0), 1e-12));
+                 WithinAbs(1.0 / (1.0 + plain.unboundIntrinsicClearanceLPerH / qh), 1e-12));
 }

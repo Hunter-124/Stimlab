@@ -19,9 +19,11 @@
 #include "data/Biologics.h"
 #include "data/Domain.h"
 #include "data/Ionization.h"
+#include "data/Mechanism.h"
 #include "data/Nucleic.h"
 #include "data/Population.h"
 #include "data/Systems.h"
+#include "data/Variants.h"
 
 namespace biocad {
 
@@ -495,6 +497,64 @@ public:
                                     const std::vector<std::string>& background,
                                     const std::string& gmtPack) const = 0;
     virtual GraphMetrics graph(const std::vector<NetworkEdge>& edges) const = 0;
+};
+
+// Protein variant analysis and point-mutation modelling.
+//
+// HONESTY SCOPE, permanent: conservation() returns a profile whose `usable` flag
+// is false below a minimum homolog count, and every score carries the alignment
+// it came from. rebuild() returns a constructed side chain with no energy claim.
+// There is no pathogenicity verdict, no binder design and no de novo enzyme
+// entry point, and adding one is out of scope by design.
+class IVariantModule {
+public:
+    virtual ~IVariantModule() = default;
+
+    // `homologs` is whatever the user supplied. The profile reports how many
+    // there were and refuses to be usable below the minimum rather than scoring
+    // five ad-hoc sequences.
+    virtual ConservationProfile conservation(const std::string& query,
+                                             const std::vector<std::string>& homologs) const = 0;
+
+    virtual VariantScore score(const ConservationProfile& profile, int position,
+                               char mutant) const = 0;
+
+    // Point-mutation modelling on a real structure: pick a rotamer from the
+    // backbone-dependent library and repack the neighbourhood by Goldstein
+    // dead-end elimination. Provenance::Model, no energy attached.
+    virtual RotamerRebuild rebuild(const bio::Structure& s, const std::string& chain,
+                                   int residueNumber, char mutant) const = 0;
+};
+
+// Retrieved mechanism of action, off-target panel coverage, pathway context,
+// interaction flags and pharmacogenomic notes.
+//
+// HONESTY SCOPE, permanent: every method here RETRIEVES. A mechanism is never
+// inferred from a docking pose or a fingerprint; a panel screen's headline is the
+// count of targets NOT screened; there is no composite safety score, no
+// cross-target comparison, no pathway impact score, no interaction severity
+// number and no genotype interpretation. With the science feature disabled every
+// method returns its DTO with `networkAvailable = false` and a reason - never a
+// build error and never a fabricated result.
+class IMechanismModule {
+public:
+    virtual ~IMechanismModule() = default;
+
+    virtual MechanismReport mechanisms(const std::string& compoundId) const = 0;
+
+    // Runs the docking module over every target in a pack tagged with `panelId`.
+    // The result reports screened AND unscreened counts; a renderer that shows one
+    // without the other is showing half the answer.
+    virtual PanelScreenReport screenPanel(const Molecule& m,
+                                          const std::string& panelId) const = 0;
+
+    virtual PathwayContext pathways(const std::string& uniprotAccession) const = 0;
+
+    // Interaction flags across an entered set of compounds and supplements. Each
+    // flag is a mechanism with a citation; there is no severity to return.
+    virtual StackReport checkStack(const std::vector<std::string>& memberIds) const = 0;
+
+    virtual PharmacogenomicReport pharmacogenomics(const std::string& compoundId) const = 0;
 };
 
 }  // namespace biocad

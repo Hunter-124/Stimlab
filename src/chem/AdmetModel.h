@@ -12,8 +12,10 @@
 //                   area, H-bond donors and size.
 //   * Bioavailability - F = f_abs x F_H, where F_H is the hepatic availability of
 //                   the well-stirred model, F_H = Q_H / (Q_H + fu.CLint). Q_H is
-//                   adult human hepatic blood flow (90 L/h, an assumption stated
-//                   in the UI). fu.CLint is NOT predictable from structure: it is
+//                   adult human hepatic blood flow, read from
+//                   assets/packs/physiology.json (97 L/h, the same value the
+//                   drug-interaction model uses) and stated as an assumption in
+//                   the UI. fu.CLint is NOT predictable from structure: it is
 //                   an explicit parameter, defaulting to a liability-derived
 //                   ASSUMED value. That default is why catecholamines (catechol
 //                   -> COMT/MAO) read as near-zero F while metabolically robust
@@ -22,14 +24,18 @@
 //   * Stability   - degradation-chemistry rules give an actual predicted pH window
 //                   and temperature ceiling rather than a vague "narrow/broad".
 //
-// Header-only (all functions inline) so it needs no library target and adds no
-// link dependency; it includes only the C++ standard library.
+// All functions are inline, so this adds no source file; it does take one link
+// dependency, on biocad_core, for the physiological constants. That is the price
+// of not hard-coding hepatic blood flow in a second place, and it is worth it: the
+// literal 90 L/h that used to sit below already disagreed with the pack's 97.
 #pragma once
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <string>
+
+#include "core/Physiology.h"
 
 namespace biocad::chem {
 
@@ -59,8 +65,10 @@ inline std::string fmt0(double v) { char b[32]; std::snprintf(b, sizeof b, "%.0f
 // Hepatic disposition assumptions. Nothing here is derivable from a structure, so
 // each field is either a stated assumption or a measurement supplied by the user.
 struct HepaticAssumptions {
-    // Q_H: adult human hepatic blood flow, L/h. A population average, not a patient.
-    double hepaticBloodFlowLPerH = 90.0;
+    // Q_H: adult human hepatic blood flow, L/h, from the physiology pack. A
+    // population average, not a patient. Zero when the pack is missing, which makes
+    // the prediction below report the missing pack instead of inventing a flow.
+    double hepaticBloodFlowLPerH = core::physiology().hepaticBloodFlowLPerH;
     // fu.CLint, L/h: unbound fraction x intrinsic clearance. Negative means
     // "derive an assumed value from the perceived structural liabilities".
     double unboundIntrinsicClearanceLPerH = -1.0;
@@ -75,6 +83,9 @@ struct BioavailabilityPrediction {
     double unboundIntrinsicClearanceLPerH = 0;  // fu.CLint actually used, L/h
     double hepaticClearanceLPerH = 0;           // CL_H = Q_H.fu.CLint / (Q_H + fu.CLint)
     bool   clIntMeasured = false;  // false => the whole result is rank-ordering only
+    // The Q_H actually used, so the rationale quotes the pack's value rather than a
+    // number retyped into a format string.
+    double hepaticBloodFlowLPerH = 0;
     std::string limitingRoute;     // dominant first-pass route (for the rationale)
 };
 
@@ -135,6 +146,17 @@ inline BioavailabilityPrediction predictBioavailability(
     p.hiaPct = absorbedFractionPct(tpsa, hbd, logP, mw);
 
     const double qH = assume.hepaticBloodFlowLPerH;
+    p.hepaticBloodFlowLPerH = qH;
+    if (qH <= 0.0) {
+        // No hepatic blood flow means no well-stirred model. Reporting the missing
+        // pack is the honest answer; falling back to a built-in number would put an
+        // uncited constant back into the one place this model must not have one.
+        p.limitingRoute = "hepatic blood flow unavailable: " + core::physiology().error;
+        p.firstPassSurvival = 0.0;
+        p.hepaticClearanceLPerH = 0.0;
+        p.bioavailabilityPct = 0.0;
+        return p;
+    }
     if (assume.unboundIntrinsicClearanceLPerH >= 0.0) {
         p.unboundIntrinsicClearanceLPerH = assume.unboundIntrinsicClearanceLPerH;
         p.clIntMeasured = assume.clIntMeasured;
@@ -156,7 +178,8 @@ inline BioavailabilityPrediction predictBioavailability(
 inline std::string bioavailabilityRationale(const BioavailabilityPrediction& p) {
     std::string s = "Hepatic availability under the stated assumptions: absorbed fraction (" +
                     fmt0(p.hiaPct) + "%) x F_H (" + fmt0(p.firstPassSurvival * 100.0) +
-                    "%), well-stirred model with Q_H = 90 L/h and fu.CLint = " +
+                    "%), well-stirred model with Q_H = " + fmt0(p.hepaticBloodFlowLPerH) +
+                    " L/h (assets/packs/physiology.json) and fu.CLint = " +
                     fmt1(p.unboundIntrinsicClearanceLPerH) + " L/h";
     s += p.clIntMeasured ? " (measured)." : " (ASSUMED from structural liabilities - "
                                             "rank ordering only, not a percentage to quote).";
@@ -214,80 +237,24 @@ inline constexpr double kRtLn10At300K = 1.37;
 inline double deltaGFromPActivity(double pActivity) { return -kRtLn10At300K * pActivity; }
 
 // ---------------------------------------------------------------------------
-// pH stability window
-// ---------------------------------------------------------------------------
-struct PhWindow {
-    double low = 2.0;
-    double high = 10.0;
-    double optimal = 6.0;
-    std::string mechanism = "no acid/base- or oxidation-labile groups; broad stable window.";
-};
-
-inline PhWindow predictPhWindow(const PkLiabilities& L) {
-    PhWindow w;
-    std::string why;
-    bool labile = false;
-    auto add = [&](double lo, double hi, const char* reason) {
-        w.low = std::max(w.low, lo);
-        w.high = std::min(w.high, hi);
-        if (!why.empty()) why += " ";
-        why += reason;
-        labile = true;
-    };
-    if (L.ester)        add(3.0, 6.0, "ester hydrolysis is acid- and base-catalysed (slowest mildly acidic).");
-    if (L.catechol)     add(2.0, 5.0, "catechol auto-oxidation accelerates above ~pH 5 (keep acidic, exclude air/light).");
-    else if (L.phenol)  add(3.0, 8.0, "phenol oxidation/ionisation accelerates above ~pH 8.");
-    if (L.arylKetone)   add(3.0, 7.0, "alpha-keto enolisation/condensation is base-catalysed.");
-    if (L.amide && !labile) add(3.0, 9.0, "amide hydrolyses only at pH extremes.");
-
-    if (w.high < w.low + 1.0) w.high = w.low + 1.0;  // keep a sane minimum width
-    w.optimal = labile ? (w.low + 0.30 * (w.high - w.low)) : 0.5 * (w.low + w.high);
-    if (labile) w.mechanism = why;
-    return w;
-}
-
-inline std::string phWindowText(const PhWindow& w) {
-    return "Predicted stable window pH " + fmt1(w.low) + "-" + fmt1(w.high) +
-           " (optimal ~pH " + fmt1(w.optimal) + "); " + w.mechanism;
-}
-
-// ---------------------------------------------------------------------------
-// Temperature stability window
-// ---------------------------------------------------------------------------
-struct ThermalWindow {
-    double stableToC = 40.0;    // accelerated-stability ceiling (~ICH 40C/75%RH)
-    double storeBelowC = 25.0;  // recommended storage temperature
-    bool refrigerate = false;
-    std::string mechanism = "thermally robust scaffold; no low-barrier degradation route.";
-};
-
-inline ThermalWindow predictThermalWindow(const PkLiabilities& L) {
-    ThermalWindow t;
-    std::string why;
-    bool any = false;
-    auto cap = [&](double toC, double storeC, bool fridge, const char* reason) {
-        t.stableToC = std::min(t.stableToC, toC);
-        t.storeBelowC = std::min(t.storeBelowC, storeC);
-        if (fridge) t.refrigerate = true;
-        if (!why.empty()) why += " ";
-        why += reason;
-        any = true;
-    };
-    if (L.ester)        cap(30.0, 25.0, false, "ester hydrolysis accelerates with heat and humidity.");
-    if (L.arylKetone)   cap(30.0, 25.0, false, "beta-keto condensation is thermally driven.");
-    if (L.catechol)     cap(25.0,  8.0, true,  "catechol auto-oxidation is strongly temperature-dependent.");
-    else if (L.phenol)  cap(35.0, 25.0, false, "phenol oxidation is mildly temperature-sensitive.");
-
-    if (any) t.mechanism = why;
-    return t;
-}
-
-inline std::string thermalWindowText(const ThermalWindow& t) {
-    std::string s = "Predicted stable to ~" + fmt0(t.stableToC) + "C; store below ~" +
-                    fmt0(t.storeBelowC) + "C";
-    if (t.refrigerate) s += " (refrigerate)";
-    s += "; " + t.mechanism;
-    return s;
-}
+// STABILITY WINDOWS WERE DELETED HERE - Phase 14.
+//
+// This file used to carry predictPhWindow(), predictThermalWindow() and a
+// shelf-life bucket. They worked by adding invented interval bounds per perceived
+// functional group ("ester: 3.0-6.0", "catechol: 2.0-5.0"), averaging five 0-100
+// flag counts, and mapping the average onto one of four strings such as
+// "~24 months @ 25C/60%RH". Every number in that chain was authored, not measured
+// or derived, and the output looked exactly like a stability study.
+//
+// A pH window, a temperature ceiling and a shelf life are extrapolations of MEASURED
+// degradation rate constants. There is no structure-only predictor of any of them.
+// They now live in sim::arrhenius(), sim::eyring(), sim::phRate() and
+// sim::shelfLife(), which take the user's rate data, refuse to extrapolate from
+// fewer than three temperatures, and carry a prediction interval. With no data,
+// StabilityReport::shelfLife is notComputed("...") and the panel says which
+// measurement is missing.
+//
+// Do not reintroduce a group-count stability window here. If a caller needs one
+// without data, the correct answer is that it does not exist.
 
 }  // namespace biocad::chem

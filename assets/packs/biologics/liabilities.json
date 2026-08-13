@@ -1,0 +1,141 @@
+{
+ "schemaVersion": 1,
+ "id": "biologics-liabilities",
+ "title": "Sequence liability motifs for antibodies and protein biologics",
+ "notes": [
+  "Every rule is a MOTIF MATCH with a citation. A match is a site to look at, never a verdict:",
+  "the rate of any of these reactions depends on local structure, formulation pH, excipients and",
+  "temperature, none of which a sequence contains.",
+  "The deamidation rules are ordered by their published relative rate (NG fastest, then NS, then",
+  "NT) and that order is the only ranking this pack asserts. `risk` is a rank index, not a rate.",
+  "Exposure weighting is applied ONLY when a structure is supplied: without one, exposureKnown is",
+  "false and the flag says exposure is unknown rather than assuming the site is on the surface."
+ ],
+ "rules": [
+  {
+   "ruleId": "nglyc",
+   "motif": "N-X-S/T",
+   "label": "N-linked glycosylation sequon (N-X-S/T, X != P)",
+   "pattern": "N[^P][ST]",
+   "risk": 1,
+   "citation": "Gavel Y, von Heijne G. Sequence differences between glycosylated and non-glycosylated Asn-X-Thr/Ser acceptor sites. Protein Eng 3:433-442 (1990). Proline at X blocks transfer."
+  },
+  {
+   "ruleId": "deamid-ng",
+   "motif": "NG",
+   "label": "Asn deamidation, fastest published sequence context (N-G)",
+   "pattern": "NG",
+   "risk": 1,
+   "citation": "Robinson NE, Robinson AB. Molecular clocks: deamidation of asparaginyl and glutaminyl residues in peptides and proteins. PNAS 98:944-949 (2001); Asn-Gly is the fastest of the 20 C-terminal-neighbour contexts."
+  },
+  {
+   "ruleId": "deamid-ns",
+   "motif": "NS",
+   "label": "Asn deamidation, intermediate published context (N-S)",
+   "pattern": "NS",
+   "risk": 2,
+   "citation": "Robinson NE, Robinson AB. PNAS 98:944-949 (2001); Asn-Ser deamidates more slowly than Asn-Gly and faster than Asn-Thr."
+  },
+  {
+   "ruleId": "deamid-nt",
+   "motif": "NT",
+   "label": "Asn deamidation, slower published context (N-T)",
+   "pattern": "NT",
+   "risk": 3,
+   "citation": "Robinson NE, Robinson AB. PNAS 98:944-949 (2001); the beta-branched Thr neighbour slows succinimide formation."
+  },
+  {
+   "ruleId": "isomer-dg",
+   "motif": "DG",
+   "label": "Asp isomerization / succinimide (D-G)",
+   "pattern": "DG",
+   "risk": 1,
+   "citation": "Wakankar AA, Borchardt RT. Formulation considerations for proteins susceptible to asparagine deamidation and aspartate isomerization. J Pharm Sci 95:2321-2336 (2006)."
+  },
+  {
+   "ruleId": "isomer-ds",
+   "motif": "DS",
+   "label": "Asp isomerization / succinimide (D-S)",
+   "pattern": "DS",
+   "risk": 2,
+   "citation": "Wakankar AA, Borchardt RT. J Pharm Sci 95:2321-2336 (2006)."
+  },
+  {
+   "ruleId": "isomer-dt",
+   "motif": "DT",
+   "label": "Asp isomerization / succinimide (D-T)",
+   "pattern": "DT",
+   "risk": 3,
+   "citation": "Wakankar AA, Borchardt RT. J Pharm Sci 95:2321-2336 (2006)."
+  },
+  {
+   "ruleId": "cleave-dp",
+   "motif": "DP",
+   "label": "Acid-labile Asp-Pro peptide bond (fragmentation)",
+   "pattern": "DP",
+   "risk": 2,
+   "citation": "Vlasak J, Ionescu R. Fragmentation of monoclonal antibodies. mAbs 3:253-263 (2011); the Asp-Pro bond is the classic acid-labile site."
+  },
+  {
+   "ruleId": "oxid-met",
+   "motif": "M",
+   "label": "Methionine oxidation (solvent-exposed Met)",
+   "pattern": "M",
+   "risk": 2,
+   "requiresExposure": true,
+   "citation": "Chumsae C et al. Comparison of methionine oxidation in thermal stability and chemically stressed samples of a fully human monoclonal antibody. J Chromatogr B 850:285-294 (2007)."
+  },
+  {
+   "ruleId": "oxid-trp",
+   "motif": "W",
+   "label": "Tryptophan oxidation (solvent-exposed Trp)",
+   "pattern": "W",
+   "risk": 2,
+   "requiresExposure": true,
+   "citation": "Hensel M et al. Identification of potential sites for tryptophan oxidation in recombinant antibodies. PLoS ONE 6:e17708 (2011)."
+  },
+  {
+   "ruleId": "free-cys",
+   "motif": "free C",
+   "label": "Unpaired cysteine (odd cysteine count in the domain)",
+   "pattern": "C",
+   "risk": 1,
+   "oddCountOnly": true,
+   "citation": "Zhang W, Czupryn MJ. Free sulfhydryl in recombinant monoclonal antibodies. Biotechnol Prog 18:509-513 (2002)."
+  },
+  {
+   "ruleId": "nterm-pyroglu",
+   "motif": "N-terminal E/Q",
+   "label": "N-terminal Glu/Gln, pyroglutamate formation (-17.0265 Da from Gln, -18.0106 from Glu)",
+   "pattern": "^[EQ]",
+   "risk": 3,
+   "citation": "Liu YD et al. N-terminal glutamate to pyroglutamate conversion in vivo for human IgG2 antibodies. J Biol Chem 286:11211-11217 (2011)."
+  },
+  {
+   "ruleId": "cterm-lys",
+   "motif": "C-terminal K",
+   "label": "C-terminal lysine clipping (heavy-chain charge heterogeneity)",
+   "pattern": "K$",
+   "risk": 3,
+   "citation": "Dick LW et al. C-terminal lysine variants in fully human monoclonal antibodies. Biotechnol Bioeng 100:1132-1143 (2008)."
+  },
+  {
+   "ruleId": "glycation",
+   "motif": "KE / KD",
+   "label": "Lysine glycation motif (Lys next to an acidic residue)",
+   "pattern": "K[ED]",
+   "risk": 3,
+   "citation": "Quan C et al. A study in glycation of a therapeutic recombinant humanized monoclonal antibody. Anal Biochem 373:179-191 (2008)."
+  },
+  {
+   "ruleId": "rgd",
+   "motif": "RGD",
+   "label": "RGD integrin-binding motif",
+   "pattern": "RGD",
+   "risk": 2,
+   "citation": "Ruoslahti E. RGD and other recognition sequences for integrins. Annu Rev Cell Dev Biol 12:697-715 (1996)."
+  }
+ ],
+ "exposureThreshold": 0.20,
+ "exposureNote": "Relative side-chain accessibility above this fraction of the Tien et al. 2013 theoretical maximum counts as exposed. It is a display threshold, not a rate."
+}

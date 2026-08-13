@@ -14,6 +14,9 @@
 #include "chem/Smiles.h"
 #include "modules/AlertsModule.h"
 #include "modules/AssayModule.h"
+#include "modules/SimulationModule.h"
+#include "modules/BiologicsModule.h"
+#include "modules/PopulationPkModule.h"
 #include "modules/BioModules.h"
 #include "modules/IonizationModule.h"
 #include "modules/Metabolites.h"
@@ -78,19 +81,6 @@ StabilityReport realStability(const Molecule& m) {
     const double thermal = f.arylKetone ? 66.0 : (f.ester ? 72.0 : 88.0);
     const double phStab = (f.ester || f.arylKetone || f.catechol) ? 58.0 : 80.0;
 
-    // Predicted, numeric stability ranges (not just a "narrow/broad" word): the
-    // degradation chemistry of the perceived groups sets an actual pH window and
-    // temperature ceiling, which we surface in the rationale text below.
-    chem::PkLiabilities sl;
-    sl.catechol = f.catechol;
-    sl.phenol = f.phenol;
-    sl.ester = f.ester;
-    sl.amide = f.amide;
-    sl.arylKetone = f.arylKetone;
-    sl.methylenedioxy = f.methylenedioxy;
-    const auto ph = chem::predictPhWindow(sl);
-    const auto th = chem::predictThermalWindow(sl);
-
     r.factors = {
         {"Hydrolysis resistance", hydrolysis,
          f.ester ? "Ester detected - susceptible to acid/base/enzymatic hydrolysis."
@@ -98,12 +88,29 @@ StabilityReport realStability(const Molecule& m) {
                             : "No hydrolyzable ester; resistant.")},
         {"Oxidation resistance", oxidation,
          f.catechol ? "Catechol - rapid autoxidation to ortho-quinone."
-                    : (f.phenol ? "Phenol - moderate oxidative liability." : "Few oxidation-prone motifs.")},
+                    : (f.phenol ? "Phenol - moderate oxidative liability."
+                                : "Few oxidation-prone motifs.")},
         {"Photostability", photolysis,
          (f.catechol || f.arylKetone) ? "Chromophore/carbonyl - photodegradation risk."
                                       : "No strong photolabile chromophore."},
-        {"Thermal stability (range)", thermal, chem::thermalWindowText(th)},
-        {"pH stability (range)", phStab, chem::phWindowText(ph)},
+        // The two rows that used to print a numeric pH window and temperature ceiling
+        // now print the MECHANISM only. The windows were built from invented per-group
+        // interval bounds, and no structure-only model produces either number; the
+        // Networks panel fits them from the user's own rate data instead.
+        {"Thermal stability", thermal,
+         f.arylKetone ? "Beta-keto condensation is thermally driven; rank ordering only - a "
+                        "temperature ceiling requires measured rates at three or more "
+                        "temperatures."
+                      : (f.ester ? "Ester hydrolysis accelerates with heat and humidity; rank "
+                                   "ordering only."
+                                 : "No low-barrier thermal degradation route perceived; rank "
+                                   "ordering only.")},
+        {"pH stability", phStab,
+         (f.ester || f.arylKetone || f.catechol)
+             ? "Acid/base- or oxidation-labile group present; a pH-rate profile (kH, k0, kOH) "
+               "and its minimum require measured rate constants across pH."
+             : "No acid/base- or oxidation-labile group perceived; a pH window still requires "
+               "measured rates."},
     };
     double sum = 0;
     for (const auto& x : r.factors) sum += x.score;
@@ -119,21 +126,20 @@ StabilityReport realStability(const Molecule& m) {
                                               "Condensation under heat."});
     if (r.degradants.empty()) r.degradants.push_back({"N-oxide (minor)", "N-oxidation", "Trace."});
 
-    const std::string store = th.refrigerate
-        ? ("<=" + chem::fmt0(th.storeBelowC) + "C, dark")
-        : (chem::fmt0(th.storeBelowC) + "C/60%RH");
-    const std::string months = r.overallScore >= 85 ? "~36 months"
-                             : r.overallScore >= 70 ? "~24 months"
-                             : r.overallScore >= 55 ? "~12 months"
-                                                    : "~6 months";
-    r.shelfLifeEstimate = months + " @ " + store;
+    // A shelf life is an extrapolation of measured degradation rate constants. There
+    // is no structure-only predictor of one, so with no data this is notComputed and
+    // names the measurement that would produce it.
+    r.shelfLife = notComputed(
+        "measured degradation rate constants at three or more temperatures (enter them in the "
+        "Reaction Network panel's kinetics tab for an Arrhenius extrapolation with a prediction "
+        "interval)");
 
     r.summary = "Overall stability " + std::to_string(static_cast<int>(r.overallScore)) +
-                "/100. Limiting factor: " +
+                "/100 - a RANK ORDERING with no units, not a stability study. Limiting factor: " +
                 (f.ester ? "ester hydrolysis." : (f.catechol ? "catechol oxidation."
                           : (f.arylKetone ? "carbonyl reactivity." : "none major."))) +
-                " Predicted stable pH " + chem::fmt1(ph.low) + "-" + chem::fmt1(ph.high) +
-                ", to ~" + chem::fmt0(th.stableToC) + "C (store " + store + ").";
+                " A pH window, a temperature ceiling and a shelf life all require measured "
+                "degradation rates and are reported as not computed until you supply them.";
     return r;
 }
 
@@ -485,6 +491,24 @@ struct RealBackend::Impl {
     // and prospective design simulation. Raw wells stay Measured, fitted parameters
     // are Model, and the design report's headline is empirical CI coverage.
     RealAssay assay;
+    // Reaction networks, chemical kinetics and SBML. Its refusals are the interesting
+    // part: a saturable rate law never enters the stochastic algorithm, and a
+    // thermodynamically inconsistent cycle is never integrated.
+    RealSimulation simulation;
+    // Pathway over-representation and graph topology. The background is a required
+    // argument, and an edge with no evidence never becomes a degree.
+    RealEnrichment enrichment;
+#if BIOCAD_ENABLE_FBA
+    // Constraint-based flux, only in a BIOCAD_ENABLE_FBA build. balance() gates fba().
+    RealFlux flux;
+#endif
+    // Population PK, NCA and mechanistic drug interactions. Every band it returns
+    // carries the seed that produced it, and no path through it can emit a dose.
+    RealPopulationPk populationPk;
+    // Antibody numbering, sequence liabilities, mass ladders and interface geometry.
+    // A failed IMGT anchor returns NO numbering here, and the alanine scan is a
+    // unit-free rank ordering rather than a binding energy.
+    RealBiologics biologics;
 };
 
 RealBackend::RealBackend() : impl_(std::make_unique<Impl>()) {}
@@ -508,6 +532,13 @@ Services RealBackend::services() {
     s.ionization = &impl_->ionization;
     s.nucleicAcid = &impl_->nucleicAcid;
     s.assay = &impl_->assay;
+    s.simulation = &impl_->simulation;
+    s.enrichment = &impl_->enrichment;
+#if BIOCAD_ENABLE_FBA
+    s.flux = &impl_->flux;
+#endif
+    s.populationPk = &impl_->populationPk;
+    s.biologics = &impl_->biologics;
     return s;
 }
 

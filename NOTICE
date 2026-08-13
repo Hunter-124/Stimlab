@@ -10,10 +10,14 @@ component. Data sources are either referenced by a URL in the source or cited
 inside `assets/packs/**/*.json`. Two third-party *data* files are redistributed
 here in transcribed form - the Wildman-Crippen atom-class parameter table in
 `assets/packs/descriptors/crippen.json`, taken from RDKit's BSD-3-Clause
-`Data/Crippen.txt`, and the NIST SRD 144 isotope table in
-`assets/packs/descriptors/isotopes.json`, a US Government public-domain work -
-and both are covered in section 4a below. Only the first carries a licence
-obligation. No other third-party dataset is redistributed.
+`Data/Crippen.txt`; the NIST SRD 144 isotope table in
+`assets/packs/descriptors/isotopes.json`, a US Government public-domain work; the
+CC BY 4.0 IMGT reference sequences and numbering-correspondence tables in
+`assets/packs/biologics/imgt-reference.json` and
+`assets/packs/biologics/scheme-maps.json`; and the BSD-3-Clause Biopython
+amino-acid scales in `assets/packs/biologics/descriptors.json` - all of which are
+covered in section 4a below. Only the NIST table is obligation-free. No other
+third-party dataset is redistributed.
 
 
 1. Build-time library dependencies (vcpkg.json)
@@ -91,6 +95,8 @@ file rather than authored here:
 | Component | Licence | Where | Obligation |
 |-----------|---------|-------|------------|
 | RDKit `Data/Crippen.txt` - the SMARTS encodings and the logP / molar-refractivity parameter columns of the Wildman-Crippen atom-class table | **BSD-3-Clause**, Copyright (C) 2002-2012 Greg Landrum and Rational Discovery LLC | transcribed into the 106 `classes` entries of `assets/packs/descriptors/crippen.json` (`sourceNote` field records this), consumed by `src/chem/Crippen.cpp` | BSD-3-Clause requires the copyright notice, the licence text and the disclaimer to be reproduced in redistributions **including binary and data redistribution**. Ship the RDKit BSD-3 licence text with any BioCAD distribution that contains this pack, and keep the `sourceNote` field intact |
+| IMGT/GENE-DB reference V-REGION and J-REGION amino-acid sequences (IMGT-gapped), plus the IMGT-to-Kabat/Chothia numbering correspondence chart | **CC BY 4.0**, (C) 1995-2026 IMGT(R), the international ImMunoGeneTics information system(R), Institute of Human Genetics - IGH (Universite de Montpellier and CNRS). The imgt.org terms-of-use page states verbatim: "The IMGT(R) data are provided to both public and private users under the CC BY-4.0 license." | `assets/packs/biologics/imgt-reference.json` (550 functional V alleles and 44 J genes, retrieved from GENElect query 7.3 on 2026-08-13) and `assets/packs/biologics/scheme-maps.json` (transcribed from the IMGT Scientific chart numbering-correspondence table), consumed by `src/bio/Imgt.cpp` | CC BY 4.0 requires attribution and a statement of changes. The attribution, the retrieval date and the licence sentence are stored in the `source`, `retrieved`, `licence` and `citation` fields of both packs and must stay intact; the change made is mechanical reformatting of the FASTA and HTML into JSON. Cite Lefranc M-P et al., Dev Comp Immunol 27:55-77 (2003), PMID 12477501, for the unique numbering |
+| Biopython amino-acid scale tables: the Kyte-Doolittle hydropathy scale, the Guruprasad dipeptide instability weight matrix (DIWV) and the Bjellqvist pKa sets | **BSD-3-Clause**, Copyright the Biopython Contributors (`Bio/SeqUtils/ProtParamData.py`, `Bio/SeqUtils/IsoelectricPoint.py`) | transcribed into `assets/packs/biologics/descriptors.json`, consumed by `src/bio/Liabilities.cpp` | BSD-3-Clause requires the copyright notice, the licence text and the disclaimer to be reproduced in redistributions including data redistribution. Ship the Biopython BSD-3 licence text with any distribution containing this pack and keep the pack's `source` and `licence` fields intact. The underlying scales are cited to their primary papers in the pack's `citations` block |
 
 Deliberately **not** shipped, for licence reasons recorded in the `notice` field
 of `assets/packs/rules/alerts-bioactivation.json`: the PAINS (Baell & Holloway),
@@ -127,8 +133,9 @@ source for every number.
 
 Attribution and share-alike summary: the weak-copyleft *code* obligation is
 Eigen's MPL-2.0. The one third-party *data* licence actually shipped is
-BSD-3-Clause, on the transcribed Crippen parameter table (section 4a) - its
-notice must travel with any distribution. The share-alike *data* obligation that
+BSD-3-Clause, on the transcribed Crippen parameter table and on the Biopython
+amino-acid scales, plus CC BY 4.0 on the transcribed IMGT reference and numbering
+correspondence (all section 4a) - each notice must travel with any distribution. The share-alike *data* obligation that
 can attach is ChEMBL's CC BY-SA 3.0, which today applies to identifiers only.
 UniProt (CC BY 4.0) and the curl licence carry attribution obligations.
 Everything else above is permissive, public domain, cited rather than copied, or

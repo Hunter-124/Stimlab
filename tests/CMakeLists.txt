@@ -26,6 +26,9 @@ add_executable(biocad_tests
   test_pkpd_fits.cpp
   test_numeric.cpp
   test_pkpd_engine.cpp
+  test_sim_random.cpp
+  test_sim_nca.cpp
+  test_sim_ddi.cpp
   test_bio_score.cpp
   test_bio_align.cpp
   test_bio_io.cpp
@@ -42,6 +45,13 @@ add_executable(biocad_tests
   test_assay_qc.cpp
   test_assay_module.cpp
   test_assay_biophysics.cpp
+  test_network.cpp
+  test_kinetics.cpp
+  test_sbml.cpp
+  test_enrichment.cpp
+  test_biologics_numbering.cpp
+  test_biologics_mass.cpp
+  test_biologics_interface.cpp
 )
 
 target_link_libraries(biocad_tests PRIVATE
@@ -51,6 +61,7 @@ target_link_libraries(biocad_tests PRIVATE
   biocad_numeric
   biocad_bio
   biocad_pkpd
+  biocad_sim
   biocad_assay
   biocad_packs
   biocad_chem

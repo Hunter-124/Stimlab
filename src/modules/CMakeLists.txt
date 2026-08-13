@@ -8,6 +8,9 @@ add_library(biocad_modules STATIC
   IonizationModule.cpp
   NucleicModule.cpp
   AssayModule.cpp
+  SimulationModule.cpp
+  BiologicsModule.cpp
+  PopulationPkModule.cpp
   docking/Presets.cpp
   docking/PdbqtWriter.cpp
   docking/VinaParser.cpp
@@ -30,6 +33,7 @@ target_link_libraries(biocad_modules PUBLIC
   biocad_chem
   biocad_core
   biocad_pkpd
+  biocad_sim
   biocad_storage
   biocad_workflow
 )

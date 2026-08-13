@@ -11,11 +11,15 @@ add_library(biocad_bio STATIC
   Restriction.cpp
   OligoThermo.cpp
   Codon.cpp
+  Imgt.cpp
+  Liabilities.cpp
+  Interface.cpp
 )
 
 target_include_directories(biocad_bio PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 target_link_libraries(biocad_bio PUBLIC
+  biocad_chem
   biocad_data
   biocad_core
   Eigen3::Eigen

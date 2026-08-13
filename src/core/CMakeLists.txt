@@ -6,6 +6,7 @@ add_library(biocad_core STATIC
   Config.cpp
   Secrets.cpp
   Manifest.cpp
+  Physiology.cpp
 )
 
 target_include_directories(biocad_core PUBLIC

@@ -125,13 +125,19 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Degradant, name, pathway, note)
 struct StabilityReport {
     std::string moleculeId;
     double      overallScore = 0;          // 0..100
-    std::string shelfLifeEstimate;          // human-readable, e.g. "~24 months @ 25C/60%RH"
+    // Time to a stated fractional loss at a stated temperature, extrapolated from
+    // MEASURED degradation rate constants at three or more temperatures. With no such
+    // data this is notComputed("...") naming the missing measurement. It replaced a
+    // std::string that mapped a functional-group flag count onto one of four
+    // human-readable buckets ("~24 months @ 25C/60%RH"), which read like a stability
+    // study and contained no measurement at all. The JSON key changed with it.
+    Quantity    shelfLife;
     std::vector<StabilityFactor> factors;
     std::vector<Degradant>       degradants;
     std::string summary;
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(StabilityReport, moleculeId, overallScore,
-                                   shelfLifeEstimate, factors, degradants, summary)
+                                   shelfLife, factors, degradants, summary)
 
 // ---------------------------------------------------------------------------
 // ADMET / metabolism - "what the body does to the drug" (D, M, E, T).

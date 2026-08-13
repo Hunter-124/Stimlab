@@ -89,7 +89,8 @@ diff them digit for digit against one.
 
 **Hepatic availability.** `predictBioavailability()` in `src/chem/AdmetModel.h`
 is the well-stirred hepatic model, `F_H = Q_H / (Q_H + fu.CLint)`, with
-`Q_H = 90 L/h` as a stated population-average assumption (`:62-63`). The
+`Q_H` read from `assets/packs/physiology.json` (97 L/h) as a stated
+population-average assumption, not as a literal in the header. The
 critical term, `fu.CLint`, is **not predictable from structure**. Unless the
 user supplies a measured value, the code assumes it from perceived structural
 liabilities (`:93-122`) and the readout says so verbatim: `"(ASSUMED from

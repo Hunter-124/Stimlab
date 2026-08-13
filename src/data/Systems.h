@@ -42,9 +42,15 @@ struct SpeciesSpec {
     double      initialConcentration = 0;   // mol/L or copy number for the SSA
     std::string compartment;
     bool        boundary = false;   // held constant (a clamped pool), not integrated
+    // Elemental composition and net charge, for the flux module's mass and charge
+    // balance. Empty means "not stated", and IFluxModule::balance() reports that as
+    // an unbalanced reaction rather than assuming the reaction balances - an FBA over
+    // reactions nobody checked is the classic way a model produces mass from nothing.
+    std::string formula;
+    int         charge = 0;
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(SpeciesSpec, id, name, initialConcentration, compartment,
-                                   boundary)
+                                   boundary, formula, charge)
 
 struct ReactionSpec {
     std::string                      id;

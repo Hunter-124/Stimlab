@@ -9,6 +9,7 @@
     "fmt",
     "sqlite3",
     "yaml-cpp",
+    "pugixml",
     "eigen3",
     "implot",
     {

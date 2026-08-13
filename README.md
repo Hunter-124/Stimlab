@@ -119,6 +119,7 @@ provisioning, receptor-prep and scoring story is in [docs/docking.md](docs/docki
 | [docs/packs.md](docs/packs.md) | Pack JSON schema, resolution order, and how to author one |
 | [docs/docking.md](docs/docking.md) | Engine locate/provision order, receptor prep, PDBQT, the box marker, what a Vina score is and is not |
 | [docs/pkpd.md](docs/pkpd.md) | Dose-response fits, Cheng-Prusoff, Schild, the PK engine and occupancy |
+| [docs/population-pk.md](docs/population-pk.md) | The seeded sampler, population variability bands, noncompartmental analysis, and the mechanistic static and dynamic drug-interaction models |
 | [docs/protein.md](docs/protein.md) | Structure and sequence I/O, alignment, superposition, structure scoring |
 | [docs/data-sources.md](docs/data-sources.md) | Every external service, its endpoint, its licence, and what may be cached or committed |
 | [docs/limitations.md](docs/limitations.md) | The do-not-ship list, descriptor fidelity, and the honesty rules |

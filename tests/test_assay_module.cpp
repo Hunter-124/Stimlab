@@ -116,6 +116,7 @@ TEST_CASE("Services::valid() requires the assay module", "[assay][module]") {
     s.alerts = reinterpret_cast<IAlertsModule*>(p);
     s.ionization = reinterpret_cast<IIonizationModule*>(p);
     s.nucleicAcid = reinterpret_cast<INucleicAcidModule*>(p);
+    s.populationPk = reinterpret_cast<IPopulationPkModule*>(p);
     CHECK_FALSE(s.valid());
     s.assay = &assay;
     CHECK(s.valid());

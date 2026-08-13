@@ -73,6 +73,7 @@ TEST_CASE("Services::valid() requires the nucleic-acid module", "[nucleic]") {
     s.alerts = reinterpret_cast<IAlertsModule*>(p);
     s.ionization = reinterpret_cast<IIonizationModule*>(p);
     s.assay = reinterpret_cast<IAssayModule*>(p);
+    s.populationPk = reinterpret_cast<IPopulationPkModule*>(p);
     REQUIRE_FALSE(s.valid());
     s.nucleicAcid = const_cast<RealNucleicAcid*>(&mod);
     REQUIRE(s.valid());

@@ -110,7 +110,12 @@ TEST_CASE("Stability ranks an ester below a xanthine", "[backend][stability]") {
     const auto caffeine = s.stability->analyze(mol(s, "caffeine"));  // no labile group
     REQUIRE(cocaine.overallScore < caffeine.overallScore);
     REQUIRE_FALSE(cocaine.degradants.empty());
-    REQUIRE_FALSE(cocaine.shelfLifeEstimate.empty());
+    // A shelf life is an extrapolation of measured degradation rates, and analyze()
+    // is given only a structure - so it must come back NotComputed naming the missing
+    // measurement rather than mapping a flag count onto "~12 months".
+    REQUIRE(cocaine.shelfLife.provenance == Provenance::NotComputed);
+    REQUIRE(cocaine.shelfLife.unit.empty());
+    REQUIRE(cocaine.shelfLife.source.find("three or more temperatures") != std::string::npos);
 }
 
 TEST_CASE("Absorption is bounded and tracks polarity", "[backend][absorption]") {

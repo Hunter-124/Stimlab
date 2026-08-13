@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
@@ -11,6 +12,7 @@
 #include <limits>
 #include <map>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -19,7 +21,10 @@
 #include <implot.h>
 
 #include "assay/Design.h"
+#include "bio/Imgt.h"
+#include "bio/Liabilities.h"
 #include "bio/NucSeq.h"
+#include "bio/PdbReader.h"
 #include "bio/Structure.h"
 #include "chem/Canonical.h"
 #include "chem/Rings.h"
@@ -47,6 +52,17 @@ namespace {
 
 std::string f2(double v) { char b[40]; std::snprintf(b, sizeof b, "%.2f", v); return b; }
 std::string f0(double v) { char b[40]; std::snprintf(b, sizeof b, "%.0f", v); return b; }
+
+// A one-line rendering of a Quantity for a stat card or a table cell, where
+// drawQuantity's full colour-plus-provenance row does not fit. "not computed" is
+// spelled out rather than left blank: an empty cell reads as zero.
+std::string quantityShort(const Quantity& q) {
+    if (q.provenance == Provenance::NotComputed) return "not computed";
+    std::string s = f2(q.value);
+    if (q.error > 0.0) s += " +/- " + f2(q.error);
+    if (!q.unit.empty()) s += " " + q.unit;
+    return s;
+}
 
 void verdictText(Verdict v) {
     ImGui::TextColored(theme::verdictColor(static_cast<int>(v)), "%s", verdictLabel(v));
@@ -407,7 +423,11 @@ std::string buildReportMarkdown(Services& s, const Molecule& m) {
     if (s.stability) {
         const auto r = s.stability->analyze(m);
         line("");
-        line("## Stability: " + f0(r.overallScore) + "/100 (" + r.shelfLifeEstimate + ")");
+        line("## Stability: " + f0(r.overallScore) + "/100 (rank ordering, no units)");
+        line("- Shelf life: " + quantityShort(r.shelfLife) +
+             (r.shelfLife.provenance == Provenance::NotComputed
+                  ? " - needs " + r.shelfLife.source
+                  : std::string(" (") + provenanceLabel(r.shelfLife.provenance) + ")"));
         for (const auto& f : r.factors) line("- " + f.name + ": " + f0(f.score) + " - " + f.rationale);
         for (const auto& d : r.degradants) line("- Degradant: " + d.name + " (" + d.pathway + ")");
     }
@@ -497,7 +517,7 @@ void dashboard(AppShell& shell) {
         // Tile 1 — Stability
         nextTile();
         theme::metricCard("STABILITY", (f0(stab.overallScore) + "/100").c_str(),
-                          stab.shelfLifeEstimate.c_str(), theme::kTextHi, cw);
+                          quantityShort(stab.shelfLife).c_str(), theme::kTextHi, cw);
 
         // Tile 2 — Oral F
         nextTile();
@@ -751,7 +771,9 @@ void stability(AppShell& shell) {
 
     statCard("OVERALL", f0(r.overallScore) + "/100", "higher = more stable", 200.0f);
     ImGui::SameLine();
-    statCard("SHELF LIFE", r.shelfLifeEstimate, "estimated", 300.0f);
+    // Not a stat card: a shelf life without its provenance and its missing
+    // prerequisite is the number this phase deleted.
+    drawQuantity("Shelf life", r.shelfLife);
     ImGui::Spacing();
 
     std::vector<double> vals;
@@ -1123,6 +1145,421 @@ void pkpd(AppShell& shell) {
         pkParamRow("##Kd", "Target Kd (occupancy)",  kd);
         ImGui::EndTable();
     }
+}
+
+// ------------------------------------------------- Population PK (Phase 13)
+namespace {
+
+// The population panel does NOT re-simulate every frame: 300 subjects over a 48 h
+// horizon is tens of millions of RK4 steps, and running that at 60 Hz would make the
+// UI unusable and the seed meaningless to the user (they could never read a band
+// before it was replaced). The result is cached and recomputed only when the user
+// presses Simulate.
+struct PopPkState {
+    PkModelSpec      spec = defaultPkSpec();
+    std::vector<DoseEvent> doses = {{0.0, 100.0, 0.0}};
+    VariabilitySpec  variability;
+    PopulationProfile profile;
+    Quantity         kd = pkAssumed(0.05, "mg/L", "supply a measured Kd for a real occupancy");
+    bool             haveResult = false;
+
+    PopPkState() {
+        variability.betweenSubject = true;
+        variability.parameters = {"CL", "V"};
+        variability.omega = {0.09, 0.0, 0.0, 0.04};
+        variability.parameterCovariance = {0.01, 0.0, 0.0, 0.01};
+        variability.proportionalResidualCv = 0.15;
+        variability.additiveResidualSd = 0.0;
+        variability.seed = 20260101;
+        variability.subjects = 200;
+        variability.sampler = "latin-hypercube";
+        spec.model = PkModel::IvBolus;
+        spec.horizonH = 48.0;
+        spec.stepH = 0.05;
+    }
+};
+
+// Omega is edited as variances and a correlation rather than as raw covariances,
+// because a user typing four numbers into a covariance matrix produces a
+// non-positive-definite matrix within about three keystrokes, and the engine
+// (correctly) refuses to repair one.
+void omegaEditor(VariabilitySpec& v) {
+    if (v.parameters.size() != 2 || v.omega.size() != 4) return;
+    double sd1 = std::sqrt(std::max(v.omega[0], 0.0));
+    double sd2 = std::sqrt(std::max(v.omega[3], 0.0));
+    double corr = (sd1 > 0 && sd2 > 0) ? v.omega[1] / (sd1 * sd2) : 0.0;
+    bool changed = false;
+    ImGui::SetNextItemWidth(140.0f);
+    changed |= ImGui::InputDouble(("omega SD " + v.parameters[0]).c_str(), &sd1, 0.01, 0.1,
+                                  "%.3f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(140.0f);
+    changed |= ImGui::InputDouble(("omega SD " + v.parameters[1]).c_str(), &sd2, 0.01, 0.1,
+                                  "%.3f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(160.0f);
+    const double corrLo = -0.95, corrHi = 0.95;
+    changed |= ImGui::SliderScalar("eta correlation", ImGuiDataType_Double, &corr, &corrLo,
+                                   &corrHi, "%.2f");
+    if (changed) {
+        sd1 = std::max(sd1, 0.0);
+        sd2 = std::max(sd2, 0.0);
+        corr = std::clamp(corr, -0.95, 0.95);
+        v.omega = {sd1 * sd1, corr * sd1 * sd2, corr * sd1 * sd2, sd2 * sd2};
+    }
+    ImGui::TextDisabled("Omega is the covariance of the LOG-scale random effects: an SD of "
+                        "0.30 is roughly a 30%% coefficient of variation on the parameter.");
+}
+
+}  // namespace
+
+void popPk(AppShell& shell) {
+    Services& s = shell.services();
+    if (!s.populationPk) return;
+    static PopPkState st;
+
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic),
+                       "EXPOSURE SCENARIO ONLY. The band below is the variability that was "
+                       "ENTERED - Omega, the fit covariance and the residual error - pushed "
+                       "through the stated PK model. It is not a prediction about an "
+                       "individual, and this panel never emits a dose or a dose adjustment.");
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+
+    ImGui::SetNextItemWidth(120.0f);
+    ImGui::InputInt("Subjects", &st.variability.subjects);
+    st.variability.subjects = std::clamp(st.variability.subjects, 1, 5000);
+    ImGui::SameLine();
+    int seed = static_cast<int>(st.variability.seed);
+    ImGui::SetNextItemWidth(160.0f);
+    if (ImGui::InputInt("Seed", &seed))
+        st.variability.seed = static_cast<std::uint64_t>(std::max(seed, 0));
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(110.0f);
+    ImGui::InputDouble("Horizon (h)", &st.spec.horizonH, 1.0, 6.0, "%.1f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(110.0f);
+    ImGui::InputDouble("Step (h)", &st.spec.stepH, 0.01, 0.05, "%.3f");
+
+    ImGui::Checkbox("Between-subject variability", &st.variability.betweenSubject);
+    ImGui::SameLine();
+    ImGui::Checkbox("Parameter uncertainty", &st.variability.parameterUncertainty);
+    ImGui::SameLine();
+    ImGui::Checkbox("Residual error", &st.variability.residualError);
+    ImGui::SetNextItemWidth(140.0f);
+    ImGui::InputDouble("Proportional residual CV", &st.variability.proportionalResidualCv, 0.01,
+                       0.05, "%.3f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(140.0f);
+    ImGui::InputDouble("Additive residual SD (mg/L)", &st.variability.additiveResidualSd, 0.01,
+                       0.05, "%.3f");
+    omegaEditor(st.variability);
+    ImGui::Spacing();
+
+    if (ImGui::Button("Simulate population")) {
+        DoseRegimen regimen;
+        regimen.doses = st.doses;
+        st.profile = s.populationPk->simulate(st.spec, regimen, st.variability);
+        st.haveResult = true;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("the simulation runs on demand, so the seed you see is the seed that "
+                        "produced the band you see");
+    if (!st.haveResult) {
+        ImGui::Spacing();
+        ImGui::TextDisabled("(no population simulated yet)");
+        return;
+    }
+
+    const PopulationProfile& p = st.profile;
+    const int n = static_cast<int>(p.times.size());
+    if (n > 1 && ImPlot::BeginPlot("##poppk-band", ImVec2(-1, 260))) {
+        ImPlot::SetupAxes("time (h)", "concentration (mg/L)");
+        std::vector<double> lo(n), mid(n), hi(n);
+        for (int i = 0; i < n; ++i) {
+            lo[i] = p.bands[static_cast<std::size_t>(i)].p5;
+            mid[i] = p.bands[static_cast<std::size_t>(i)].p50;
+            hi[i] = p.bands[static_cast<std::size_t>(i)].p95;
+        }
+        // The faint individual trajectories go UNDER the band: they are what the band
+        // is a summary of, and drawing them on top would imply they are the result.
+        for (const auto& tr : p.sampleTrajectories) {
+            if (static_cast<int>(tr.size()) != n) continue;
+            // Unlabelled ("##") so fifty subjects do not produce fifty legend rows;
+            // no per-item style call, because ImPlot's styling entry points differ
+            // between the versions this tree may be built against and a legend the
+            // reader can use matters more than the exact alpha.
+            ImPlot::PlotLine("##subject", p.times.data(), tr.data(), n);
+        }
+        ImPlot::PlotShaded("5th-95th percentile", p.times.data(), lo.data(), hi.data(), n);
+        ImPlot::PlotLine("median", p.times.data(), mid.data(), n);
+        ImPlot::EndPlot();
+    }
+    ImGui::TextDisabled("%d of %d simulated subjects are drawn as faint lines; the percentiles "
+                        "use every subject.",
+                        static_cast<int>(p.sampleTrajectories.size()), p.spec.subjects);
+
+    // Occupancy of the MEDIAN profile, not of a median occupancy: theta is nonlinear
+    // in concentration, so the two differ and only the first is a curve of anything.
+    if (s.pharmacodynamics && n > 1) {
+        PkProfile medianProfile;
+        medianProfile.timeH = p.times;
+        medianProfile.concentrationMgPerL.resize(static_cast<std::size_t>(n));
+        for (int i = 0; i < n; ++i)
+            medianProfile.concentrationMgPerL[static_cast<std::size_t>(i)] =
+                p.bands[static_cast<std::size_t>(i)].p50;
+        medianProfile.unboundMgPerL = medianProfile.concentrationMgPerL;
+        const OccupancyCurve occ = s.pharmacodynamics->occupancy(medianProfile, st.kd);
+        if (occ.timeH.size() > 1 && ImPlot::BeginPlot("##poppk-occ", ImVec2(-1, 180))) {
+            ImPlot::SetupAxes("time (h)", "fractional occupancy of the median profile");
+            ImPlot::SetupAxisLimits(ImAxis_Y1, 0.0, 1.0, ImPlotCond_Always);
+            ImPlot::PlotLine("median occupancy", occ.timeH.data(), occ.occupancy.data(),
+                             static_cast<int>(occ.timeH.size()));
+            ImPlot::EndPlot();
+        }
+        if (!occ.note.empty()) ImGui::TextWrapped("%s", occ.note.c_str());
+    }
+
+    theme::sectionHeader("POPULATION SUMMARY");
+    drawQuantity("Median AUC", p.medianAuc);
+    drawQuantity("Median Cmax", p.medianCmax);
+    drawQuantity("AUC CV across subjects", p.aucCv);
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(theme::provenanceColor(Provenance::Model), "%s",
+                       p.provenanceStatement.c_str());
+    ImGui::PopTextWrapPos();
+
+    // NCA of the median profile, so the same panel shows the model-free reading of
+    // the curve it just simulated.
+    theme::sectionHeader("NONCOMPARTMENTAL ANALYSIS OF THE MEDIAN PROFILE");
+    ConcentrationSeries series;
+    series.subjectId = "median";
+    series.timeH = p.times;
+    series.concentration.resize(p.bands.size());
+    for (std::size_t i = 0; i < p.bands.size(); ++i) series.concentration[i] = p.bands[i].p50;
+    double total = 0;
+    for (const auto& d : st.doses) total += d.amountMg;
+    series.dose = total;
+    series.intravenous = st.spec.model == PkModel::IvBolus || st.spec.model == PkModel::IvInfusion;
+    const NcaResult nca = s.populationPk->nca(series);
+    if (ImGui::BeginTable("poppk-nca", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("Parameter", ImGuiTableColumnFlags_WidthFixed, 260.0f);
+        ImGui::TableSetupColumn("Value");
+        ImGui::TableHeadersRow();
+        const std::pair<const char*, const Quantity*> rows[] = {
+            {"Cmax", &nca.cmax},          {"Tmax", &nca.tmax},
+            {"AUClast", &nca.aucLast},    {"AUCinf", &nca.aucInfinity},
+            {"% extrapolated", &nca.percentExtrapolated},
+            {"lambda_z", &nca.lambdaZ},   {"Half-life", &nca.halfLife},
+            {"CL (or CL/F)", &nca.clearance}, {"Vz (or Vz/F)", &nca.volumeZ},
+            {"Vss (IV only)", &nca.volumeSteadyState},
+            {"AUMC", &nca.aumc},          {"MRT", &nca.meanResidenceTime},
+            {"AUCtau", &nca.aucTau},      {"Cavg", &nca.cAverage},
+            {"Swing", &nca.swing}};
+        for (const auto& [label, q] : rows) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(label);
+            ImGui::TableSetColumnIndex(1);
+            drawQuantity("", *q);
+        }
+        ImGui::EndTable();
+    }
+    ImGui::Text("lambda_z used %d points, adjusted R-squared %.4f", nca.lambdaZPointCount,
+                nca.adjustedRSquared);
+    if (nca.extrapolationUnreliable)
+        ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic),
+                           "Extrapolation above 20%%: AUCinf and everything derived from it "
+                           "are unreliable for this sampling window.");
+    for (const auto& w : nca.warnings) ImGui::BulletText("%s", w.c_str());
+
+    theme::sectionHeader("ASSUMPTIONS THIS BAND RESTS ON");
+    for (const auto& a : p.assumptions) ImGui::BulletText("%s", a.c_str());
+    for (const auto& w : p.warnings)
+        ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic), "%s", w.c_str());
+
+    theme::sectionHeader("PARAMETERS (ROW COLOUR = PROVENANCE)");
+    if (ImGui::BeginTable("poppk-params", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("Parameter", ImGuiTableColumnFlags_WidthFixed, 220.0f);
+        ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 140.0f);
+        ImGui::TableSetupColumn("Unit", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+        ImGui::TableSetupColumn("Provenance");
+        ImGui::TableHeadersRow();
+        pkParamRow("##pF", "Bioavailability F", st.spec.bioavailability);
+        pkParamRow("##pka", "Absorption rate ka", st.spec.absorptionRate);
+        pkParamRow("##pCL", "Clearance CL", st.spec.clearance);
+        pkParamRow("##pV", "Central volume V", st.spec.volume);
+        pkParamRow("##pfu", "Unbound fraction fu", st.spec.unboundFraction);
+        pkParamRow("##pKd", "Target Kd (occupancy)", st.kd);
+        ImGui::EndTable();
+    }
+
+    theme::sectionHeader("DOSE EVENTS");
+    if (ImGui::BeginTable("poppk-doses", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("Time (h)", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+        ImGui::TableSetupColumn("Amount (mg)", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+        ImGui::TableSetupColumn("Duration (h)");
+        ImGui::TableHeadersRow();
+        for (int i = 0; i < static_cast<int>(st.doses.size()); ++i) {
+            ImGui::PushID(i);
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::SetNextItemWidth(-1.0f);
+            ImGui::InputDouble("##t", &st.doses[i].timeH, 0.0, 0.0, "%.2f");
+            ImGui::TableSetColumnIndex(1);
+            ImGui::SetNextItemWidth(-1.0f);
+            ImGui::InputDouble("##a", &st.doses[i].amountMg, 0.0, 0.0, "%.2f");
+            ImGui::TableSetColumnIndex(2);
+            ImGui::SetNextItemWidth(-1.0f);
+            ImGui::InputDouble("##d", &st.doses[i].durationH, 0.0, 0.0, "%.2f");
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+    if (ImGui::Button("Add dose event"))
+        st.doses.push_back({st.doses.empty() ? 0.0 : st.doses.back().timeH + 12.0, 100.0, 0.0});
+}
+
+// -------------------------------------------- Interaction scenarios (Phase 13)
+void interactionScenarios(AppShell& shell) {
+    Services& s = shell.services();
+    if (!s.populationPk) return;
+
+    static PerpetratorSpec perp = [] {
+        PerpetratorSpec p;
+        p.label = "perpetrator";
+        p.enzyme = "CYP3A4";
+        p.ki = 0.5;
+        p.kinact = -1;
+        p.kI = -1;
+        p.indEmax = -1;
+        p.indEc50 = -1;
+        p.indD = 1.0;
+        p.unboundHepaticInletUM = 1.0;
+        p.unboundSystemicUM = 0.5;
+        p.enterocyteUM = 10.0;
+        p.source = "enter the in vitro citation";
+        return p;
+    }();
+    static VictimSpec victim = [] {
+        VictimSpec v;
+        v.label = "victim";
+        // fm and Fg start ABSENT on purpose: the panel must show what a missing fm
+        // does before it shows an AUCR.
+        v.fractionMetabolizedByEnzyme = -1;
+        v.intestinalAvailability = -1;
+        v.fractionExcretedUnchanged = -1;
+        v.source = "enter the clinical citation";
+        return v;
+    }();
+    static double horizonH = 168.0;
+    static double renalRatio = 1.0;
+    static double hepaticRatio = 1.0;
+
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic),
+                       "AUC RATIOS ONLY. Every number here is an exposure ratio computed from "
+                       "in vitro parameters you supplied. There is deliberately no risk score "
+                       "and no red/green verdict: a 2-fold AUC ratio is not a hazard class, "
+                       "and this panel never suggests a dose or a dose change.");
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+
+    char enzyme[32];
+    std::snprintf(enzyme, sizeof enzyme, "%s", perp.enzyme.c_str());
+    ImGui::SetNextItemWidth(160.0f);
+    if (ImGui::InputText("Enzyme", enzyme, sizeof enzyme)) perp.enzyme = enzyme;
+    ImGui::SameLine();
+    ImGui::TextDisabled("kdeg is looked up as <enzyme>_hepatic in assets/packs/physiology.json");
+
+    theme::sectionHeader("PERPETRATOR IN VITRO PARAMETERS (-1 = ABSENT)");
+    ImGui::SetNextItemWidth(140.0f);
+    ImGui::InputDouble("Ki (uM)", &perp.ki, 0.0, 0.0, "%.4f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(140.0f);
+    ImGui::InputDouble("kinact (1/h)", &perp.kinact, 0.0, 0.0, "%.4f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(140.0f);
+    ImGui::InputDouble("KI (uM)", &perp.kI, 0.0, 0.0, "%.4f");
+    ImGui::SetNextItemWidth(140.0f);
+    ImGui::InputDouble("Induction Emax", &perp.indEmax, 0.0, 0.0, "%.4f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(140.0f);
+    ImGui::InputDouble("Induction EC50 (uM)", &perp.indEc50, 0.0, 0.0, "%.4f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(140.0f);
+    ImGui::InputDouble("Induction d", &perp.indD, 0.0, 0.0, "%.2f");
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::InputDouble("[I]h,u (uM)", &perp.unboundHepaticInletUM, 0.0, 0.0, "%.4f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::InputDouble("[I]sys,u (uM)", &perp.unboundSystemicUM, 0.0, 0.0, "%.4f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::InputDouble("[I]g (uM)", &perp.enterocyteUM, 0.0, 0.0, "%.4f");
+
+    theme::sectionHeader("VICTIM DISPOSITION (-1 = ABSENT, WHICH IS NOT THE SAME AS 1)");
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::InputDouble("fm", &victim.fractionMetabolizedByEnzyme, 0.0, 0.0, "%.3f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::InputDouble("Fg", &victim.intestinalAvailability, 0.0, 0.0, "%.3f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::InputDouble("fe", &victim.fractionExcretedUnchanged, 0.0, 0.0, "%.3f");
+
+    const InteractionReport rep = s.populationPk->interaction(perp, victim);
+
+    theme::sectionHeader("FDA BASIC-MODEL SCREENING R-VALUES");
+    drawQuantity("R1 (hepatic, reversible)", rep.r1);
+    drawQuantity("R1,gut", rep.r1Gut);
+    drawQuantity("R2 (time-dependent inactivation)", rep.r2);
+    drawQuantity("R (induction)", rep.rInduction);
+
+    theme::sectionHeader("MECHANISTIC STATIC AUC RATIO");
+    drawQuantity("AUCR (hepatic x gut)", rep.aucRatio);
+    drawQuantity("AUCR (hepatic only)", rep.aucRatioHepaticOnly);
+    drawQuantity("Theoretical ceiling 1/(1-fm)", rep.theoreticalCeiling);
+    ImGui::Text("Gut term included: %s", rep.gutIncluded ? "yes" : "no (Fg absent)");
+    ImGui::TextWrapped("Dominant mechanism: %s", rep.dominantMechanism.c_str());
+    for (const auto& w : rep.warnings)
+        ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic), "%s", w.c_str());
+    for (const auto& a : rep.assumptions) ImGui::BulletText("%s", a.c_str());
+
+    theme::sectionHeader("DYNAMIC ENZYME ACTIVITY");
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::InputDouble("Horizon (h)", &horizonH, 12.0, 24.0, "%.0f");
+    const EnzymeTimeCourse tc = s.populationPk->enzymeTimeCourse(perp, horizonH);
+    const int tn = static_cast<int>(tc.timeH.size());
+    if (tn > 1 && ImPlot::BeginPlot("##ddi-enzyme", ImVec2(-1, 220))) {
+        ImPlot::SetupAxes("time (h)", "relative to uninhibited baseline");
+        ImPlot::PlotLine("enzyme activity E", tc.timeH.data(), tc.relativeActivity.data(), tn);
+        ImPlot::PlotLine("CLint(t)/CLint0", tc.timeH.data(), tc.clearanceRatio.data(), tn);
+        ImPlot::EndPlot();
+    }
+    ImGui::Text("Dynamic steady-state activity %.9f versus the static model's %.9f "
+                "(difference %.3g)",
+                tc.steadyStateActivity, tc.staticModelActivity, tc.agreement);
+    ImGui::Text("kdeg = %.5f /h from %s", tc.kdegUsed, tc.kdegSource.c_str());
+    for (const auto& a : tc.assumptions) ImGui::BulletText("%s", a.c_str());
+
+    theme::sectionHeader("ORGAN-IMPAIRMENT EXPOSURE SCENARIOS");
+    ImGui::SetNextItemWidth(220.0f);
+    const double ratioLo = 0.05, renalHi = 1.0, hepaticHi = 2.0;
+    ImGui::SliderScalar("Renal function ratio", ImGuiDataType_Double, &renalRatio, &ratioLo,
+                        &renalHi, "%.2f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(220.0f);
+    ImGui::SliderScalar("Hepatic CLint ratio", ImGuiDataType_Double, &hepaticRatio, &ratioLo,
+                        &hepaticHi, "%.2f");
+    const ImpairmentScenario imp = s.populationPk->impairment(victim, renalRatio, hepaticRatio);
+    drawQuantity("AUC impaired / AUC normal", imp.exposureRatio);
+    for (const auto& a : imp.assumptions) ImGui::BulletText("%s", a.c_str());
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic), "%s",
+                       imp.boundaryStatement.c_str());
+    ImGui::PopTextWrapPos();
 }
 
 // ------------------------------------------------------- Sequence Compare
@@ -2460,6 +2897,866 @@ void proteinStructure(AppShell& shell) {
     }
 }
 
+// ------------------------------------------------- Reaction network / systems
+// The three Phase 14 panels share one editable NetworkSpec: the Reaction Network
+// panel builds or imports it, and the Metabolic Flux and Pathway Enrichment panels
+// read the SAME object. Keeping one copy is the whole point of a single
+// stoichiometric matrix - a flux computed over a network the user cannot see in the
+// Networks panel would be a second, invisible model.
+namespace {
+
+struct NetworkWorkspace {
+    NetworkSpec  spec;
+    std::string  loadError;
+    std::string  loadedFrom = "built-in example";
+    int          exampleIndex = 0;
+    // Deterministic run settings.
+    int          methodIndex = 1;   // 0 = rk4, 1 = rosenbrock
+    double       horizon = 10.0;
+    double       relTol = 1e-8;
+    double       absTol = 1e-12;
+    // Stochastic run settings.
+    int          replicates = 200;
+    int          seed = 1;
+    bool         tauLeap = false;
+    // Chemical kinetics data the USER enters. Empty by default: there is no default
+    // degradation rate, and pre-filling one would be the fabrication this phase
+    // removed from the Stability panel.
+    std::vector<std::pair<double, double>> temperatureRates;   // K, k
+    std::vector<std::pair<double, double>> phRates;            // pH, k_obs
+    double       storageTemperatureC = 25.0;
+    double       fractionLost = 0.10;
+};
+
+const char* const kNetworkExamples[] = {"A -> B (first order)", "A <=> B (reversible)",
+                                        "A -> B -> C (consecutive)",
+                                        "Robertson (stiff, 3 species)",
+                                        "enzyme step (Michaelis-Menten)"};
+
+SpeciesSpec makeSpecies(const char* id, double c0, bool boundary = false,
+                        const char* formula = "") {
+    SpeciesSpec s;
+    s.id = id;
+    s.name = id;
+    s.initialConcentration = c0;
+    s.boundary = boundary;
+    s.formula = formula;
+    s.compartment = "cell";
+    return s;
+}
+
+ReactionSpec makeReaction(const char* id, std::vector<std::pair<std::string, double>> reactants,
+                          std::vector<std::pair<std::string, double>> products, RateLaw law,
+                          std::vector<double> parameters) {
+    ReactionSpec r;
+    r.id = id;
+    r.reactants = std::move(reactants);
+    r.products = std::move(products);
+    r.law = law;
+    r.parameters = std::move(parameters);
+    r.reversible = law == RateLaw::ReversibleMassAction ||
+                   law == RateLaw::ReversibleMichaelisMenten;
+    return r;
+}
+
+NetworkSpec buildExample(int index) {
+    NetworkSpec n;
+    switch (index) {
+        case 1:
+            n.id = "A <=> B";
+            n.species = {makeSpecies("A", 1.0), makeSpecies("B", 0.0)};
+            n.reactions = {makeReaction("R1", {{"A", 1}}, {{"B", 1}},
+                                        RateLaw::ReversibleMassAction, {0.3, 0.7})};
+            break;
+        case 2:
+            n.id = "A -> B -> C";
+            n.species = {makeSpecies("A", 1.0), makeSpecies("B", 0.0), makeSpecies("C", 0.0)};
+            n.reactions = {makeReaction("R1", {{"A", 1}}, {{"B", 1}}, RateLaw::MassAction, {1.0}),
+                           makeReaction("R2", {{"B", 1}}, {{"C", 1}}, RateLaw::MassAction, {0.3})};
+            break;
+        case 3:
+            // The classic stiff test problem. y3 catalyses R2 and y2 catalyses R3,
+            // which is what makes y1 + y2 + y3 exactly conserved.
+            n.id = "Robertson";
+            n.species = {makeSpecies("y1", 1.0), makeSpecies("y2", 0.0), makeSpecies("y3", 0.0)};
+            n.reactions = {
+                makeReaction("R1", {{"y1", 1}}, {{"y2", 1}}, RateLaw::MassAction, {0.04}),
+                makeReaction("R2", {{"y2", 1}, {"y3", 1}}, {{"y1", 1}, {"y3", 1}},
+                             RateLaw::MassAction, {1e4}),
+                makeReaction("R3", {{"y2", 2}}, {{"y3", 1}, {"y2", 1}}, RateLaw::MassAction,
+                             {3e7})};
+            break;
+        case 4:
+            n.id = "enzyme step";
+            n.species = {makeSpecies("S", 1.0), makeSpecies("P", 0.0)};
+            n.reactions = {makeReaction("E1", {{"S", 1}}, {{"P", 1}}, RateLaw::MichaelisMenten,
+                                        {0.5, 0.2})};
+            break;
+        default:
+            n.id = "A -> B";
+            n.species = {makeSpecies("A", 1.0), makeSpecies("B", 0.0)};
+            n.reactions = {makeReaction("R1", {{"A", 1}}, {{"B", 1}}, RateLaw::MassAction, {0.7})};
+            break;
+    }
+    return n;
+}
+
+NetworkWorkspace& networkWorkspace() {
+    static NetworkWorkspace ws = [] {
+        NetworkWorkspace w;
+        w.spec = buildExample(0);
+        return w;
+    }();
+    return ws;
+}
+
+const char* rateLawName(RateLaw law) {
+    switch (law) {
+        case RateLaw::MassAction: return "mass action";
+        case RateLaw::ReversibleMassAction: return "reversible mass action";
+        case RateLaw::MichaelisMenten: return "Michaelis-Menten";
+        case RateLaw::ReversibleMichaelisMenten: return "reversible Michaelis-Menten";
+        case RateLaw::Hill: return "Hill";
+    }
+    return "?";
+}
+
+std::string sideText(const std::vector<std::pair<std::string, double>>& side) {
+    std::string s;
+    for (const auto& [id, stoich] : side) {
+        if (!s.empty()) s += " + ";
+        if (std::abs(stoich - 1.0) > 1e-9) s += f2(stoich) + " ";
+        s += id;
+    }
+    return s.empty() ? "(none)" : s;
+}
+
+// The structural analysis, refreshed whenever the network changes. It is cheap and
+// it is what the conserved-quantity audit and the Wegscheider check depend on.
+void refreshAnalysis(AppShell& shell, NetworkWorkspace& ws) {
+    if (shell.services().simulation) ws.spec = shell.services().simulation->analyze(ws.spec);
+}
+
+// Species-to-species edges induced by shared reactions. Every edge carries its
+// evidence (the reaction id) and Provenance::Model, because the network is a
+// constructed artefact - a written-down mechanism - and not a measurement.
+std::vector<NetworkEdge> networkAsEdges(const NetworkSpec& spec) {
+    std::vector<NetworkEdge> edges;
+    for (const ReactionSpec& r : spec.reactions) {
+        for (const auto& [a, sa] : r.reactants) {
+            for (const auto& [b, sb] : r.products) {
+                if (a == b) continue;
+                NetworkEdge e;
+                e.source = a;
+                e.target = b;
+                e.weight = 1.0;
+                e.evidence = "reaction '" + r.id + "' (" + rateLawName(r.law) + ")";
+                e.provenance = Provenance::Model;
+                edges.push_back(std::move(e));
+            }
+        }
+    }
+    return edges;
+}
+
+}  // namespace
+
+void networks(AppShell& shell) {
+    Services& s = shell.services();
+    if (!s.simulation) return;
+    NetworkWorkspace& ws = networkWorkspace();
+
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(theme::provenanceColor(Provenance::Model),
+                       "A reaction network is a mechanism you wrote down. Its time course is a "
+                       "property of that mechanism and of the rate constants you entered - never "
+                       "a measurement of a cell, and never derived from a docking score.");
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+
+    // ------------------------------------------------------------ the network
+    theme::sectionHeader("NETWORK");
+    ImGui::SetNextItemWidth(280.0f);
+    if (ImGui::Combo("Example", &ws.exampleIndex, kNetworkExamples, 5)) {
+        ws.spec = buildExample(ws.exampleIndex);
+        ws.loadedFrom = "built-in example";
+        ws.loadError.clear();
+        refreshAnalysis(shell, ws);
+    }
+    ImGui::SameLine();
+    static char sbmlPath[512] = "";
+    ImGui::SetNextItemWidth(320.0f);
+    ImGui::InputText("SBML file", sbmlPath, sizeof(sbmlPath));
+    ImGui::SameLine();
+    if (ImGui::Button("Import SBML")) {
+        std::ifstream in(sbmlPath, std::ios::binary);
+        if (!in) {
+            ws.loadError = std::string("cannot open '") + sbmlPath + "'";
+        } else {
+            std::ostringstream buffer;
+            buffer << in.rdbuf();
+            std::string error;
+            const auto imported = s.simulation->importSbml(buffer.str(), &error);
+            if (imported) {
+                ws.spec = *imported;
+                ws.loadedFrom = sbmlPath;
+                ws.loadError.clear();
+                refreshAnalysis(shell, ws);
+            } else {
+                // The refusal, in full, naming the construct. It is the most useful
+                // thing this panel can say about a document it will not open.
+                ws.loadError = error;
+            }
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Export SBML L3V2")) {
+        const std::string xml = s.simulation->exportSbml(ws.spec);
+        std::ofstream out(std::string(sbmlPath).empty() ? "network.sbml" : sbmlPath,
+                          std::ios::binary);
+        out << xml;
+    }
+    if (!ws.loadError.empty()) {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored(theme::verdictColor(3), "SBML refused: %s", ws.loadError.c_str());
+        ImGui::PopTextWrapPos();
+    }
+    ImGui::TextDisabled("Loaded from: %s   |   %zu species, %zu reactions",
+                        ws.loadedFrom.c_str(), ws.spec.species.size(), ws.spec.reactions.size());
+
+    if (ImGui::BeginTable("net-rx", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("Reaction", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+        ImGui::TableSetupColumn("Stoichiometry", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Rate law", ImGuiTableColumnFlags_WidthFixed, 200.0f);
+        ImGui::TableSetupColumn("Parameters", ImGuiTableColumnFlags_WidthFixed, 260.0f);
+        ImGui::TableHeadersRow();
+        for (std::size_t i = 0; i < ws.spec.reactions.size(); ++i) {
+            ReactionSpec& r = ws.spec.reactions[i];
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(r.id.c_str());
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%s %s %s", sideText(r.reactants).c_str(), r.reversible ? "<=>" : "->",
+                        sideText(r.products).c_str());
+            ImGui::TableSetColumnIndex(2);
+            ImGui::TextUnformatted(rateLawName(r.law));
+            ImGui::TableSetColumnIndex(3);
+            for (std::size_t p = 0; p < r.parameters.size(); ++p) {
+                if (p) ImGui::SameLine();
+                ImGui::PushID(static_cast<int>(i * 16 + p));
+                ImGui::SetNextItemWidth(80.0f);
+                if (ImGui::InputDouble("##p", &r.parameters[p], 0.0, 0.0, "%.4g"))
+                    refreshAnalysis(shell, ws);
+                ImGui::PopID();
+            }
+        }
+        ImGui::EndTable();
+    }
+    ImGui::Spacing();
+
+    // ------------------------------------------------- structure of the matrix
+    theme::sectionHeader("STRUCTURE OF THE STOICHIOMETRIC MATRIX");
+    if (ws.spec.conservationLabels.empty()) {
+        ImGui::TextDisabled("No conservation law: every non-clamped species can be created or "
+                            "destroyed by this network.");
+    } else {
+        for (const std::string& label : ws.spec.conservationLabels)
+            ImGui::BulletText("conserved moiety: %s", label.c_str());
+    }
+    ImGui::TextDisabled("%zu thermodynamic (Wegscheider) cycle(s) in the right null space",
+                        ws.spec.thermodynamicCycles.size());
+    for (const std::string& v : ws.spec.wegscheiderViolations) {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored(theme::verdictColor(3), "WEGSCHEIDER VIOLATION: %s", v.c_str());
+        ImGui::PopTextWrapPos();
+    }
+    for (const std::string& w : ws.spec.warnings)
+        ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic), "%s", w.c_str());
+    ImGui::Spacing();
+
+    // ------------------------------------------------------- deterministic run
+    theme::sectionHeader("TIME COURSE");
+    static const char* kMethods[] = {"rk4 (fixed step, explicit)",
+                                     "rosenbrock ROS3P (L-stable, adaptive)"};
+    ImGui::SetNextItemWidth(300.0f);
+    ImGui::Combo("Solver", &ws.methodIndex, kMethods, 2);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(110.0f);
+    ImGui::InputDouble("Horizon", &ws.horizon, 1.0, 10.0, "%.3f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(110.0f);
+    ImGui::InputDouble("rel tol", &ws.relTol, 0.0, 0.0, "%.1e");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(110.0f);
+    ImGui::InputDouble("abs tol", &ws.absTol, 0.0, 0.0, "%.1e");
+
+    const TimeCourse tc = s.simulation->integrate(ws.spec, ws.horizon, ws.relTol, ws.absTol,
+                                                  ws.methodIndex == 0 ? "rk4" : "rosenbrock");
+    if (tc.times.empty()) {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored(theme::verdictColor(3), "The integration was refused: %s",
+                           tc.solver.note.c_str());
+        for (const std::string& w : tc.warnings)
+            ImGui::TextColored(theme::verdictColor(3), "%s", w.c_str());
+        ImGui::PopTextWrapPos();
+    } else {
+        if (ImPlot::BeginPlot("##net-course", ImVec2(-1, 260))) {
+            ImPlot::SetupAxes("time", "concentration");
+            for (std::size_t i = 0; i < tc.trajectories.size(); ++i)
+                ImPlot::PlotLine(tc.speciesIds[i].c_str(), tc.times.data(),
+                                 tc.trajectories[i].data(), static_cast<int>(tc.times.size()));
+            ImPlot::EndPlot();
+        }
+        // The solver report is not diagnostics: a curve whose rejected-step count and
+        // clip count are hidden cannot be judged.
+        theme::sectionHeader("WHAT THE SOLVER ACTUALLY DID");
+        if (ImGui::BeginTable("net-solver", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+            ImGui::TableSetupColumn("Quantity", ImGuiTableColumnFlags_WidthFixed, 240.0f);
+            ImGui::TableSetupColumn("Value");
+            ImGui::TableHeadersRow();
+            auto row = [](const char* name, const std::string& value) {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted(name);
+                ImGui::TableSetColumnIndex(1); ImGui::TextUnformatted(value.c_str());
+            };
+            row("method", tc.solver.method);
+            row("relative / absolute tolerance",
+                sci(tc.solver.relativeTolerance) + " / " + sci(tc.solver.absoluteTolerance));
+            row("accepted steps", std::to_string(tc.solver.acceptedSteps));
+            row("rejected steps", std::to_string(tc.solver.rejectedSteps));
+            row("Jacobian evaluations / LU factorizations",
+                std::to_string(tc.solver.jacobianEvaluations));
+            row("non-negativity clips", std::to_string(tc.solver.nonNegativityClips));
+            row("CPU seconds", f2(tc.solver.cpuSeconds));
+            row("worst conservation drift", sci(tc.worstConservationDrift));
+            row("note", tc.solver.note);
+            ImGui::EndTable();
+        }
+        for (const std::string& w : tc.warnings) {
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextColored(theme::verdictColor(3), "%s", w.c_str());
+            ImGui::PopTextWrapPos();
+        }
+        if (!tc.conservedQuantities.empty() &&
+            ImPlot::BeginPlot("##net-conserved", ImVec2(-1, 150))) {
+            ImPlot::SetupAxes("time", "conserved quantity");
+            for (std::size_t i = 0; i < tc.conservedQuantities.size(); ++i)
+                ImPlot::PlotLine(i < ws.spec.conservationLabels.size()
+                                     ? ws.spec.conservationLabels[i].c_str()
+                                     : "conserved",
+                                 tc.times.data(), tc.conservedQuantities[i].data(),
+                                 static_cast<int>(tc.times.size()));
+            ImPlot::EndPlot();
+        }
+    }
+    ImGui::Spacing();
+
+    // ---------------------------------------------------------- stochastic run
+    theme::sectionHeader("STOCHASTIC ENSEMBLE (COPY NUMBERS, NOT CONCENTRATIONS)");
+    ImGui::SetNextItemWidth(120.0f);
+    ImGui::InputInt("replicates", &ws.replicates);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(120.0f);
+    ImGui::InputInt("seed", &ws.seed);
+    ImGui::SameLine();
+    ImGui::Checkbox("tau-leaping (approximate)", &ws.tauLeap);
+    static bool runStochastic = false;
+    ImGui::SameLine();
+    if (ImGui::Button(runStochastic ? "Hide ensemble" : "Run ensemble"))
+        runStochastic = !runStochastic;
+    if (runStochastic) {
+        const StochasticEnsemble e = s.simulation->stochastic(
+            ws.spec, ws.horizon, ws.replicates, static_cast<std::uint64_t>(ws.seed), ws.tauLeap);
+        if (e.mean.empty()) {
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextColored(theme::verdictColor(3), "Refused: %s", e.solver.note.c_str());
+            ImGui::PopTextWrapPos();
+        } else {
+            // Mean plus and minus one standard deviation, because for the models where
+            // the SSA matters the SPREAD is the result and a mean line alone hides it.
+            if (ImPlot::BeginPlot("##net-ssa", ImVec2(-1, 240))) {
+                ImPlot::SetupAxes("time", "copy number");
+                for (std::size_t i = 0; i < e.mean.size(); ++i) {
+                    std::vector<double> lo(e.times.size()), hi(e.times.size());
+                    for (std::size_t k = 0; k < e.times.size(); ++k) {
+                        const double sd = std::sqrt(std::max(0.0, e.variance[i][k]));
+                        lo[k] = e.mean[i][k] - sd;
+                        hi[k] = e.mean[i][k] + sd;
+                    }
+                    ImPlot::PlotShaded((e.speciesIds[i] + " +/- 1 SD").c_str(), e.times.data(),
+                                       lo.data(), hi.data(), static_cast<int>(e.times.size()));
+                    ImPlot::PlotLine(e.speciesIds[i].c_str(), e.times.data(), e.mean[i].data(),
+                                     static_cast<int>(e.times.size()));
+                }
+                ImPlot::EndPlot();
+            }
+            ImGui::TextDisabled("%s, %d replicates, seed %llu, %lld events, %.3f s. %s",
+                                e.solver.method.c_str(), e.replicates,
+                                static_cast<unsigned long long>(e.solver.seed),
+                                static_cast<long long>(e.solver.acceptedSteps),
+                                e.solver.cpuSeconds, e.solver.note.c_str());
+            if (ws.tauLeap)
+                ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic),
+                                   "Tau-leaping is APPROXIMATE: its bias is bounded by its own "
+                                   "error-control parameter, not by the replicate count. Use the "
+                                   "exact algorithm when the mean itself matters.");
+        }
+    }
+    ImGui::Spacing();
+
+    // -------------------------------------------------------- control analysis
+    theme::sectionHeader("METABOLIC CONTROL ANALYSIS");
+    static bool runMca = false;
+    if (ImGui::Button(runMca ? "Hide control analysis" : "Run control analysis"))
+        runMca = !runMca;
+    if (runMca) {
+        const ControlAnalysis ca = s.simulation->controlAnalysis(ws.spec, ws.horizon * 10.0);
+        if (ca.fluxControlCoefficients.empty()) {
+            for (const std::string& w : ca.warnings) {
+                ImGui::PushTextWrapPos(0.0f);
+                ImGui::TextColored(theme::verdictColor(3), "%s", w.c_str());
+                ImGui::PopTextWrapPos();
+            }
+        } else {
+            // The two residuals come FIRST: they are theorems, and a large residual
+            // means the table below it is not trustworthy.
+            statCard("SUMMATION RESIDUAL", sci(ca.summationResidual),
+                     "flux CCs must sum to 1, concentration CCs to 0", 300.0f);
+            ImGui::SameLine();
+            statCard("CONNECTIVITY RESIDUAL", sci(ca.connectivityResidual),
+                     "sum_k C^J_k * eps_k,j must be 0", 300.0f);
+            if (ImGui::BeginTable("mca", static_cast<int>(ca.reactionIds.size() + 1),
+                                  ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+                ImGui::TableSetupColumn("flux \\ perturbed", ImGuiTableColumnFlags_WidthFixed,
+                                        150.0f);
+                for (const std::string& id : ca.reactionIds) ImGui::TableSetupColumn(id.c_str());
+                ImGui::TableHeadersRow();
+                for (std::size_t r = 0; r < ca.fluxControlCoefficients.size(); ++r) {
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::TextUnformatted(ca.reactionIds[r].c_str());
+                    for (std::size_t k = 0; k < ca.fluxControlCoefficients[r].size(); ++k) {
+                        ImGui::TableSetColumnIndex(static_cast<int>(k + 1));
+                        ImGui::TextUnformatted(f2(ca.fluxControlCoefficients[r][k]).c_str());
+                    }
+                }
+                ImGui::EndTable();
+            }
+            for (const std::string& w : ca.warnings)
+                ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic), "%s", w.c_str());
+        }
+    }
+    ImGui::Spacing();
+
+    // ------------------------------------------------------- chemical kinetics
+    theme::sectionHeader("CHEMICAL KINETICS FROM YOUR OWN DATA");
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(theme::provenanceColor(Provenance::NotComputed),
+                       "This is where a pH window, a temperature ceiling and a shelf life come "
+                       "from. They used to be produced from a functional-group flag count and "
+                       "are now computed only from rate constants you measured. Three or more "
+                       "distinct temperatures are required before any extrapolation is offered.");
+    ImGui::PopTextWrapPos();
+
+    if (ImGui::Button("Add temperature point"))
+        ws.temperatureRates.emplace_back(298.15 + 10.0 * ws.temperatureRates.size(), 1e-3);
+    ImGui::SameLine();
+    if (ImGui::Button("Clear temperatures")) ws.temperatureRates.clear();
+    if (!ws.temperatureRates.empty() &&
+        ImGui::BeginTable("kin-t", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 40.0f);
+        ImGui::TableSetupColumn("temperature (K)", ImGuiTableColumnFlags_WidthFixed, 180.0f);
+        ImGui::TableSetupColumn("rate constant k (1/time)");
+        ImGui::TableHeadersRow();
+        for (std::size_t i = 0; i < ws.temperatureRates.size(); ++i) {
+            ImGui::TableNextRow();
+            ImGui::PushID(static_cast<int>(1000 + i));
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("%zu", i + 1);
+            ImGui::TableSetColumnIndex(1);
+            ImGui::SetNextItemWidth(-1.0f);
+            ImGui::InputDouble("##T", &ws.temperatureRates[i].first, 0.0, 0.0, "%.2f");
+            ImGui::TableSetColumnIndex(2);
+            ImGui::SetNextItemWidth(-1.0f);
+            ImGui::InputDouble("##k", &ws.temperatureRates[i].second, 0.0, 0.0, "%.6g");
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+    if (ws.temperatureRates.size() >= 2) {
+        std::vector<double> temps, ks;
+        for (const auto& [t, k] : ws.temperatureRates) {
+            temps.push_back(t);
+            ks.push_back(k);
+        }
+        const KineticsFit fit = s.simulation->arrhenius(temps, ks);
+        drawQuantity("Pre-exponential A", fit.preExponential);
+        drawQuantity("Activation energy Ea", fit.activationEnergy);
+        drawQuantity("Enthalpy of activation dH*", fit.enthalpyOfActivation);
+        drawQuantity("Entropy of activation dS*", fit.entropyOfActivation);
+        drawQuantity("k at 25 C", fit.predictedRateAt25C);
+        if (fit.extrapolationSupported) {
+            ImGui::Text("95%% prediction interval on k(25 C): %s to %s",
+                        sci(fit.predictionIntervalLow).c_str(),
+                        sci(fit.predictionIntervalHigh).c_str());
+            ImGui::SetNextItemWidth(140.0f);
+            ImGui::InputDouble("storage (C)", &ws.storageTemperatureC, 1.0, 5.0, "%.1f");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(140.0f);
+            ImGui::InputDouble("fraction lost", &ws.fractionLost, 0.01, 0.05, "%.3f");
+        } else {
+            ImGui::TextColored(theme::provenanceColor(Provenance::NotComputed),
+                               "Two temperatures fit a straight line EXACTLY and say nothing "
+                               "about how wrong it is: no extrapolation, and no shelf life.");
+        }
+        ImGui::Text("R-squared %.6f", fit.rSquared);
+        for (const std::string& a : fit.assumptions) ImGui::BulletText("assumes: %s", a.c_str());
+        for (const std::string& w : fit.warnings)
+            ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic), "%s", w.c_str());
+        // The dH*/dS* joint ellipse, because the two are strongly correlated and two
+        // separate error bars overstate what the experiment determined.
+        if (fit.confidenceEllipse.size() > 2) {
+            std::vector<double> ex, ey;
+            for (const auto& [h, e] : fit.confidenceEllipse) {
+                ex.push_back(h);
+                ey.push_back(e);
+            }
+            if (ImPlot::BeginPlot("##kin-ellipse", ImVec2(-1, 200))) {
+                ImPlot::SetupAxes("dH* (kJ/mol)", "dS* (J/(mol*K))");
+                ImPlot::PlotLine("95% joint confidence region", ex.data(), ey.data(),
+                                 static_cast<int>(ex.size()));
+                const double hx = fit.enthalpyOfActivation.value;
+                const double hy = fit.entropyOfActivation.value;
+                ImPlot::PlotScatter("fit", &hx, &hy, 1);
+                ImPlot::EndPlot();
+            }
+        }
+    } else {
+        ImGui::TextColored(theme::provenanceColor(Provenance::NotComputed),
+                           "No Arrhenius fit: needs rate constants at two or more temperatures "
+                           "(three for an extrapolation).");
+    }
+
+    ImGui::Spacing();
+    if (ImGui::Button("Add pH point")) ws.phRates.emplace_back(1.0 + ws.phRates.size(), 1e-4);
+    ImGui::SameLine();
+    if (ImGui::Button("Clear pH points")) ws.phRates.clear();
+    if (!ws.phRates.empty() &&
+        ImGui::BeginTable("kin-ph", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 40.0f);
+        ImGui::TableSetupColumn("pH", ImGuiTableColumnFlags_WidthFixed, 180.0f);
+        ImGui::TableSetupColumn("observed k (1/time)");
+        ImGui::TableHeadersRow();
+        for (std::size_t i = 0; i < ws.phRates.size(); ++i) {
+            ImGui::TableNextRow();
+            ImGui::PushID(static_cast<int>(2000 + i));
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("%zu", i + 1);
+            ImGui::TableSetColumnIndex(1);
+            ImGui::SetNextItemWidth(-1.0f);
+            ImGui::InputDouble("##ph", &ws.phRates[i].first, 0.0, 0.0, "%.2f");
+            ImGui::TableSetColumnIndex(2);
+            ImGui::SetNextItemWidth(-1.0f);
+            ImGui::InputDouble("##kobs", &ws.phRates[i].second, 0.0, 0.0, "%.6g");
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+    if (ws.phRates.size() >= 3) {
+        std::vector<double> phs, ks;
+        for (const auto& [p, k] : ws.phRates) {
+            phs.push_back(p);
+            ks.push_back(k);
+        }
+        const PhRateProfile pr = s.simulation->phRate(phs, ks);
+        drawQuantity("kH (acid-catalysed)", pr.kAcid);
+        drawQuantity("k0 (pH-independent)", pr.kNeutral);
+        drawQuantity("kOH (base-catalysed)", pr.kBase);
+        drawQuantity("pH of minimum degradation", pr.minimumPh);
+        drawQuantity("rate at the minimum", pr.minimumRate);
+        ImGui::Text("R-squared %.6f", pr.rSquared);
+        for (const std::string& w : pr.warnings)
+            ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic), "%s", w.c_str());
+        if (ImPlot::BeginPlot("##kin-ph-plot", ImVec2(-1, 200))) {
+            ImPlot::SetupAxes("pH", "log10 k_obs");
+            std::vector<double> ly;
+            for (double k : ks) ly.push_back(std::log10(std::max(k, 1e-300)));
+            ImPlot::PlotScatter("measured", phs.data(), ly.data(), static_cast<int>(phs.size()),
+                                markerSpec(ImPlotMarker_Circle, 5.0f));
+            if (pr.minimumPh.provenance != Provenance::NotComputed) {
+                const double x = pr.minimumPh.value;
+                ImPlot::PlotInfLines("closed-form minimum", &x, 1);
+            }
+            ImPlot::EndPlot();
+        }
+    } else {
+        ImGui::TextColored(theme::provenanceColor(Provenance::NotComputed),
+                           "No pH-rate profile: the model has three parameters (kH, k0, kOH) and "
+                           "needs at least three pH values.");
+    }
+}
+
+// ---------------------------------------------------------------- Metabolic flux
+void flux(AppShell& shell) {
+    Services& s = shell.services();
+    NetworkWorkspace& ws = networkWorkspace();
+
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(theme::provenanceColor(Provenance::Model),
+                       "A flux distribution is a property of the stoichiometry, the bounds and "
+                       "the objective below - all three of which you chose. A computed growth "
+                       "rate is never a measurement of an organism.");
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+
+    if (!s.flux) {
+        // The feature is compiled out, and saying which switch turns it on is more
+        // useful than an empty panel.
+        ImGui::TextColored(theme::provenanceColor(Provenance::NotComputed),
+                           "Constraint-based flux is not in this build. Configure with "
+                           "-DBIOCAD_ENABLE_FBA=ON to enable it.");
+        return;
+    }
+
+    theme::sectionHeader("MASS AND CHARGE BALANCE (THE GATE)");
+    const FluxSolution check = s.flux->balance(ws.spec);
+    statCard("BALANCE", check.massBalanced ? "PASS" : "FAIL",
+             check.massBalanced ? "every reaction conserves elements and charge"
+                                : "fba() is refused until this passes",
+             320.0f);
+    if (!check.unbalancedReactions.empty() &&
+        ImGui::BeginTable("flux-bal", 1, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("Unbalanced or unchecked reaction");
+        ImGui::TableHeadersRow();
+        for (const std::string& u : check.unbalancedReactions) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextWrapped("%s", u.c_str());
+        }
+        ImGui::EndTable();
+    }
+    ImGui::Spacing();
+
+    theme::sectionHeader("OBJECTIVE AND BOUNDS");
+    static char objective[128] = "";
+    ImGui::SetNextItemWidth(220.0f);
+    ImGui::InputText("Objective reaction", objective, sizeof(objective));
+    static std::vector<FluxBound> bounds;
+    if (ImGui::Button("Add bound") && !ws.spec.reactions.empty())
+        bounds.push_back({ws.spec.reactions.front().id, 0.0, 10.0});
+    ImGui::SameLine();
+    if (ImGui::Button("Clear bounds")) bounds.clear();
+    for (std::size_t i = 0; i < bounds.size(); ++i) {
+        ImGui::PushID(static_cast<int>(3000 + i));
+        char id[128];
+        std::snprintf(id, sizeof(id), "%s", bounds[i].reactionId.c_str());
+        ImGui::SetNextItemWidth(140.0f);
+        if (ImGui::InputText("reaction", id, sizeof(id))) bounds[i].reactionId = id;
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(110.0f);
+        ImGui::InputDouble("lower", &bounds[i].lower, 0.0, 0.0, "%.4g");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(110.0f);
+        ImGui::InputDouble("upper", &bounds[i].upper, 0.0, 0.0, "%.4g");
+        ImGui::PopID();
+    }
+    ImGui::Spacing();
+
+    static int mode = 0;
+    static const char* kModes[] = {"FBA", "parsimonious FBA", "FVA", "single deletions",
+                                   "double deletions"};
+    ImGui::SetNextItemWidth(240.0f);
+    ImGui::Combo("Analysis", &mode, kModes, 5);
+    static double fraction = 1.0;
+    if (mode == 2) {
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(140.0f);
+        ImGui::InputDouble("objective fraction", &fraction, 0.05, 0.1, "%.2f");
+    }
+    if (!ImGui::Button("Solve")) {
+        ImGui::TextDisabled("Press Solve to run the LP.");
+        return;
+    }
+
+    const std::string obj = objective;
+    if (mode == 0 || mode == 1) {
+        const FluxSolution r = mode == 0 ? s.flux->fba(ws.spec, obj, bounds)
+                                         : s.flux->parsimonious(ws.spec, obj, bounds);
+        ImGui::Text("status: %s", r.solverStatus.c_str());
+        ImGui::Text("objective %s = %.10g", r.objectiveReactionId.c_str(), r.objectiveValue);
+        for (const std::string& w : r.warnings) {
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextColored(theme::verdictColor(3), "%s", w.c_str());
+            ImGui::PopTextWrapPos();
+        }
+        // The bounds are printed BESIDE the fluxes, always: a flux without the medium
+        // it was allowed is not interpretable.
+        if (!r.fluxes.empty() &&
+            ImGui::BeginTable("flux-v", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+            ImGui::TableSetupColumn("Reaction", ImGuiTableColumnFlags_WidthFixed, 120.0f);
+            ImGui::TableSetupColumn("Flux", ImGuiTableColumnFlags_WidthFixed, 140.0f);
+            ImGui::TableSetupColumn("Lower bound", ImGuiTableColumnFlags_WidthFixed, 140.0f);
+            ImGui::TableSetupColumn("Upper bound");
+            ImGui::TableHeadersRow();
+            for (std::size_t i = 0; i < r.fluxes.size(); ++i) {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::TextUnformatted(r.reactionIds[i].c_str());
+                ImGui::TableSetColumnIndex(1);
+                ImGui::TextUnformatted(f2(r.fluxes[i]).c_str());
+                if (i < r.exchangeBounds.size()) {
+                    ImGui::TableSetColumnIndex(2);
+                    ImGui::TextUnformatted(f2(r.exchangeBounds[i].lower).c_str());
+                    ImGui::TableSetColumnIndex(3);
+                    ImGui::TextUnformatted(f2(r.exchangeBounds[i].upper).c_str());
+                }
+            }
+            ImGui::EndTable();
+        }
+        return;
+    }
+
+    const std::vector<FluxRange> ranges =
+        mode == 2 ? s.flux->fva(ws.spec, obj, bounds, fraction)
+                  : s.flux->deletions(ws.spec, obj, bounds, mode == 3 ? 1 : 2);
+    if (ranges.empty()) {
+        ImGui::TextColored(theme::verdictColor(3),
+                           "No result: the LP was infeasible, unbounded, or the balance gate "
+                           "refused the network.");
+        return;
+    }
+    if (ImGui::BeginTable("flux-range", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("Reaction(s)", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn(mode == 2 ? "Minimum" : "Objective with the deletion",
+                                ImGuiTableColumnFlags_WidthFixed, 220.0f);
+        ImGui::TableSetupColumn(mode == 2 ? "Maximum" : "Undeleted optimum",
+                                ImGuiTableColumnFlags_WidthFixed, 200.0f);
+        ImGui::TableHeadersRow();
+        for (const FluxRange& r : ranges) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(r.reactionId.c_str());
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextUnformatted(f2(r.minimum).c_str());
+            ImGui::TableSetColumnIndex(2);
+            ImGui::TextUnformatted(f2(r.maximum).c_str());
+        }
+        ImGui::EndTable();
+    }
+}
+
+// ------------------------------------------------------------ Pathway enrichment
+void enrichment(AppShell& shell) {
+    Services& s = shell.services();
+    if (!s.enrichment) return;
+
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(theme::provenanceColor(Provenance::Measured),
+                       "The background is not optional. A hypergeometric p-value is a function "
+                       "of the universe the query was drawn from, so paste the identifiers your "
+                       "experiment could actually have detected - not 'all genes'.");
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+
+    static char pack[128] = "reactome-human.gmt";
+    static char queryText[4096] = "HK1\nPFKL\nALDOA\nGAPDH\nPGK1\nENO1\nPKM\nLDHA\n";
+    static char backgroundText[16384] = "";
+    ImGui::SetNextItemWidth(280.0f);
+    ImGui::InputText("Gene-set pack", pack, sizeof(pack));
+    ImGui::Text("Query identifiers (one per line)");
+    ImGui::InputTextMultiline("##enr-query", queryText, sizeof(queryText), ImVec2(-1, 120));
+    ImGui::Text("Background identifiers (one per line) - REQUIRED");
+    ImGui::InputTextMultiline("##enr-bg", backgroundText, sizeof(backgroundText), ImVec2(-1, 120));
+
+    auto split = [](const char* text) {
+        std::vector<std::string> out;
+        std::istringstream in(text);
+        std::string line;
+        while (std::getline(in, line)) {
+            while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
+            if (!line.empty()) out.push_back(line);
+        }
+        return out;
+    };
+
+    static bool run = false;
+    if (ImGui::Button("Run enrichment")) run = true;
+    if (run) {
+        const EnrichmentReport r =
+            s.enrichment->enrich(split(queryText), split(backgroundText), pack);
+        ImGui::TextDisabled("method: %s   |   database release: %s", r.method.c_str(),
+                            r.databaseRelease.c_str());
+        for (const std::string& w : r.warnings) {
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic), "%s", w.c_str());
+            ImGui::PopTextWrapPos();
+        }
+        if (ImGui::BeginTable("enr", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+            ImGui::TableSetupColumn("Pathway", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+            ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("Overlap", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+            ImGui::TableSetupColumn("p", ImGuiTableColumnFlags_WidthFixed, 110.0f);
+            ImGui::TableSetupColumn("q (BH)", ImGuiTableColumnFlags_WidthFixed, 110.0f);
+            ImGui::TableSetupColumn("Fold", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+            ImGui::TableHeadersRow();
+            for (const EnrichmentHit& h : r.hits) {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted(h.pathwayId.c_str());
+                ImGui::TableSetColumnIndex(1); ImGui::TextUnformatted(h.pathwayName.c_str());
+                ImGui::TableSetColumnIndex(2);
+                ImGui::Text("%d / %d", h.inSetAndPathway, h.pathwaySize);
+                ImGui::TableSetColumnIndex(3); ImGui::TextUnformatted(sci(h.pValue).c_str());
+                // The q-value is the number to read, so it is coloured and the raw p
+                // is left plain: a raw p over a thousand tests is not a result.
+                ImGui::TableSetColumnIndex(4);
+                ImGui::TextColored(theme::provenanceColor(h.qValue <= 0.05 ? Provenance::Measured
+                                                                          : Provenance::Heuristic),
+                                   "%s", sci(h.qValue).c_str());
+                ImGui::TableSetColumnIndex(5); ImGui::TextUnformatted(f2(h.foldEnrichment).c_str());
+            }
+            ImGui::EndTable();
+        }
+    }
+    ImGui::Spacing();
+
+    // ------------------------------------------------------------ graph metrics
+    theme::sectionHeader("TOPOLOGY OF THE LOADED REACTION NETWORK");
+    ImGui::TextDisabled("Edges are induced by shared reactions in the Reaction Network panel's "
+                        "network; each carries the reaction id as its evidence.");
+    const GraphMetrics g = s.enrichment->graph(networkAsEdges(networkWorkspace().spec));
+    if (g.nodes.empty()) {
+        ImGui::TextColored(theme::provenanceColor(Provenance::NotComputed),
+                           "No edges with stated evidence: nothing to measure.");
+        return;
+    }
+    statCard("NODES", std::to_string(g.nodes.size()), "species", 140.0f);
+    ImGui::SameLine();
+    statCard("EDGES", std::to_string(g.edges.size()), "with evidence", 150.0f);
+    ImGui::SameLine();
+    statCard("COMPONENTS", std::to_string(g.componentCount), "connected", 160.0f);
+    ImGui::SameLine();
+    statCard("MODULARITY", f2(g.modularity), "Louvain partition", 180.0f);
+    if (ImGui::BeginTable("graph", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("Node", ImGuiTableColumnFlags_WidthFixed, 140.0f);
+        ImGui::TableSetupColumn("Degree", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+        ImGui::TableSetupColumn("Betweenness (Brandes)", ImGuiTableColumnFlags_WidthFixed, 200.0f);
+        ImGui::TableSetupColumn("Community");
+        ImGui::TableHeadersRow();
+        for (std::size_t i = 0; i < g.nodes.size(); ++i) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted(g.nodes[i].c_str());
+            ImGui::TableSetColumnIndex(1); ImGui::Text("%d", g.degree[i]);
+            ImGui::TableSetColumnIndex(2);
+            ImGui::TextUnformatted(f2(g.betweenness[i]).c_str());
+            ImGui::TableSetColumnIndex(3); ImGui::Text("%d", g.community[i]);
+        }
+        ImGui::EndTable();
+    }
+    for (const std::string& w : g.warnings)
+        ImGui::TextColored(theme::provenanceColor(Provenance::Heuristic), "%s", w.c_str());
+}
+
+
 // ------------------------------------------------------------------ Similarity
 void similarity(AppShell& shell) {
     const Molecule m = shell.currentMolecule();
@@ -3395,7 +4692,7 @@ void compare(AppShell& shell) {
         rowD("logP", [](const Row& r) { return f2(r.m.logP); });
         rowD("TPSA", [](const Row& r) { return f2(r.m.tpsa); });
         rowD("Stability", [](const Row& r) { return f0(r.st.overallScore) + "/100"; });
-        rowD("Shelf life", [](const Row& r) { return r.st.shelfLifeEstimate; });
+        rowD("Shelf life", [](const Row& r) { return quantityShort(r.st.shelfLife); });
         rowD("Oral F%", [](const Row& r) { return f0(r.ab.bioavailabilityPct) + "%"; });
         rowD("HIA%", [](const Row& r) { return f0(r.ab.hiaPct) + "%"; });
         rowD("logBB", [](const Row& r) { return f2(r.ab.logBB) + (r.ab.cnsPenetrant ? " (BBB+)" : ""); });
@@ -3884,7 +5181,7 @@ void analogExplorer(AppShell& shell) {
         const auto lg = s.legal->score(c);
 
         theme::sectionHeader("PREDICTED PROFILE");
-        statCard("STABILITY", f0(st.overallScore) + "/100", st.shelfLifeEstimate.c_str(), 190.0f);
+        statCard("STABILITY", f0(st.overallScore) + "/100", "rank ordering, no units", 190.0f);
         ImGui::SameLine();
         statCard("ORAL F", f0(ab.bioavailabilityPct) + "%",
                  ab.cnsPenetrant ? "BBB-permeant" : "low BBB partition", 160.0f);
@@ -4422,6 +5719,440 @@ void nucleicAcid(AppShell& shell) {
         which == 0 ? s.nucleicAcid->toFasta(rec) : s.nucleicAcid->toGenBank(rec);
     ImGui::InputTextMultiline("##nuc-export", const_cast<char*>(out.c_str()), out.size() + 1,
                               ImVec2(-1, 140), ImGuiInputTextFlags_ReadOnly);
+}
+
+// ------------------------------------------------------------------ Antibody
+// The header states the one thing a reader will otherwise get wrong: the closest
+// germline set is a similarity result, not a species. Everything else in the panel
+// is either exact arithmetic or an explicit refusal.
+void antibody(AppShell& shell) {
+    Services& s = shell.services();
+    if (!s.biologics) return;
+
+    // 1N8Z chain B and chain A (RCSB entry FASTA): a real, published Fab, so the
+    // panel is never empty and the example is checkable.
+    static char heavy[8192] =
+        "EVQLVESGGGLVQPGGSLRLSCAASGFNIKDTYIHWVRQAPGKGLEWVARIYPTNGYTRYADSVKGRFTISADTSKNTAY"
+        "LQMNSLRAEDTAVYYCSRWGGDGFYAMDYWGQGTLVTVSS";
+    static char light[8192] =
+        "DIQMTQSPSSLSASVGDRVTITCRASQDVNTAVAWYQQKPGKAPKLLIYSASFLYSGVPSRFSGSRSGTDFTLTISSLQP"
+        "EDFATYYCQQHYTTPPTFGQGTKVEIK";
+    static int  scheme = 0;
+    static int  disulfides = 4;
+    static int  protease = 0;
+    static int  missed = 1;
+    static char structPath[1024] = "";
+    static char chainsA[64] = "AB";
+    static char chainsB[64] = "C";
+    static std::optional<bio::Structure> loaded;
+    static std::string loadError;
+    static bool ranScan = false;
+    static AlanineScanReport scan;
+
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(theme::provenanceColor(Provenance::Measured),
+                       "IMGT is canonical here; Kabat and Chothia are table-driven VIEWS of it. "
+                       "The closest germline set is a SEQUENCE-SIMILARITY result and is NEVER a "
+                       "species identification - a camelid VHH scores best against a human IGHV3 "
+                       "gene. There is no humanness score, no humanization suggestion, no "
+                       "immunogenicity prediction, no affinity-maturation proposal, no aggregation "
+                       "free energy, no viscosity, no expression titre and no shelf life in this "
+                       "panel, and their absence is deliberate.");
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+
+    theme::sectionHeader("V-DOMAIN SEQUENCES (ONE-LETTER)");
+    ImGui::Text("Heavy / VHH");
+    ImGui::InputTextMultiline("##ab-h", heavy, sizeof(heavy), ImVec2(-1, 56));
+    ImGui::Text("Light (optional)");
+    ImGui::InputTextMultiline("##ab-l", light, sizeof(light), ImVec2(-1, 56));
+
+    const char* schemeNames[] = {"IMGT", "Kabat", "Chothia", "Martin", "AHo"};
+    const NumberingScheme schemes[] = {NumberingScheme::Imgt, NumberingScheme::Kabat,
+                                      NumberingScheme::Chothia, NumberingScheme::Martin,
+                                      NumberingScheme::Aho};
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::Combo("Numbering scheme", &scheme, schemeNames, IM_ARRAYSIZE(schemeNames));
+    ImGui::Spacing();
+
+    // Numbering aligns the sequence against every germline in the pack, which is far
+    // too much work to redo 60 times a second. The result depends only on the two text
+    // boxes, so it is cached on them.
+    struct NumberedCache {
+        std::string heavy, light;
+        AbDomain    h, l;
+    };
+    static NumberedCache cache;
+    if (cache.heavy != heavy || cache.light != light) {
+        cache.heavy = heavy;
+        cache.light = light;
+        cache.h = s.biologics->number(heavy, NumberingScheme::Imgt);
+        cache.l = *light ? s.biologics->number(light, NumberingScheme::Imgt) : AbDomain{};
+    }
+    const AbDomain& imgtH = cache.h;
+    const AbDomain& imgtL = cache.l;
+    const AbDomain shownH = s.biologics->convertScheme(imgtH, schemes[scheme]);
+    const AbDomain shownL = imgtL.numbered ? s.biologics->convertScheme(imgtL, schemes[scheme])
+                                           : imgtL;
+
+    std::vector<std::string> chains;
+    if (*heavy) chains.push_back(heavy);
+    if (*light) chains.push_back(light);
+
+    // Everything below either touches SASA or walks the formula table, so the whole
+    // bundle is recomputed only when one of its inputs actually changes. A panel that
+    // recomputes an interface every frame is a panel that cannot be opened.
+    struct ResultCache {
+        std::string signature;
+        std::vector<SequenceLiability> liabH, liabL;
+        DevelopabilityReport dev;
+        MassLadder           ladder;
+        PeptideMap           map;
+        InterfaceReport      interface;
+    };
+    static ResultCache rc;
+    const std::string protName = bio::proteaseNames()[static_cast<std::size_t>(
+        std::clamp(protease, 0, static_cast<int>(bio::proteaseNames().size()) - 1))];
+    const std::string signature = std::string(heavy) + "|" + light + "|" + structPath + "|" +
+                                  chainsA + "|" + chainsB + "|" + std::to_string(disulfides) +
+                                  "|" + protName + "|" + std::to_string(missed) + "|" +
+                                  (loaded ? loaded->id + loaded->source : std::string("-"));
+    if (rc.signature != signature) {
+        rc.signature = signature;
+        const bio::Structure* st = loaded ? &*loaded : nullptr;
+        rc.liabH = s.biologics->liabilities(imgtH, st);
+        rc.liabL = imgtL.numbered ? s.biologics->liabilities(imgtL, st)
+                                  : std::vector<SequenceLiability>{};
+        rc.dev = s.biologics->developability(chains, st);
+        rc.ladder = s.biologics->massLadder(chains, disulfides);
+        rc.map = s.biologics->digest(heavy, protName, missed);
+        rc.interface = st ? s.biologics->interfaceOf(*st, chainsA, chainsB) : InterfaceReport{};
+    }
+
+    auto chainName = [](AbChainType c) {
+        switch (c) {
+            case AbChainType::HeavyVh:      return "VH";
+            case AbChainType::LightVKappa:  return "VK";
+            case AbChainType::LightVLambda: return "VL";
+            case AbChainType::Vhh:          return "VHH";
+            case AbChainType::TcrBeta:      return "TCR beta (REJECTED)";
+            case AbChainType::TcrAlpha:     return "TCR alpha (REJECTED)";
+            case AbChainType::Unknown:      break;
+        }
+        return "unknown";
+    };
+
+    auto domainBlock = [&](const char* title, const AbDomain& imgt, const AbDomain& shown,
+                          const std::vector<SequenceLiability>& liabs) {
+        if (imgt.sequence.empty()) return;
+        theme::sectionHeader(title);
+        if (!imgt.numbered) {
+            ImGui::TextColored(theme::verdictColor(3),
+                               "NOT NUMBERED - no positions are reported at all, because plausible "
+                               "wrong numbering is worse than none:");
+            for (const auto& f : imgt.anchorFailures)
+                ImGui::TextWrapped("  - %s", f.c_str());
+            ImGui::TextDisabled("closest germline set %s (%.1f bits) - a similarity result, not a "
+                                "species", imgt.closestGermlineSet.c_str(), imgt.bestBitScore);
+            return;
+        }
+        statCard("CHAIN", chainName(imgt.chain), "from the germline gene class", 200.0f);
+        ImGui::SameLine();
+        statCard("CDR1/2/3", std::to_string(imgt.cdrLengths[0]) + "/" +
+                                 std::to_string(imgt.cdrLengths[1]) + "/" +
+                                 std::to_string(imgt.cdrLengths[2]),
+                 "IMGT lengths", 180.0f);
+        ImGui::SameLine();
+        statCard("GERMLINE", imgt.closestGermlineSet,
+                 (std::string("best ") + f2(imgt.bestBitScore) + " bits, runner-up " +
+                  imgt.runnerUpGermlineSet + " " + f2(imgt.runnerUpBitScore))
+                     .c_str(),
+                 320.0f);
+        ImGui::TextDisabled("V gene %s, J gene %s. Germline identity is NOT species "
+                            "identification.", imgt.vGene.c_str(), imgt.jGene.c_str());
+        for (const auto& w : imgt.warnings) ImGui::TextWrapped("%s", w.c_str());
+        if (!shown.numbered) {
+            ImGui::TextColored(theme::verdictColor(3), "%s view REFUSED:", schemeNames[scheme]);
+            for (const auto& w : shown.warnings) ImGui::TextWrapped("  - %s", w.c_str());
+        }
+
+        // The liability overlay: same table, extra column, so a flagged position is
+        // seen next to its region rather than in a separate list.
+        std::map<int, std::string> flagAt;
+        std::map<int, bool> exposureKnown;
+        for (const auto& f : liabs) {
+            std::string& cell = flagAt[f.sequenceIndex];
+            if (!cell.empty()) cell += ", ";
+            cell += f.motif;
+            exposureKnown[f.sequenceIndex] = f.exposureKnown;
+        }
+
+        if (ImGui::BeginTable("ab-numbering", 5,
+                              ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                                  ImGuiTableFlags_ScrollY,
+                              ImVec2(-1, 260))) {
+            ImGui::TableSetupScrollFreeze(0, 1);
+            ImGui::TableSetupColumn("IMGT", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+            ImGui::TableSetupColumn(schemeNames[scheme], ImGuiTableColumnFlags_WidthFixed, 80.0f);
+            ImGui::TableSetupColumn("AA", ImGuiTableColumnFlags_WidthFixed, 40.0f);
+            ImGui::TableSetupColumn("Region", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+            ImGui::TableSetupColumn("Liability motif");
+            ImGui::TableHeadersRow();
+            for (std::size_t i = 0; i < imgt.residues.size(); ++i) {
+                const auto& r = imgt.residues[i];
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                const bool cdr = r.region.rfind("CDR", 0) == 0;
+                ImGui::TextColored(cdr ? ImGui::ColorConvertU32ToFloat4(theme::kWarn)
+                                       : ImGui::GetStyle().Colors[ImGuiCol_Text],
+                                   "%s", bio::positionLabel(r).c_str());
+                ImGui::TableSetColumnIndex(1);
+                if (shown.numbered && i < shown.residues.size())
+                    ImGui::TextUnformatted(bio::positionLabel(shown.residues[i]).c_str());
+                else
+                    ImGui::TextDisabled("-");
+                ImGui::TableSetColumnIndex(2);
+                ImGui::Text("%c", r.aminoAcid);
+                ImGui::TableSetColumnIndex(3);
+                ImGui::TextUnformatted(r.region.c_str());
+                ImGui::TableSetColumnIndex(4);
+                const auto f = flagAt.find(r.sequenceIndex);
+                if (f == flagAt.end()) {
+                    ImGui::TextDisabled("-");
+                } else {
+                    ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(theme::kWarn), "%s%s",
+                                       f->second.c_str(),
+                                       exposureKnown[r.sequenceIndex] ? "" : " (exposure unknown)");
+                }
+            }
+            ImGui::EndTable();
+        }
+        ImGui::Spacing();
+    };
+
+    domainBlock("HEAVY / VHH DOMAIN", imgtH, shownH, rc.liabH);
+    domainBlock("LIGHT DOMAIN", imgtL, shownL, rc.liabL);
+
+    // ---------------------------------------------------------- developability
+    theme::sectionHeader("DEVELOPABILITY DESCRIPTORS (SEQUENCE ARITHMETIC)");
+    const DevelopabilityReport& dev = rc.dev;
+    drawQuantity("Isoelectric point", dev.isoelectricPoint);
+    drawQuantity("Net charge at pH 7.4", dev.netChargeAtPh74);
+    drawQuantity("eps280", dev.extinctionCoefficient280);
+    drawQuantity("GRAVY", dev.gravy);
+    drawQuantity("Aliphatic index", dev.aliphaticIndex);
+    drawQuantity("Instability index", dev.instabilityIndex);
+    drawQuantity("Fv charge symmetry", dev.fvChargeSymmetry);
+    drawQuantity("TAP-style PSH", dev.tapPsh);
+    drawQuantity("TAP-style PPC", dev.tapPpc);
+    drawQuantity("TAP-style PNC", dev.tapPnc);
+    drawQuantity("TAP-style SFvCSP", dev.tapSfvcsp);
+    ImGui::TextDisabled("Structure origin: %s",
+                        dev.structureOrigin.empty() ? "(none stated)"
+                                                    : dev.structureOrigin.c_str());
+    for (const auto& a : dev.assumptions) ImGui::TextWrapped("%s", a.c_str());
+    for (const auto& w : dev.warnings) ImGui::TextWrapped("%s", w.c_str());
+    ImGui::Spacing();
+
+    // ------------------------------------------------------------- mass ladder
+    theme::sectionHeader("MASS LADDER");
+    ImGui::SetNextItemWidth(140.0f);
+    ImGui::InputInt("Disulfide bonds", &disulfides);
+    const MassLadder& ladder = rc.ladder;
+    if (ImGui::BeginTable("ab-mass", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("Species");
+        ImGui::TableSetupColumn("Average (Da)", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+        ImGui::TableSetupColumn("Monoisotopic (Da)", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+        ImGui::TableSetupColumn("SS", ImGuiTableColumnFlags_WidthFixed, 40.0f);
+        ImGui::TableHeadersRow();
+        for (const auto& e : ladder.entries) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(e.species.c_str());
+            if (ImGui::IsItemHovered() && !e.note.empty()) ImGui::SetTooltip("%s", e.note.c_str());
+            ImGui::TableSetColumnIndex(1);
+            // The average mass leads, because above ~10 kDa it is the observable one.
+            ImGui::TextColored(theme::provenanceColor(e.average.provenance), "%.3f",
+                               e.average.value);
+            ImGui::TableSetColumnIndex(2);
+            ImGui::TextDisabled("%.4f", e.monoisotopic.value);
+            ImGui::TableSetColumnIndex(3);
+            ImGui::Text("%d", e.disulfides);
+        }
+        ImGui::EndTable();
+    }
+    drawQuantity("Resolving power needed for +0.984 vs 1.003", ladder.requiredResolvingPower);
+    for (const auto& a : ladder.assumptions) ImGui::TextWrapped("%s", a.c_str());
+    ImGui::Spacing();
+
+    // ---------------------------------------------------------- peptide map
+    theme::sectionHeader("PEPTIDE MAP");
+    const auto proteases = bio::proteaseNames();
+    std::vector<const char*> pnames;
+    for (const auto& p : proteases) pnames.push_back(p.c_str());
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::Combo("Protease", &protease, pnames.data(), static_cast<int>(pnames.size()));
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(140.0f);
+    ImGui::InputInt("Missed cleavages", &missed);
+    const PeptideMap& map = rc.map;
+    ImGui::Text("%zu peptides, %.1f%% coverage at zero missed cleavages", map.peptides.size(),
+                map.coveragePct);
+    if (ImGui::BeginTable("ab-peptides", 6,
+                          ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                              ImGuiTableFlags_ScrollY,
+                          ImVec2(-1, 200))) {
+        ImGui::TableSetupScrollFreeze(0, 1);
+        ImGui::TableSetupColumn("Peptide");
+        ImGui::TableSetupColumn("Range", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+        ImGui::TableSetupColumn("MC", ImGuiTableColumnFlags_WidthFixed, 40.0f);
+        ImGui::TableSetupColumn("Mono (Da)", ImGuiTableColumnFlags_WidthFixed, 110.0f);
+        ImGui::TableSetupColumn("b1 / y1", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+        ImGui::TableSetupColumn("Variable modifications");
+        ImGui::TableHeadersRow();
+        for (const auto& p : map.peptides) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(p.sequence.c_str());
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d..%d", p.begin, p.end);
+            ImGui::TableSetColumnIndex(2);
+            ImGui::Text("%d", p.missedCleavages);
+            ImGui::TableSetColumnIndex(3);
+            ImGui::Text("%.4f", p.monoisotopic.value);
+            ImGui::TableSetColumnIndex(4);
+            ImGui::Text("%.3f / %.3f", p.bIons.empty() ? 0.0 : p.bIons.front(),
+                        p.yIons.empty() ? 0.0 : p.yIons.front());
+            ImGui::TableSetColumnIndex(5);
+            std::string mods;
+            for (const auto& m : p.modifications) mods += (mods.empty() ? "" : "; ") + m;
+            if (mods.empty()) ImGui::TextDisabled("-");
+            else ImGui::TextUnformatted(mods.c_str());
+        }
+        ImGui::EndTable();
+    }
+    for (const auto& w : map.warnings) ImGui::TextWrapped("%s", w.c_str());
+    ImGui::Spacing();
+
+    // -------------------------------------------------- interface + ala scan
+    // Same load idiom as the Protein Structure panel: a LOCAL file, nothing fetched.
+    theme::sectionHeader("INTERFACE (LOCAL .PDB / .CIF, NOTHING IS FETCHED)");
+    ImGui::SetNextItemWidth(-140.0f);
+    ImGui::InputTextWithHint("##ab-structpath", "Path to a complex .pdb / .cif file...",
+                             structPath, sizeof(structPath));
+    ImGui::SameLine();
+    if (ImGui::Button("Load complex", ImVec2(120, 0))) {
+        ranScan = false;
+        loaded = s.structure ? s.structure->load(std::filesystem::path(structPath))
+                             : std::optional<bio::Structure>{};
+        loadError = loaded ? std::string()
+                           : "Could not read '" + std::string(structPath) + "'.";
+    }
+    if (!loadError.empty()) ImGui::TextColored(theme::verdictColor(3), "%s", loadError.c_str());
+    if (!loaded) {
+        ImGui::TextDisabled("No complex loaded: interface contacts, BSA and the alanine scan are "
+                            "NotComputed until one is.");
+        return;
+    }
+    ImGui::SetNextItemWidth(120.0f);
+    ImGui::InputText("Chains A", chainsA, sizeof(chainsA));
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(120.0f);
+    ImGui::InputText("Chains B", chainsB, sizeof(chainsB));
+
+    const InterfaceReport& ifr = rc.interface;
+    drawQuantity("Buried surface area", ifr.buriedSurfaceArea);
+    drawQuantity("SASA(A)", ifr.sasaA);
+    drawQuantity("SASA(B)", ifr.sasaB);
+    drawQuantity("SASA(AB)", ifr.sasaComplex);
+    ImGui::TextWrapped("SASA parameters: %s", ifr.sasaParameters.c_str());
+    ImGui::Text("Levy partition: %zu support, %zu core, %zu rim", ifr.supportResidues.size(),
+                ifr.coreResidues.size(), ifr.rimResidues.size());
+    ImGui::Text("Paratope %zu residues (%zu of them in CDRs), epitope %zu residues",
+                ifr.paratope.size(), ifr.cdrContacts.size(), ifr.epitope.size());
+    for (const auto& w : ifr.warnings) ImGui::TextWrapped("%s", w.c_str());
+    if (ImGui::BeginTable("ab-contacts", 5,
+                          ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                              ImGuiTableFlags_ScrollY,
+                          ImVec2(-1, 200))) {
+        ImGui::TableSetupScrollFreeze(0, 1);
+        ImGui::TableSetupColumn("Residue A");
+        ImGui::TableSetupColumn("Residue B");
+        ImGui::TableSetupColumn("Min dist", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+        ImGui::TableSetupColumn("Atom pairs", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+        ImGui::TableSetupColumn("Interactions");
+        ImGui::TableHeadersRow();
+        for (const auto& c : ifr.contacts) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(c.residueA.c_str());
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextUnformatted(c.residueB.c_str());
+            ImGui::TableSetColumnIndex(2);
+            ImGui::Text("%.2f A", c.minDistance);
+            ImGui::TableSetColumnIndex(3);
+            ImGui::Text("%d", c.atomContacts);
+            ImGui::TableSetColumnIndex(4);
+            std::string k;
+            auto push = [&k](bool on, const char* n) { if (on) k += (k.empty() ? "" : ", ") + std::string(n); };
+            push(c.hydrogenBond, "H-bond");
+            push(c.saltBridge, "salt bridge");
+            push(c.hydrophobic, "hydrophobic");
+            push(c.piStacking, "pi-pi");
+            push(c.cationPi, "cation-pi");
+            push(c.disulfide, "disulfide");
+            if (k.empty()) ImGui::TextDisabled("van der Waals only");
+            else ImGui::TextUnformatted(k.c_str());
+        }
+        ImGui::EndTable();
+    }
+    ImGui::Spacing();
+
+    theme::sectionHeader("GEOMETRIC ALANINE SCAN (NOT A DELTA-DELTA-G)");
+    if (ImGui::Button("Run scan", ImVec2(140, 0))) {
+        scan = s.biologics->alanineScan(*loaded, chainsA, chainsB);
+        ranScan = true;
+    }
+    if (!ranScan) {
+        ImGui::TextDisabled("Not run. It re-measures the interface once per truncated side chain, "
+                            "so it costs a few seconds.");
+        return;
+    }
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(theme::kWarn), "%s", scan.disclaimer.c_str());
+    ImGui::PopTextWrapPos();
+    drawQuantity("Benchmark Spearman", scan.benchmarkSpearman);
+    if (ImGui::BeginTable("ab-scan", 6,
+                          ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                              ImGuiTableFlags_ScrollY,
+                          ImVec2(-1, 220))) {
+        ImGui::TableSetupScrollFreeze(0, 1);
+        ImGui::TableSetupColumn("Residue");
+        ImGui::TableSetupColumn("Impact (unit-free)", ImGuiTableColumnFlags_WidthFixed, 140.0f);
+        ImGui::TableSetupColumn("Lost BSA (A^2)", ImGuiTableColumnFlags_WidthFixed, 120.0f);
+        ImGui::TableSetupColumn("Lost contacts", ImGuiTableColumnFlags_WidthFixed, 110.0f);
+        ImGui::TableSetupColumn("Lost H-bonds", ImGuiTableColumnFlags_WidthFixed, 110.0f);
+        ImGui::TableSetupColumn("Lost salt bridges", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+        ImGui::TableHeadersRow();
+        for (const auto& p : scan.positions) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(p.residue.c_str());
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextColored(theme::provenanceColor(p.impact.provenance), "%.4f",
+                               p.impact.value);
+            ImGui::TableSetColumnIndex(2);
+            ImGui::Text("%.1f", p.lostBuriedAreaA2);
+            ImGui::TableSetColumnIndex(3);
+            ImGui::Text("%d", p.lostContacts);
+            ImGui::TableSetColumnIndex(4);
+            ImGui::Text("%d", p.lostHydrogenBonds);
+            ImGui::TableSetColumnIndex(5);
+            ImGui::Text("%d", p.lostSaltBridges);
+        }
+        ImGui::EndTable();
+    }
+    for (const auto& a : scan.assumptions) ImGui::TextWrapped("%s", a.c_str());
 }
 
 }  // namespace biocad::panels

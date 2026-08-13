@@ -10,6 +10,10 @@ option(BIOCAD_ENABLE_CUDA    "Enable CUDA-accelerated engines (needs nvcc)" OFF)
 option(BIOCAD_ENABLE_SCIENCE "Link the heavy science stack (RDKit/curl)"    OFF)
 option(BIOCAD_BUILD_TESTS    "Build the Catch2 test suite"                  ON)
 option(BIOCAD_ENABLE_WEBVIEW2 "Optional WebView2 headless JS-render web_fetch (Windows; needs the Evergreen WebView2 Runtime at runtime)" OFF)
+# Constraint-based metabolic flux (Phase 14.5). OFF by default: an FBA panel invites
+# a reader to treat a computed growth rate as a measurement of an organism, and the
+# feature is only meaningful with a mass- and charge-balanced reconstruction loaded.
+option(BIOCAD_ENABLE_FBA     "Enable the constraint-based metabolic flux module"  OFF)
 
 # ---- Language / compiler standard ----------------------------------------
 set(CMAKE_CXX_STANDARD 20)
@@ -38,6 +42,9 @@ endif()
 if(BIOCAD_ENABLE_SCIENCE)
   add_compile_definitions(BIOCAD_HAVE_SCIENCE=1)
 endif()
+if(BIOCAD_ENABLE_FBA)
+  add_compile_definitions(BIOCAD_ENABLE_FBA=1)
+endif()
 if(BIOCAD_ENABLE_WEBVIEW2)
   # The rendered fetch augments the curl web tools, so it requires the science feature.
   if(NOT BIOCAD_ENABLE_SCIENCE)
@@ -63,6 +70,10 @@ find_package(Eigen3        CONFIG REQUIRED)
 find_package(imgui         CONFIG REQUIRED)
 find_package(implot        CONFIG REQUIRED)
 find_package(yaml-cpp      CONFIG REQUIRED)
+# pugixml (MIT) backs the SBML Level 3 Version 2 Core reader/writer in src/sim.
+# libSBML is deliberately NOT used: it is LGPL, and its relinking obligation is
+# incompatible with shipping the single fully static Windows binary this project does.
+find_package(pugixml       CONFIG REQUIRED)
 
 # yaml-cpp target name differs across versions; normalize to yaml-cpp::yaml-cpp
 if(NOT TARGET yaml-cpp::yaml-cpp AND TARGET yaml-cpp)
@@ -91,6 +102,7 @@ add_subdirectory(src/chem)
 add_subdirectory(src/contracts)
 add_subdirectory(src/bio)
 add_subdirectory(src/pkpd)
+add_subdirectory(src/sim)
 add_subdirectory(src/packs)
 add_subdirectory(src/storage)
 add_subdirectory(src/workflow)
@@ -105,4 +117,4 @@ if(BIOCAD_BUILD_TESTS)
   add_subdirectory(tests)
 endif()
 
-message(STATUS "BioCAD ${PROJECT_VERSION}  |  CUDA=${BIOCAD_ENABLE_CUDA}  Science=${BIOCAD_ENABLE_SCIENCE}  Tests=${BIOCAD_BUILD_TESTS}")
+message(STATUS "BioCAD ${PROJECT_VERSION}  |  CUDA=${BIOCAD_ENABLE_CUDA}  Science=${BIOCAD_ENABLE_SCIENCE}  FBA=${BIOCAD_ENABLE_FBA}  Tests=${BIOCAD_BUILD_TESTS}")

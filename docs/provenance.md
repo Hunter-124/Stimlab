@@ -184,9 +184,13 @@ F_H  = Q_H / (Q_H + fu.CLint)
 CL_H = Q_H * fu.CLint / (Q_H + fu.CLint)
 ```
 
-- `Q_H = 90.0` L/h, adult human hepatic blood flow - a population average, not a patient
-  (`HepaticAssumptions::hepaticBloodFlowLPerH`, `src/chem/AdmetModel.h:61-63`), and stated
-  as an assumption in the UI.
+- `Q_H` is adult human hepatic blood flow - a population average, not a patient. It is no
+  longer a literal in this header: `HepaticAssumptions::hepaticBloodFlowLPerH` defaults to
+  `core::physiology().hepaticBloodFlowLPerH`, read from `assets/packs/physiology.json`,
+  which is **97 L/h**. The header used to carry an uncited `90.0` while the
+  drug-interaction pack carried 97 - a constant in two places had already diverged. When
+  the pack cannot be read, the prediction reports the missing pack instead of falling back
+  to a built-in number.
 - `fu.CLint` is **not** predictable from structure, so it is an explicit parameter.
   `unboundIntrinsicClearanceLPerH` defaults to `-1.0`, meaning "derive an assumed value
   from the perceived structural liabilities" (`:64-66`), and `clIntMeasured` is true only
@@ -195,8 +199,8 @@ CL_H = Q_H * fu.CLint / (Q_H + fu.CLint)
   expresses them as a multiple of hepatic blood flow so the model stays dimensionally
   coherent. The header states outright that any result built on them is `Heuristic`.
 
-The arithmetic is now hand-checkable: `Q_H = 90`, `fu.CLint = 30` gives `F_H = 0.75` and
-`CL_H = 22.5 L/h` (`tests/test_provenance.cpp:120-138`), and `CL_H < Q_H` for any input,
+The arithmetic is hand-checkable at any Q_H: with `fu.CLint = Q_H/3` the model gives
+`F_H = 0.75` and `CL_H = Q_H/4` (`tests/test_provenance.cpp:120-138`), and `CL_H < Q_H`
 because an extraction ratio cannot exceed blood flow. `tests/test_provenance.cpp:151-154`
 confirms the rehabilitation changed the units and the honesty, not the ranking: with the
 assumed `fu.CLint` the result is still exactly `1 / (1 + fu.CLint / Q_H)`.
@@ -205,7 +209,8 @@ The rationale text spells the assumption out and shouts when it is assumed
 (`src/chem/AdmetModel.h:156-165`):
 
 > Hepatic availability under the stated assumptions: absorbed fraction (78%) x F_H (6%),
-> well-stirred model with Q_H = 90 L/h and fu.CLint = 1350.0 L/h (ASSUMED from structural
+> well-stirred model with Q_H = 97 L/h (assets/packs/physiology.json) and fu.CLint = 1455.0
+> L/h (ASSUMED from structural
 > liabilities - rank ordering only, not a percentage to quote). Limited by catechol
 > COMT/MAO first-pass metabolism.
 
