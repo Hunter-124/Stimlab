@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <limits>
 #include <numeric>
 
@@ -17,8 +18,8 @@ namespace {
 // quality - and a 64x128 multiply is one instruction pair instead of four.
 constexpr std::uint64_t kCheapMultiplier = 0xda942042e4dd58b5ULL;
 
-inline __uint128_t pack128(std::uint64_t hi, std::uint64_t lo) {
-    return (static_cast<__uint128_t>(hi) << 64) | lo;
+inline core::Uint128 pack128(std::uint64_t hi, std::uint64_t lo) {
+    return core::makeUint128(hi, lo);
 }
 
 }  // namespace
@@ -26,11 +27,13 @@ inline __uint128_t pack128(std::uint64_t hi, std::uint64_t lo) {
 Pcg64Dxsm::Pcg64Dxsm(std::uint64_t seedLow, std::uint64_t seedHigh, std::uint64_t sequence) {
     // The increment must be odd for the LCG to have full period; PCG guarantees that
     // by shifting the stream selector left one bit and setting bit 0.
-    increment_ = (pack128(sequence, sequence ^ 0x9e3779b97f4a7c15ULL) << 1) | 1;
-    state_ = 0;
-    state_ = state_ * kCheapMultiplier + increment_;
-    state_ += pack128(seedHigh, seedLow);
-    state_ = state_ * kCheapMultiplier + increment_;
+    increment_ = core::add(core::shiftLeftOne(
+                               pack128(sequence, sequence ^ 0x9e3779b97f4a7c15ULL)),
+                           pack128(0, 1));
+    state_ = {};
+    state_ = core::add(core::multiply(state_, kCheapMultiplier), increment_);
+    state_ = core::add(state_, pack128(seedHigh, seedLow));
+    state_ = core::add(core::multiply(state_, kCheapMultiplier), increment_);
 }
 
 Pcg64Dxsm Pcg64Dxsm::fromRawState(std::uint64_t stateHigh, std::uint64_t stateLow,
@@ -44,13 +47,13 @@ Pcg64Dxsm Pcg64Dxsm::fromRawState(std::uint64_t stateHigh, std::uint64_t stateLo
 std::uint64_t Pcg64Dxsm::nextUInt64() {
     // DXSM output on the CURRENT state, then advance. The order matters for stream
     // identity with the reference implementation, not for quality.
-    std::uint64_t hi = static_cast<std::uint64_t>(state_ >> 64);
-    std::uint64_t lo = static_cast<std::uint64_t>(state_) | 1ULL;
+    std::uint64_t hi = state_.high;
+    std::uint64_t lo = state_.low | 1ULL;
     hi ^= hi >> 32;
     hi *= kCheapMultiplier;
     hi ^= hi >> 48;
     hi *= lo;
-    state_ = state_ * kCheapMultiplier + increment_;
+    state_ = core::add(core::multiply(state_, kCheapMultiplier), increment_);
     return hi;
 }
 
@@ -325,7 +328,8 @@ bool imanConover(std::vector<double>& samplesRowMajor, std::size_t samples,
         for (Eigen::Index j = 0; j < k; ++j) {
             const double rs = targetCorrRowMajor[static_cast<std::size_t>(i) * dimensions +
                                                  static_cast<std::size_t>(j)];
-            target(i, j) = (i == j) ? 1.0 : 2.0 * std::sin(M_PI * rs / 6.0);
+            target(i, j) =
+                (i == j) ? 1.0 : 2.0 * std::sin(std::numbers::pi_v<double> * rs / 6.0);
         }
     }
 

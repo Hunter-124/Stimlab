@@ -20,8 +20,8 @@ namespace {
 // both the state advance and the output permutation; kIncrement is an arbitrary
 // odd stream constant, fixed so the stream is a property of the seed alone.
 constexpr std::uint64_t kMul = 15750249268501108917ULL;
-constexpr __uint128_t   kIncrement =
-    (static_cast<__uint128_t>(6364136223846793005ULL) << 64) | 1442695040888963407ULL;
+constexpr core::Uint128 kIncrement =
+    core::makeUint128(6364136223846793005ULL, 1442695040888963407ULL);
 
 constexpr double kTwoPi = 6.283185307179586476925286766559;
 
@@ -127,19 +127,20 @@ bool reportedLog10Interval(const FitResult& f, double& lo, double& hi) {
 // ---------------------------------------------------------------------------
 
 DesignRng::DesignRng(std::uint64_t seed) {
-    inc_ = (static_cast<__uint128_t>(seed) << 1) | 1;
-    state_ = kIncrement + inc_;
+    inc_ = core::add(core::shiftLeftOne(core::makeUint128(0, seed)),
+                     core::makeUint128(0, 1));
+    state_ = core::add(kIncrement, inc_);
     next();
-    state_ += (static_cast<__uint128_t>(seed) << 64) | seed;
+    state_ = core::add(state_, core::makeUint128(seed, seed));
     next();
 }
 
 std::uint64_t DesignRng::next() {
-    state_ = state_ * kMul + inc_;
+    state_ = core::add(core::multiply(state_, kMul), inc_);
     // DXSM output: fold the high half, multiply by the cheap multiplier, xor the
     // shifted result back in. This is the 2019 permutation, not the older XSL-RR.
-    std::uint64_t hi = static_cast<std::uint64_t>(state_ >> 64);
-    const std::uint64_t lo = static_cast<std::uint64_t>(state_) | 1ULL;
+    std::uint64_t hi = state_.high;
+    const std::uint64_t lo = state_.low | 1ULL;
     hi ^= hi >> 32;
     hi *= kMul;
     hi ^= hi >> 48;

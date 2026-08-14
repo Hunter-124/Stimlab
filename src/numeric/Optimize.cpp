@@ -225,9 +225,9 @@ LmResult levenbergMarquardt(std::vector<double> initial, std::size_t observation
             if (observations <= nParams) {
                 note += "; standard errors unavailable: no residual degrees of freedom";
             } else if (rank < nParams) {
-                note += "; standard errors unavailable: the weighted Jacobian is rank "
+                note += "; standard errors unavailable: the weighted Jacobian is rank-deficient (rank "
                         + std::to_string(rank) + " of " + std::to_string(nParams)
-                        + " (the data do not identify every parameter)";
+                        + "; the data do not identify every parameter)";
             } else {
                 // cov = (J'WJ)^-1 * variance = V S^-2 V' * variance.
                 Eigen::MatrixXd sInv2 = Eigen::MatrixXd::Zero(

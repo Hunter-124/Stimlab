@@ -187,7 +187,7 @@ TEST_CASE("findTarget resolves by id, by display name and by prefix", "[packs]")
 
     REQUIRE(report.findTarget("DAT").has_value());
     REQUIRE(report.findTarget("dat").has_value());
-    REQUIRE(report.findTarget("DAT (dopamine transporter)PK").has_value());
+    REQUIRE(report.findTarget("DAT (dopamine transporter)").has_value());
     REQUIRE_FALSE(report.findTarget("__absent__").has_value());
 }
 

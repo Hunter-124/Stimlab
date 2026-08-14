@@ -23,6 +23,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include "core/Uint128.h"
 
 #include "data/Assay.h"
 
@@ -49,8 +50,8 @@ public:
     double        lognormal(double sigma);  // exp(sigma * normal()), median 1
 
 private:
-    __uint128_t state_ = 0;
-    __uint128_t inc_ = 0;
+    core::Uint128 state_{};
+    core::Uint128 inc_{};
     double      spare_ = 0.0;
     bool        hasSpare_ = false;
 };

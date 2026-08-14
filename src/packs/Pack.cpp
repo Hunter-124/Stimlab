@@ -195,6 +195,7 @@ LoadReport loadFrom(const std::filesystem::path& dir, bool builtin) {
     std::sort(files.begin(), files.end());  // deterministic load order
 
     for (const auto& file : files) {
+        if (file.filename() == "physiology.json") continue;  // simulation data, not a catalog pack
         std::ifstream in(file, std::ios::binary);
         if (!in) {
             report.errors.push_back(file.string() + ": cannot open");

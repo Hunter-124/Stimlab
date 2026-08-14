@@ -49,9 +49,9 @@ constexpr HydrogenClass kH4{"H4", 0.2980, 1.805};
 // copy without a packaged layout.
 std::filesystem::path findPack() {
     std::error_code ec;
-    if (const char* env = std::getenv("BIOCAD_DESCRIPTOR_DIR")) {
+    if (const char* env = std::getenv("BIOCAD_DESCRIPTOR_DIR"); env && *env) {
         const auto p = std::filesystem::path(env) / "crippen.json";
-        if (std::filesystem::is_regular_file(p, ec)) return p;
+        return std::filesystem::is_regular_file(p, ec) ? p : std::filesystem::path{};
     }
     const auto dir = core::assetDir("packs/descriptors");
     if (!dir.empty()) {

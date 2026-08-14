@@ -146,7 +146,7 @@ TEST_CASE("Crippen reports a missing parameter pack instead of returning zero", 
     // holds successful loads only, so this case cannot poison the others - but it
     // must restore the in-tree directory before it returns.
 #if defined(_WIN32)
-    _putenv_s("BIOCAD_DESCRIPTOR_DIR", "");
+    _putenv_s("BIOCAD_DESCRIPTOR_DIR", "__nonexistent_biocad_descriptor_dir__");
 #else
     setenv("BIOCAD_DESCRIPTOR_DIR", "/nonexistent-biocad-descriptor-dir", 1);
 #endif

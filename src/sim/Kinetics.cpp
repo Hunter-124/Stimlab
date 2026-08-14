@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <numbers>
 #include <numeric>
 #include <set>
 
@@ -198,7 +199,7 @@ KineticsFit arrhenius(const std::vector<double>& temperaturesK,
         if (es.info() == Eigen::Success) {
             const double s = std::sqrt(5.991);
             for (int i = 0; i <= 64; ++i) {
-                const double th = 2.0 * M_PI * i / 64.0;
+                const double th = 2.0 * std::numbers::pi_v<double> * i / 64.0;
                 Eigen::Vector2d unit(std::cos(th), std::sin(th));
                 Eigen::Vector2d radius(s * std::sqrt(std::max(0.0, es.eigenvalues()[0])),
                                        s * std::sqrt(std::max(0.0, es.eigenvalues()[1])));
@@ -311,7 +312,7 @@ KineticsFit eyring(const std::vector<double>& temperaturesK,
         if (es.info() == Eigen::Success) {
             const double s = std::sqrt(5.991);
             for (int i = 0; i <= 64; ++i) {
-                const double th = 2.0 * M_PI * i / 64.0;
+                const double th = 2.0 * std::numbers::pi_v<double> * i / 64.0;
                 const Eigen::Vector2d scaled(
                     s * std::sqrt(std::max(0.0, es.eigenvalues()[0])) * std::cos(th),
                     s * std::sqrt(std::max(0.0, es.eigenvalues()[1])) * std::sin(th));

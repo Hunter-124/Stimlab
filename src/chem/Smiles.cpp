@@ -239,7 +239,9 @@ std::optional<Molecule> parseSmiles(std::string_view s) {
         linkPrev(idx);
     }
 
-    if (m.atoms.empty()) return std::nullopt;
+    if (m.atoms.empty() || !branch.empty()) return std::nullopt;
+    for (const auto& [_, half] : rings)
+        if (half.open) return std::nullopt;
     perceiveRings(m);
     assignImplicitHydrogens(m);
     return m;

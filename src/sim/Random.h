@@ -20,6 +20,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <vector>
+#include "core/Uint128.h"
 
 namespace biocad::sim {
 
@@ -70,8 +71,8 @@ public:
     std::uint64_t nextBounded(std::uint64_t bound);
 
 private:
-    __uint128_t state_ = 0;
-    __uint128_t increment_ = 1;
+    core::Uint128 state_{};
+    core::Uint128 increment_{0, 1};
 };
 
 // Wichura's AS241 PPND16: the inverse of the standard normal CDF.
