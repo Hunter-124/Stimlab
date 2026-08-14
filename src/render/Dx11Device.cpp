@@ -185,17 +185,32 @@ bool Dx11Device::captureBackBufferPng(const std::filesystem::path& out) {
     hr = frame->SetSize(width, height);
     if (FAILED(hr)) return fail("SetSize", hr);
 
+    // Wrap the pixels as a WIC bitmap, then let the encoder negotiate its preferred
+    // format: the built-in PNG codec does not accept 32bppRGBA as-is, and the right
+    // response to negotiation is a colour-correct CONVERSION, not a refusal.
+    Released<IWICBitmap> bitmap;
+    hr = factory->CreateBitmapFromMemory(width, height, pixelFormat, stride,
+                                         static_cast<UINT>(pixels.size()), pixels.data(),
+                                         bitmap.put());
+    if (FAILED(hr)) return fail("CreateBitmapFromMemory", hr);
+
     WICPixelFormatGUID negotiated = pixelFormat;
     hr = frame->SetPixelFormat(&negotiated);
     if (FAILED(hr)) return fail("SetPixelFormat", hr);
+
+    IWICBitmapSource* source = bitmap.p;
+    Released<IWICFormatConverter> converter;
     if (!IsEqualGUID(negotiated, pixelFormat)) {
-        // The encoder refused RGBA. Writing anyway would produce a colour-swapped
-        // image that looks plausible and is wrong, so refuse instead.
-        return fail("SetPixelFormat(negotiated away from 32bppRGBA)", E_FAIL);
+        hr = factory->CreateFormatConverter(converter.put());
+        if (FAILED(hr)) return fail("CreateFormatConverter", hr);
+        hr = converter->Initialize(bitmap.p, negotiated, WICBitmapDitherTypeNone,
+                                   nullptr, 0.0, WICBitmapPaletteTypeCustom);
+        if (FAILED(hr)) return fail("converter Initialize", hr);
+        source = converter.p;
     }
 
-    hr = frame->WritePixels(height, stride, static_cast<UINT>(pixels.size()), pixels.data());
-    if (FAILED(hr)) return fail("WritePixels", hr);
+    hr = frame->WriteSource(source, nullptr);
+    if (FAILED(hr)) return fail("WriteSource", hr);
     hr = frame->Commit();
     if (FAILED(hr)) return fail("frame Commit", hr);
     hr = encoder->Commit();

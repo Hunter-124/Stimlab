@@ -9,6 +9,12 @@
 #include <imgui.h>
 #include <nlohmann/json.hpp>
 
+#ifndef WIN32_LEAN_AND_MEAN
+#  define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <shellapi.h>
+
 #include "agent/Agent.h"
 #include "agent/AnthropicProvider.h"
 #include "agent/OfflineAssistant.h"
@@ -19,6 +25,7 @@
 #include "chem/Descriptors.h"
 #include "chem/Perceive.h"
 #include "chem/Smiles.h"
+#include "core/AppPaths.h"
 #include "core/Config.h"
 #include "core/Secrets.h"
 #include "core/Version.h"
@@ -74,78 +81,89 @@ void pulseBorder(const ImVec2& min, const ImVec2& max, double elapsed) {
 
 AppShell::AppShell(Services services) : svc_(services) {
     panels_ = {
+        // ---- Workspace: the selected compound and where you put new data in.
         {"Dashboard", "Dashboard",
-         "Overview of your library, recent activity, and a snapshot of the selected compound.", "Workspace"},
+         "Overview of your library, recent activity, and a snapshot of the selected compound.", "Workspace", theme::icon::kHome},
         {"Structure", "Structure Workbench",
-         "Identity and physicochemical properties of the selected molecule with a live 3D viewer.", "Workspace"},
+         "Identity and physicochemical properties of the selected molecule with a live 3D viewer.", "Workspace", theme::icon::kCube},
         {"Input", "Molecule Input",
-         "Enter any SMILES string to analyze an arbitrary structure not already in the library.", "Workspace"},
+         "Enter any SMILES string to analyze an arbitrary structure not already in the library.", "Workspace", theme::icon::kPencil},
         {"Library", "Library",
-         "Browse, search, and select compounds from the built-in and imported library.", "Workspace"},
-        {"Stability", "Stability",
-         "Degradation liabilities (hydrolysis, oxidation, photolysis, thermal, pH) and a shelf-life estimate.", "Predict"},
-        {"Absorption", "Absorption / PK",
-         "Permeability, oral bioavailability, blood-brain-barrier partition, and efflux.", "Predict"},
-        {"Metabolism", "Metabolism (ADMET)",
-         "Metabolic routes, risky metabolites, drug interactions, and safety flags (hERG).", "Predict"},
-        {"Metabolites", "Known Metabolites",
-         "Curated, cited biotransformations for the selected compound. Facts only: no hypothetical metabolite is enumerated here.", "Predict"},
-        {"Alerts", "Structural Alerts",
-         "Liability flags: substructures literature-associated with reactive-metabolite formation. Not a toxicity verdict.", "Predict"},
-        {"PkPd", "PK / PD",
-         "Exposure scenarios: concentration-time and target-occupancy curves under stated assumptions.", "Predict"},
-        {"PopPk", "Population PK",
-         "Population exposure bands from entered between-subject variability, parameter uncertainty and residual error, with the seed that produced them, plus noncompartmental analysis of the median profile. A band is the variability that was entered, never a prediction about an individual.", "Predict"},
-        {"InteractionScenarios", "Interaction Scenarios",
-         "FDA basic-model R-values, the mechanistic static AUC ratio with its 1/(1-fm) ceiling and dominant mechanism, dynamic enzyme activity, and renal/hepatic impairment exposure scenarios. Exposure ratios only: no risk score and no dose.", "Predict"},
-        {"Ionization", "Ionization & Solubility",
-         "Microspecies fractions, logD, pH-solubility with the pHmax kink, buffer capacity, isotope envelope and dissolution. pKa and melting point are inputs, never guessed.", "Predict"},
-        {"Assay", "Assay Workbench",
-         "Import a plate reader export, judge it (Z-prime, SSMD, edge and row/column effects), and fit dose-response, enzyme, SPR/BLI, DSF or ITC data. Well readouts are measured; fitted parameters are model values with error bars.", "Predict"},
-        {"AssayDesign", "Assay Design",
-         "Forward-simulate plates from a stated truth model and error structure, through the same import/QC/fit path real data takes, and report what the design would recover. Empirical confidence-interval coverage is the headline number.", "Predict"},
-        {"Sequence", "Sequence Compare",
-         "Pairwise protein sequence alignment (global or local) with identity, similarity and an E-value.", "Discover"},
-        {"Structure3D", "Protein Structure",
-         "Load a local PDB / mmCIF structure: chains, per-chain sequence, SASA and parse warnings.", "Workspace"},
-        {"Variants", "Variant Analysis",
-         "Conservation profiling over a homolog set you supply, SIFT- and PROVEAN-style substitution scores with their published thresholds, and point-mutation side-chain rebuilds by dead-end elimination. Below the homolog minimum no score is produced, and a rebuilt side chain carries no energy claim.", "Discover"},
-        {"NucleicAcid", "DNA / RNA Workbench",
-         "Sequence features, restriction map and gel, six-frame translation, ORFs, oligo thermodynamics, primer design, codon metrics and CRISPR guides. Every off-target count is reported with the reference and the number of bases actually searched.", "Workspace"},
-        {"Antibody", "Antibody Workbench",
-         "IMGT numbering with Kabat/Chothia views, CDR and liability overlays, developability descriptors, mass ladders and peptide maps, plus interface contacts and a geometric alanine scan. The closest germline set is a similarity result, never a species identification.", "Discover"},
-        {"Networks", "Reaction Network",
-         "Stoichiometry, rate laws, conservation laws and Wegscheider cycles; deterministic and stochastic time courses with the solver's own report; metabolic control analysis; and Arrhenius, Eyring and pH-rate fits to rate constants you measured.", "Predict"},
-        {"Flux", "Metabolic Flux",
-         "Constraint-based flux over the loaded network. Mass and charge balance must pass before an objective is optimised, and every flux is shown beside the bounds that allowed it.", "Predict"},
-        {"Enrichment", "Pathway Enrichment",
-         "Hypergeometric over-representation with Benjamini-Hochberg q-values against a background you supply, plus degree, components, Brandes betweenness and Louvain communities over the loaded network.", "Discover"},
-        {"Mechanism", "Mechanism of Action",
-         "Retrieved mechanism-of-action records with their references and action types. A mechanism is never inferred from a docking pose or a fingerprint, and an empty result is a statement about the query and the source, not about the compound.", "Discover"},
-        {"PanelScreen", "Off-Target Panel",
-         "Panel coverage over a target-list pack, led by the count of targets NOT screened. No composite safety score and no cross-target comparison: preparations and boxes differ per row. A hERG margin appears only from a measured IC50 you supply.", "Discover"},
-        {"Analog", "Analog Explorer",
-         "Model or draw a candidate derivative, preview its structure, and screen it against existing samples.", "Discover"},
+         "Browse, search, and select compounds from the built-in and imported library.", "Workspace", theme::icon::kBook},
         {"Compare", "Compare",
-         "Side-by-side comparison of up to three compounds across stability, absorption, and metabolism.", "Discover"},
-        {"Similarity", "Similarity",
-         "Structural and pharmacophore similarity to known substances.", "Discover"},
+         "Side-by-side comparison of up to three compounds across stability, absorption, and metabolism.", "Workspace", theme::icon::kBalance},
+
+        // ---- ADME & Safety: what the body does to the compound.
+        {"Absorption", "Absorption / PK",
+         "Permeability, oral bioavailability, blood-brain-barrier partition, and efflux.", "ADME & Safety", theme::icon::kHeart},
+        {"Metabolism", "Metabolism (ADMET)",
+         "Metabolic routes, risky metabolites, drug interactions, and safety flags (hERG).", "ADME & Safety", theme::icon::kCycle},
+        {"Metabolites", "Known Metabolites",
+         "Curated, cited biotransformations for the selected compound. Facts only: no hypothetical metabolite is enumerated here.", "ADME & Safety", theme::icon::kCubes},
+        {"Alerts", "Structural Alerts",
+         "Liability flags: substructures literature-associated with reactive-metabolite formation. Not a toxicity verdict.", "ADME & Safety", theme::icon::kWarning},
+        {"Stability", "Stability",
+         "Degradation liabilities (hydrolysis, oxidation, photolysis, thermal, pH) and a shelf-life estimate.", "ADME & Safety", theme::icon::kThermo},
+        {"Ionization", "Ionization & Solubility",
+         "Microspecies fractions, logD, pH-solubility with the pHmax kink, buffer capacity, isotope envelope and dissolution. pKa and melting point are inputs, never guessed.", "ADME & Safety", theme::icon::kTint},
+        {"PkPd", "PK / PD",
+         "Exposure scenarios: concentration-time and target-occupancy curves under stated assumptions.", "ADME & Safety", theme::icon::kChart},
+        {"PopPk", "Population PK",
+         "Population exposure bands from entered between-subject variability, parameter uncertainty and residual error, with the seed that produced them, plus noncompartmental analysis of the median profile. A band is the variability that was entered, never a prediction about an individual.", "ADME & Safety", theme::icon::kUsers},
+        {"InteractionScenarios", "Interaction Scenarios",
+         "FDA basic-model R-values, the mechanistic static AUC ratio with its 1/(1-fm) ceiling and dominant mechanism, dynamic enzyme activity, and renal/hepatic impairment exposure scenarios. Exposure ratios only: no risk score and no dose.", "ADME & Safety", theme::icon::kExchange},
+        {"PanelScreen", "Off-Target Panel",
+         "Panel coverage over a target-list pack, led by the count of targets NOT screened. No composite safety score and no cross-target comparison: preparations and boxes differ per row. A hERG margin appears only from a measured IC50 you supply.", "ADME & Safety", theme::icon::kCrosshair},
+
+        // ---- Biologics: proteins, antibodies, nucleic acids.
+        {"Structure3D", "Protein Structure",
+         "Load a local PDB / mmCIF structure: chains, per-chain sequence, SASA and parse warnings.", "Biologics", theme::icon::kConnect},
+        {"Sequence", "Sequence Compare",
+         "Pairwise protein sequence alignment (global or local) with identity, similarity and an E-value.", "Biologics", theme::icon::kAlignLeft},
+        {"Variants", "Variant Analysis",
+         "Conservation profiling over a homolog set you supply, SIFT- and PROVEAN-style substitution scores with their published thresholds, and point-mutation side-chain rebuilds by dead-end elimination. Below the homolog minimum no score is produced, and a rebuilt side chain carries no energy claim.", "Biologics", theme::icon::kBranch},
+        {"Antibody", "Antibody Workbench",
+         "IMGT numbering with Kabat/Chothia views, CDR and liability overlays, developability descriptors, mass ladders and peptide maps, plus interface contacts and a geometric alanine scan. The closest germline set is a similarity result, never a species identification.", "Biologics", theme::icon::kShield},
+        {"NucleicAcid", "DNA / RNA Workbench",
+         "Sequence features, restriction map and gel, six-frame translation, ORFs, oligo thermodynamics, primer design, codon metrics and CRISPR guides. Every off-target count is reported with the reference and the number of bases actually searched.", "Biologics", theme::icon::kListOl},
+
+        // ---- Assays & Networks: measured data in, mechanism out.
+        {"Assay", "Assay Workbench",
+         "Import a plate reader export, judge it (Z-prime, SSMD, edge and row/column effects), and fit dose-response, enzyme, SPR/BLI, DSF or ITC data. Well readouts are measured; fitted parameters are model values with error bars.", "Assays & Networks", theme::icon::kFlask},
+        {"AssayDesign", "Assay Design",
+         "Forward-simulate plates from a stated truth model and error structure, through the same import/QC/fit path real data takes, and report what the design would recover. Empirical confidence-interval coverage is the headline number.", "Assays & Networks", theme::icon::kBulb},
+        {"Networks", "Reaction Network",
+         "Stoichiometry, rate laws, conservation laws and Wegscheider cycles; deterministic and stochastic time courses with the solver's own report; metabolic control analysis; and Arrhenius, Eyring and pH-rate fits to rate constants you measured.", "Assays & Networks", theme::icon::kSitemap},
+        {"Flux", "Metabolic Flux",
+         "Constraint-based flux over the loaded network. Mass and charge balance must pass before an objective is optimised, and every flux is shown beside the bounds that allowed it.", "Assays & Networks", theme::icon::kBolt},
+        {"Enrichment", "Pathway Enrichment",
+         "Hypergeometric over-representation with Benjamini-Hochberg q-values against a background you supply, plus degree, components, Brandes betweenness and Louvain communities over the loaded network.", "Assays & Networks", theme::icon::kFilter},
+
+        // ---- Discovery: find, rank, and bind candidates.
         {"Docking", "Docking",
-         "Binding-pose scoring of a compound against a selected receptor.", "Discover"},
+         "Binding-pose scoring of a compound against a selected receptor.", "Discovery", theme::icon::kAnchor},
         {"Workflows", "Workflows",
-         "Re-runnable prep to dock pipeline you can watch run live.", "Discover"},
-        {"Legal", "Legal Analog",
-         "Illustrative only, not legal advice: substantial-similarity scorecard vs controlled references.", "Reference"},
+         "Re-runnable prep to dock pipeline you can watch run live.", "Discovery", theme::icon::kTasks},
+        {"Analog", "Analog Explorer",
+         "Model or draw a candidate derivative, preview its structure, and screen it against existing samples.", "Discovery", theme::icon::kAsterisk},
+        {"Similarity", "Similarity",
+         "Structural and pharmacophore similarity to known substances.", "Discovery", theme::icon::kBraille},
+        {"Mechanism", "Mechanism of Action",
+         "Retrieved mechanism-of-action records with their references and action types. A mechanism is never inferred from a docking pose or a fingerprint, and an empty result is a statement about the query and the source, not about the compound.", "Discovery", theme::icon::kCogs},
         {"Pathways", "Pathway Context",
-         "Reactome pathway membership and event ancestors for a UniProt accession. Membership only: there is no pathway impact score, because no database supports propagating a docking score through a pathway graph.", "Reference"},
+         "Reactome pathway membership and event ancestors for a UniProt accession. Membership only: there is no pathway impact score, because no database supports propagating a docking score through a pathway graph.", "Discovery", theme::icon::kRoad},
         {"StackCheck", "Stack Checker",
-         "Interaction flags across the drugs, supplements and foods you enter, each a mechanism with a citation rather than a severity score, plus conditional CPIC pharmacogenomic notes. Unknown members are listed, never silently ignored.", "Reference"},
+         "Interaction flags across the drugs, supplements and foods you enter, each a mechanism with a citation rather than a severity score, plus conditional CPIC pharmacogenomic notes. Unknown members are listed, never silently ignored.", "Discovery", theme::icon::kCopy},
+        {"Legal", "Legal Analog",
+         "Illustrative only, not legal advice: substantial-similarity scorecard vs controlled references.", "Discovery", theme::icon::kGavel},
+
+        // ---- System: state, configuration, history.
         {"Runs", "Runs",
-         "History of analyses with status and summaries.", "Reference"},
+         "History of analyses with status and summaries.", "System", theme::icon::kHistory},
         {"Presets", "Presets / Targets",
-         "Target packs, receptor presets, and reusable analysis configurations.", "Reference"},
+         "Target packs, receptor presets, and reusable analysis configurations.", "System", theme::icon::kDatabase},
         {"Settings", "Settings",
-         "AI provider and API keys, GPU mode, and storage paths.", "System"},
+         "AI provider and API keys, GPU mode, and storage paths.", "System", theme::icon::kCog},
     };
     provisioner_ = std::make_unique<docking::Provisioner>();
     buildAgent();
@@ -3074,23 +3092,29 @@ void AppShell::draw() {
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     const ImVec2 wp = vp->WorkPos;   // already below the main menu bar
     const ImVec2 ws = vp->WorkSize;
-    const float navW = 248.0f;
-    const float asstW = state_.showAssistant ? 372.0f : 0.0f;
+    constexpr float kStatusH = 32.0f;
+    const float navW = 264.0f;
+    const float asstW = state_.showAssistant ? 356.0f : 0.0f;
     const float contentW = ws.x - navW - asstW;
+    const float panesH = ws.y - kStatusH;
 
     ImGui::SetNextWindowPos(wp, ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(navW, ws.y), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(navW, panesH), ImGuiCond_Always);
     drawNavigator();
 
     ImGui::SetNextWindowPos(ImVec2(wp.x + navW, wp.y), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(contentW, ws.y), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(contentW, panesH), ImGuiCond_Always);
     drawContent();
 
     if (state_.showAssistant) {
         ImGui::SetNextWindowPos(ImVec2(wp.x + navW + contentW, wp.y), ImGuiCond_Always);
-        ImGui::SetNextWindowSize(ImVec2(asstW, ws.y), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(asstW, panesH), ImGuiCond_Always);
         drawAssistant();
     }
+
+    ImGui::SetNextWindowPos(ImVec2(wp.x, wp.y + panesH), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(ws.x, kStatusH), ImGuiCond_Always);
+    drawStatusBar();
 
     // Ctrl+K opens the command palette from anywhere.
     if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_K)) cmdPaletteOpen_ = true;
@@ -3102,6 +3126,13 @@ void AppShell::draw() {
 void AppShell::drawMainMenuBar() {
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("File")) {
+            if (ImGui::MenuItem("Open data folder")) {
+                // Everything the app persists lives under %APPDATA%/BioCAD.
+                ShellExecuteA(nullptr, "explore",
+                              AppPaths::instance().root().string().c_str(),
+                              nullptr, nullptr, SW_SHOW);
+            }
+            ImGui::Separator();
             if (ImGui::MenuItem("Exit")) state_.quitRequested = true;
             ImGui::EndMenu();
         }
@@ -3111,42 +3142,86 @@ void AppShell::drawMainMenuBar() {
             if (ImGui::MenuItem("Command palette", "Ctrl+K")) cmdPaletteOpen_ = true;
             ImGui::EndMenu();
         }
+        if (ImGui::BeginMenu("Panels")) {
+            static const char* kMenuGroups[] = {"Workspace", "ADME & Safety", "Biologics",
+                                                "Assays & Networks", "Discovery", "System"};
+            for (const char* group : kMenuGroups) {
+                if (ImGui::BeginMenu(group)) {
+                    for (const auto& p : panels_) {
+                        if (p.group != group) continue;
+                        const bool active = (state_.activePanel == p.id);
+                        if (ImGui::MenuItem(p.label.c_str(), nullptr, active))
+                            state_.activePanel = p.id;
+                    }
+                    ImGui::EndMenu();
+                }
+            }
+            ImGui::EndMenu();
+        }
         if (ImGui::BeginMenu("Help")) {
             if (ImGui::MenuItem("About BioCAD")) state_.showAbout = true;
             ImGui::EndMenu();
         }
-        ImGui::Separator();
-        ImGui::TextDisabled("BioCAD");
+
+        // Right side: brand + version.
+        const char* brand = "BioCAD";
+        const std::string ver = std::string("v") + kBioCadVersion;
+        const float w = ImGui::CalcTextSize(brand).x + ImGui::CalcTextSize(ver.c_str()).x + 30.0f;
+        ImGui::SameLine(ImGui::GetContentRegionAvail().x + ImGui::GetCursorPosX() - w);
+        ImGui::PushStyleColor(ImGuiCol_Text,
+                              ImGui::ColorConvertU32ToFloat4(theme::kPrimaryBright));
+        ImGui::TextUnformatted(brand);
+        ImGui::PopStyleColor();
+        ImGui::SameLine(0, 6);
+        ImGui::TextDisabled("%s", ver.c_str());
         ImGui::EndMainMenuBar();
     }
 }
 
 void AppShell::drawNavigator() {
-    if (ImGui::Begin("Navigator", nullptr, kPaneFlags)) {
-        // Brand.
-        ImGui::Dummy(ImVec2(0, 4));
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kPrimaryBright));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImGui::ColorConvertU32ToFloat4(theme::kBgSunken));
+    ImGui::Begin("Navigator", nullptr, kPaneFlags);
+    ImGui::PopStyleColor();
+
+    // ---- Brand --------------------------------------------------------------
+    {
+        const ImVec2 p0 = ImGui::GetCursorScreenPos();
+        const float mark = 34.0f;
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        dl->AddRectFilled(p0, ImVec2(p0.x + mark, p0.y + mark), theme::kPrimary, 8.0f);
+        dl->AddRect(ImVec2(p0.x + 0.5f, p0.y + 0.5f), ImVec2(p0.x + mark - 0.5f, p0.y + mark - 0.5f),
+                    theme::kPrimaryBright, 8.0f);
+        const ImVec2 glySize = ImGui::CalcTextSize(theme::icon::kFlask);
+        dl->AddText(ImVec2(p0.x + (mark - glySize.x) * 0.5f,
+                           p0.y + (mark - glySize.y) * 0.5f - 1.0f),
+                    theme::kOnPrimary, theme::icon::kFlask);
+        ImGui::Dummy(ImVec2(mark, mark));
+        ImGui::SameLine(0, 10);
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 2.0f);
         theme::pushTitle();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextHi));
         ImGui::TextUnformatted("BioCAD");
         theme::popFont();
         ImGui::PopStyleColor();
-        ImGui::SameLine();
-        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.0f);
-        theme::pushSmallStrong();
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
-        ImGui::TextUnformatted("v0.1");
-        ImGui::PopStyleColor();
-        theme::popFont();
-        ImGui::Dummy(ImVec2(0, 2));
+        ImGui::SameLine(0, 6);
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 12.0f);
+        ImGui::TextDisabled("v%s", kBioCadVersionShort);
+    }
+    ImGui::Dummy(ImVec2(0, 4));
 
-        // Command palette shortcut button.
-        if (ImGui::Button("Search...  (Ctrl K)", ImVec2(-1, 0))) cmdPaletteOpen_ = true;
-        ImGui::Dummy(ImVec2(0, 2));
+    // ---- Command palette button ----------------------------------------------
+    {
+        const std::string label = std::string(theme::icon::kSearch) + "  Search or jump to...";
+        if (ImGui::Button(label.c_str(), ImVec2(-1, 30))) cmdPaletteOpen_ = true;
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Command palette (Ctrl+K)");
+    }
+    ImGui::Dummy(ImVec2(0, 4));
 
-        // Active compound picker (library + any user-drawn/entered custom compound).
-        theme::sectionHeader("ACTIVE COMPOUND");
-        if (svc_.library) {
-            const Molecule cur = currentMolecule();
+    // ---- Active-compound context card ----------------------------------------
+    if (svc_.library) {
+        const Molecule cur = currentMolecule();
+        if (theme::beginTitledCard("##compoundcard", "ACTIVE COMPOUND",
+                                   ImVec2(-1.0f, 96.0f), cur.formula.c_str())) {
             ImGui::SetNextItemWidth(-1);
             if (ImGui::BeginCombo("##compound", cur.name.c_str())) {
                 if (state_.hasCustom) {
@@ -3163,51 +3238,146 @@ void AppShell::drawNavigator() {
                 }
                 ImGui::EndCombo();
             }
-            ImGui::TextDisabled("%s", cur.drugClass.empty() ? "-" : cur.drugClass.c_str());
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
+            ImGui::TextUnformatted(cur.drugClass.empty() ? "-" : cur.drugClass.c_str());
+            ImGui::PopStyleColor();
+        }
+        theme::endCard();
+    }
+    ImGui::Dummy(ImVec2(0, 2));
+
+    // ---- Grouped navigation ---------------------------------------------------
+    static const struct {
+        const char* name;
+        const char* icon;
+        ImU32       accent;
+    } kGroups[] = {
+        {"Workspace",         theme::icon::kHome,     theme::kPrimaryBright},
+        {"ADME & Safety",     theme::icon::kShield,   theme::kGood},
+        {"Biologics",         theme::icon::kConnect,  theme::kAccent2},
+        {"Assays & Networks", theme::icon::kFlask,    theme::kInfo},
+        {"Discovery",         theme::icon::kAnchor,   theme::kHighlight},
+        {"System",            theme::icon::kCog,      theme::kTextDim},
+    };
+
+    // The group holding the active panel is never left collapsed: navigating by
+    // palette / menu / agent must surface where you landed.
+    for (const auto& g : kGroups) {
+        for (const auto& p : panels_) {
+            if (p.group == g.name && p.id == state_.activePanel)
+                navCollapsed_[g.name] = false;
+        }
+    }
+
+    const float footerH = 40.0f;
+    ImGui::BeginChild("navlist", ImVec2(0, -footerH), 0);
+    for (const auto& g : kGroups) {
+        // Group header row: chevron + accent icon + name + panel count.
+        int count = 0;
+        for (const auto& p : panels_) if (p.group == g.name) ++count;
+        const bool collapsed = navCollapsed_[g.name];
+
+        ImGui::PushID(g.name);
+        const ImVec2 hdrMin = ImGui::GetCursorScreenPos();
+        const float hdrH = 30.0f;
+        const float hdrW = ImGui::GetContentRegionAvail().x;
+        // Invisible button over the whole row for the toggle.
+        if (ImGui::InvisibleButton("##toggle", ImVec2(hdrW, hdrH)))
+            navCollapsed_[g.name] = !collapsed;
+        const bool hdrHover = ImGui::IsItemHovered();
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        if (hdrHover)
+            dl->AddRectFilled(hdrMin, ImVec2(hdrMin.x + hdrW, hdrMin.y + hdrH),
+                              theme::kSurfaceHi, 6.0f);
+        const float cy = hdrMin.y + hdrH * 0.5f;
+        dl->AddText(ImVec2(hdrMin.x + 6.0f, cy - ImGui::CalcTextSize(theme::icon::kChevronD).y * 0.5f),
+                    theme::kTextFaint, collapsed ? theme::icon::kChevronR : theme::icon::kChevronD);
+        dl->AddText(ImVec2(hdrMin.x + 24.0f, cy - ImGui::CalcTextSize(g.icon).y * 0.5f),
+                    g.accent, g.icon);
+        theme::pushSmallStrong();
+        dl->AddText(ImVec2(hdrMin.x + 46.0f, cy - ImGui::GetTextLineHeight() * 0.5f),
+                    hdrHover ? theme::kText : theme::kTextDim, g.name);
+        theme::popFont();
+        const std::string cnt = std::to_string(count);
+        dl->AddText(ImVec2(hdrMin.x + hdrW - ImGui::CalcTextSize(cnt.c_str()).x - 8.0f,
+                           cy - ImGui::GetTextLineHeight() * 0.5f),
+                    theme::kTextFaint, cnt.c_str());
+        ImGui::PopID();
+
+        if (collapsed) continue;
+
+        for (const auto& p : panels_) {
+            if (p.group != g.name) continue;
+            const bool selected = (state_.activePanel == p.id);
+            const ImVec2 itemMin = ImGui::GetCursorScreenPos();
+            const float itemH = 28.0f;
+            if (selected) {
+                // Accent rail + soft fill behind the row.
+                ImGui::GetWindowDrawList()->AddRectFilled(
+                    itemMin, ImVec2(itemMin.x + ImGui::GetContentRegionAvail().x,
+                                    itemMin.y + itemH),
+                    theme::kPrimaryFaint, 6.0f);
+                ImGui::GetWindowDrawList()->AddRectFilled(
+                    itemMin, ImVec2(itemMin.x + 3.0f, itemMin.y + itemH),
+                    theme::kPrimary, 1.5f);
+            }
+            ImGui::PushID(p.id.c_str());
+            if (ImGui::InvisibleButton("##nav", ImVec2(ImGui::GetContentRegionAvail().x, itemH)))
+                state_.activePanel = p.id;
+            const bool hover = ImGui::IsItemHovered();
+            if (hover && !selected)
+                ImGui::GetWindowDrawList()->AddRectFilled(
+                    itemMin, ImVec2(itemMin.x + ImGui::GetContentRegionAvail().x,
+                                    itemMin.y + itemH),
+                    theme::kSurfaceHi, 6.0f);
+            const ImU32 fg = selected ? theme::kTextHi
+                                      : (hover ? theme::kText : theme::kTextDim);
+            const ImU32 iconFg = selected ? theme::kPrimaryBright : theme::kTextFaint;
+            const float iy = itemMin.y + itemH * 0.5f;
+            ImGui::GetWindowDrawList()->AddText(
+                ImVec2(itemMin.x + 26.0f, iy - ImGui::CalcTextSize(p.icon).y * 0.5f),
+                iconFg, p.icon);
+            ImGui::GetWindowDrawList()->AddText(
+                ImVec2(itemMin.x + 48.0f, iy - ImGui::GetTextLineHeight() * 0.5f),
+                fg, p.label.c_str());
+            if (isHighlighted(p.id)) {
+                pulseBorder(itemMin, ImVec2(itemMin.x + ImGui::GetContentRegionAvail().x,
+                                            itemMin.y + itemH),
+                            ImGui::GetTime() - state_.highlightStart);
+            }
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", p.help.c_str());
+            ImGui::PopID();
         }
         ImGui::Dummy(ImVec2(0, 4));
-
-        // Grouped workspace navigation in a scroll region so the footer stays pinned.
-        const float footer = state_.showAssistant ? 8.0f : 48.0f;
-        ImGui::BeginChild("navlist", ImVec2(0, -footer), 0);
-        static const char* kGroupOrder[] = {"Workspace", "Predict", "Discover",
-                                            "Reference", "System"};
-        for (const char* group : kGroupOrder) {
-            bool wroteHeader = false;
-            for (const auto& p : panels_) {
-                if (p.group != group) continue;
-                if (!wroteHeader) {
-                    std::string up = group;
-                    for (auto& ch : up) ch = static_cast<char>(std::toupper((unsigned char)ch));
-                    theme::sectionHeader(up.c_str());
-                    wroteHeader = true;
-                }
-                const bool selected = (state_.activePanel == p.id);
-                // Draw 3px accent bar at the left edge when selected.
-                if (selected) {
-                    const ImVec2 itemMin = ImGui::GetCursorScreenPos();
-                    const float itemH = 30.0f;
-                    ImGui::GetWindowDrawList()->AddRectFilled(
-                        itemMin, ImVec2(itemMin.x + 3.0f, itemMin.y + itemH),
-                        theme::kPrimary, 1.5f);
-                    ImGui::PushStyleColor(ImGuiCol_Text,
-                        ImGui::ColorConvertU32ToFloat4(theme::kTextHi));
-                }
-                if (ImGui::Selectable(p.label.c_str(), selected, 0, ImVec2(0, 30)))
-                    state_.activePanel = p.id;
-                if (selected) ImGui::PopStyleColor();
-                if (isHighlighted(p.id)) {
-                    pulseBorder(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
-                                ImGui::GetTime() - state_.highlightStart);
-                }
-                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", p.help.c_str());
-            }
-        }
-        ImGui::EndChild();
-
-        if (!state_.showAssistant && ImGui::Button("Open Assistant", ImVec2(-1, 0)))
-            state_.showAssistant = true;
     }
+    ImGui::EndChild();
+
+    // ---- Pinned footer ---------------------------------------------------------
+    ImGui::PushStyleColor(ImGuiCol_Separator, ImGui::ColorConvertU32ToFloat4(theme::kBorder));
+    ImGui::Separator();
+    ImGui::PopStyleColor();
+    {
+        // Docking engine readiness at a glance.
+        const bool engineReady = provisioner().vinaReady();
+        theme::statusDot(engineReady ? theme::kGood : theme::kTextFaint,
+                         engineReady ? "Docking engine provisioned and ready."
+                                     : "Docking engine not provisioned yet - open the Docking panel.");
+        ImGui::SameLine(0, 4);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
+        ImGui::TextUnformatted(engineReady ? "Docking ready" : "No docking engine");
+        ImGui::PopStyleColor();
+
+        // Right side: assistant toggle + settings shortcut.
+        const std::string asst = std::string(theme::icon::kRobot) + " Assistant";
+        const std::string setg = theme::icon::kCog;
+        const float w = ImGui::CalcTextSize(asst.c_str()).x + ImGui::CalcTextSize(setg.c_str()).x + 40.0f;
+        ImGui::SameLine(ImGui::GetContentRegionMax().x - w);
+        if (ImGui::SmallButton(setg.c_str())) state_.activePanel = "Settings";
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Settings");
+        ImGui::SameLine(0, 6);
+        if (ImGui::SmallButton(asst.c_str())) state_.showAssistant = !state_.showAssistant;
+    }
+
     frameHighlightCurrentWindow("Navigator");
     ImGui::End();
 }
@@ -3222,53 +3392,49 @@ void AppShell::drawContent() {
             if (p.id == state_.activePanel) { label = p.label; help = p.help; group = p.group; break; }
         }
 
-        // Breadcrumb line: "<Group> › <Panel label>" in kTextDim.
-        if (!group.empty()) {
-            theme::pushSmallStrong();
-            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
-            ImGui::Text("%s  \xe2\x80\xba  %s", group.c_str(), label.c_str());
-            ImGui::PopStyleColor();
-            theme::popFont();
-        }
+        // ---- Compact single-row header --------------------------------------
+        // Title + group breadcrumb on the left; compound chip + help affordance
+        // on the right. One row instead of four: the content starts ~60px higher.
+        const float rowY = ImGui::GetCursorPosY();
 
-        // Title row: page title (left) + compound chips (right).
-        const float titleRowY = ImGui::GetCursorPosY();
-
-        // Compute right-side chip widths first so we know where title ends.
-        const float padChip = 14.0f;
-        float chipsTotalW = 0.0f;
-        if (!cur.name.empty())
-            chipsTotalW += ImGui::CalcTextSize(cur.name.c_str()).x + padChip;
-        if (!cur.drugClass.empty())
-            chipsTotalW += ImGui::CalcTextSize(cur.drugClass.c_str()).x + padChip + 6.0f;
-
-        theme::pushTitle();
+        theme::pushH2();
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextHi));
         ImGui::TextUnformatted(label.c_str());
         ImGui::PopStyleColor();
         theme::popFont();
 
-        // Right-align chips on the same row as the title.
-        float rightX = ImGui::GetContentRegionMax().x - chipsTotalW;
+        ImGui::SameLine(0, 10);
+        ImGui::SetCursorPosY(rowY + 6.0f);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextFaint));
+        ImGui::Text("%s", group.c_str());
+        ImGui::PopStyleColor();
+
+        // Right-aligned: compound name chip + class chip + "?" help.
+        const float padChip = 14.0f;
+        float rightW = 30.0f;  // help button
+        if (!cur.name.empty())
+            rightW += ImGui::CalcTextSize(cur.name.c_str()).x + padChip;
+        if (!cur.drugClass.empty())
+            rightW += ImGui::CalcTextSize(cur.drugClass.c_str()).x + padChip + 6.0f;
+
         ImGui::SameLine();
-        ImGui::SetCursorPosX(rightX);
-        ImGui::SetCursorPosY(titleRowY + 2.0f);
+        ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - rightW);
+        ImGui::SetCursorPosY(rowY + 1.0f);
         if (!cur.name.empty()) {
             theme::badge(cur.name.c_str(), theme::kTextHi, theme::kPrimarySoft);
             if (!cur.drugClass.empty()) {
                 ImGui::SameLine(0, 6);
                 theme::badge(cur.drugClass.c_str(), theme::kTextDim, theme::kSurfaceHi);
             }
+            ImGui::SameLine(0, 8);
+        }
+        if (!help.empty()) {
+            if (ImGui::SmallButton("?")) ImGui::SetTooltip("%s", help.c_str());
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", help.c_str());
         }
 
-        // Help / subtitle.
-        if (!help.empty()) {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
-            ImGui::TextWrapped("%s", help.c_str());
-            ImGui::PopStyleColor();
-        }
-        ImGui::Spacing();
-        ImGui::PushStyleColor(ImGuiCol_Separator, theme::kBorder);
+        ImGui::SetCursorPosY(rowY + 30.0f);
+        ImGui::PushStyleColor(ImGuiCol_Separator, ImGui::ColorConvertU32ToFloat4(theme::kBorder));
         ImGui::Separator();
         ImGui::PopStyleColor();
         ImGui::Spacing();
@@ -3316,24 +3482,99 @@ void AppShell::drawContent() {
     ImGui::End();
 }
 
+void AppShell::drawStatusBar() {
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImGui::ColorConvertU32ToFloat4(theme::kBgSunken));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12, 0));
+    ImGui::Begin("StatusBar", nullptr,
+                 kPaneFlags | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor();
+
+    // Vertically center the single line of content in the 32px strip.
+    const float cy = (32.0f - ImGui::GetTextLineHeight()) * 0.5f;
+    ImGui::SetCursorPosY(cy);
+
+    const Molecule cur = currentMolecule();
+    const bool engineReady = provisioner().vinaReady();
+
+    // Left: engine + library + version, the "is my environment sane" readout.
+    theme::statusDot(engineReady ? theme::kGood : theme::kTextFaint,
+                     engineReady ? "Docking engine provisioned." :
+                                   "Docking engine not provisioned (Docking panel > Provision).");
+    ImGui::SameLine(0, 6);
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
+    ImGui::Text("%d compounds", svc_.library ? svc_.library->count() : 0);
+    ImGui::PopStyleColor();
+    ImGui::SameLine(0, 14);
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextFaint));
+    ImGui::Text("BioCAD v%s", kBioCadVersionShort);
+    ImGui::PopStyleColor();
+
+    // Right: active compound + palette hint + assistant toggle.
+    const std::string asstLabel = std::string(theme::icon::kRobot) + " Assistant";
+    const float rightW = ImGui::CalcTextSize(cur.name.c_str()).x +
+                         ImGui::CalcTextSize("Ctrl K").x +
+                         ImGui::CalcTextSize(asstLabel.c_str()).x + 180.0f;
+    ImGui::SameLine(ImGui::GetContentRegionMax().x - rightW);
+
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextFaint));
+    ImGui::TextUnformatted(theme::icon::kFlask);
+    ImGui::SameLine(0, 5);
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kText));
+    ImGui::TextUnformatted(cur.name.c_str());
+    ImGui::PopStyleColor();
+    ImGui::PopStyleColor();
+
+    ImGui::SameLine(0, 16);
+    // Faux keycap.
+    theme::badge("Ctrl K", theme::kTextDim, theme::kSurfaceHi);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Command palette");
+    if (ImGui::IsItemClicked()) cmdPaletteOpen_ = true;
+
+    ImGui::SameLine(0, 12);
+    if (ImGui::SmallButton(asstLabel.c_str())) state_.showAssistant = !state_.showAssistant;
+
+    ImGui::End();
+}
+
 void AppShell::drawAssistant() {
     if (ImGui::Begin("Assistant", nullptr, kPaneFlags)) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kAccent2));
-        ImGui::TextUnformatted("BioCAD Assistant");
-        ImGui::PopStyleColor();
-
         const agent::AgentSnapshot snap = agent_ ? agent_->snapshot() : agent::AgentSnapshot{};
         const bool busy = snap.status == agent::AgentStatus::Running ||
                           snap.status == agent::AgentStatus::AwaitingApproval;
 
-        // Provider status line.
+        // ---- Header: title + provider badge + close --------------------------
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kAccent2));
+        ImGui::TextUnformatted(theme::icon::kRobot);
+        ImGui::PopStyleColor();
+        ImGui::SameLine(0, 8);
+        theme::pushH2();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextHi));
+        ImGui::TextUnformatted("Assistant");
+        ImGui::PopStyleColor();
+        theme::popFont();
+
+        // Right-aligned close affordance.
+        ImGui::SameLine(ImGui::GetContentRegionMax().x - 24.0f);
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 4.0f);
+        if (ImGui::SmallButton(theme::icon::kClose)) state_.showAssistant = false;
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Hide assistant (View menu brings it back)");
+
+        // Provider status line + badge.
         if (agentUsingAnthropic_) {
-            ImGui::TextDisabled("Live: %s  -  model %s", activeProviderLabel().c_str(),
-                                agentModel().c_str());
-        } else if (anthropicTransport()) {
-            ImGui::TextDisabled("Offline assistant - add an API key in Settings for live chat.");
+            theme::statusDot(theme::kGood, "Connected to the live provider.");
+            ImGui::SameLine(0, 6);
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
+            ImGui::Text("Live - %s", agentModel().c_str());
+            ImGui::PopStyleColor();
         } else {
-            ImGui::TextDisabled("Offline assistant (this build has no networking).");
+            theme::statusDot(theme::kWarn, "Offline assistant. Add an API key in Settings for live chat.");
+            ImGui::SameLine(0, 6);
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
+            ImGui::TextUnformatted(anthropicTransport()
+                ? "Offline - add an API key in Settings"
+                : "Offline (this build has no networking)");
+            ImGui::PopStyleColor();
         }
 
         // Mode + reset row.
@@ -3342,13 +3583,13 @@ void AppShell::drawAssistant() {
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("On: tools (navigate/highlight) run automatically.\n"
                               "Off (ask-first): you approve each tool batch.");
-        ImGui::SameLine();
+        ImGui::SameLine(ImGui::GetContentRegionMax().x - 70.0f);
         ImGui::BeginDisabled(busy);
         if (ImGui::SmallButton("New chat") && agent_) agent_->reset();
         ImGui::EndDisabled();
 
-        // Quick prompts (canned fallbacks - now routed through the real loop).
-        theme::sectionHeader("Try asking");
+        // ---- Quick prompts ----------------------------------------------------
+        theme::sectionHeader("QUICK PROMPTS");
         ImGui::BeginDisabled(busy);
         struct QP { const char* label; const char* prompt; };
         static const QP kQuick[] = {
@@ -3358,72 +3599,96 @@ void AppShell::drawAssistant() {
             {"Tell me about the selected compound", "Tell me about the currently selected compound."},
         };
         for (const auto& q : kQuick) {
-            if (ImGui::Button(q.label, ImVec2(-1, 0)) && agent_) agent_->submit(q.prompt);
+            const std::string row = std::string("  ") + q.label;
+            if (ImGui::Button(row.c_str(), ImVec2(-1, 26)) && agent_) agent_->submit(q.prompt);
         }
         ImGui::EndDisabled();
 
+        // ---- Conversation -------------------------------------------------------
+        // Reserve = input row (31) + spacing + the assistant window's bottom
+        // padding; too small and the input field clips against the status bar.
+        const float reserve = (snap.status == agent::AgentStatus::AwaitingApproval) ? 184.0f : 68.0f;
         ImGui::Spacing();
-        ImGui::Separator();
-        theme::sectionHeader("Conversation");
-
-        const float reserve = (snap.status == agent::AgentStatus::AwaitingApproval) ? 132.0f : 40.0f;
         ImGui::BeginChild("##log", ImVec2(0, -reserve), ImGuiChildFlags_Borders);
         if (snap.transcript.empty() && snap.streaming.empty()) {
-            ImGui::TextDisabled("Ask a question or tap one above. The assistant can navigate and "
-                                "highlight the UI, and read the selected compound's real properties.");
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextFaint));
+            ImGui::TextWrapped("Ask a question or tap a prompt above. The assistant can navigate and "
+                               "highlight the UI, and read the selected compound's real properties.");
+            ImGui::PopStyleColor();
         }
         for (const auto& e : snap.transcript) {
             switch (e.kind) {
                 case agent::TranscriptEntry::Kind::User:
-                    ImGui::PushStyleColor(ImGuiCol_Text,
-                        ImGui::ColorConvertU32ToFloat4(theme::kPrimaryBright));
-                    ImGui::TextWrapped("You: %s", e.text.c_str());
-                    ImGui::PopStyleColor();
+                    theme::bubble(e.text.c_str(), theme::kPrimarySoft, theme::kTextHi,
+                                  /*alignRight=*/true);
                     break;
                 case agent::TranscriptEntry::Kind::Assistant:
-                    ImGui::TextWrapped("%s", e.text.c_str());
+                    theme::bubble(e.text.c_str(), theme::kSurfaceHi, theme::kText,
+                                  /*alignRight=*/false);
                     break;
-                case agent::TranscriptEntry::Kind::Tool:
-                    ImGui::TextDisabled("  %s", e.text.c_str());
+                case agent::TranscriptEntry::Kind::Tool: {
+                    ImGui::PushStyleColor(ImGuiCol_Text,
+                        ImGui::ColorConvertU32ToFloat4(theme::kTextFaint));
+                    ImGui::Text(" %s  %s", theme::icon::kChevronR, e.text.c_str());
+                    ImGui::PopStyleColor();
+                    ImGui::Spacing();
                     break;
-                case agent::TranscriptEntry::Kind::Error:
-                    ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(3));
+                }
+                case agent::TranscriptEntry::Kind::Error: {
+                    const ImVec4 dc = theme::verdictColor(3);
+                    theme::bubble(e.text.c_str(),
+                                  IM_COL32(int(dc.x * 255), int(dc.y * 255), int(dc.z * 255), 40),
+                                  ImGui::ColorConvertFloat4ToU32(dc), false);
+                    break;
+                }
+                case agent::TranscriptEntry::Kind::System:
+                    ImGui::PushStyleColor(ImGuiCol_Text,
+                        ImGui::ColorConvertU32ToFloat4(theme::kTextFaint));
                     ImGui::TextWrapped("%s", e.text.c_str());
                     ImGui::PopStyleColor();
-                    break;
-                case agent::TranscriptEntry::Kind::System:
-                    ImGui::TextDisabled("%s", e.text.c_str());
+                    ImGui::Spacing();
                     break;
             }
-            ImGui::Spacing();
         }
-        if (!snap.streaming.empty()) ImGui::TextWrapped("%s", snap.streaming.c_str());
+        if (!snap.streaming.empty())
+            theme::bubble(snap.streaming.c_str(), theme::kSurfaceHi, theme::kText, false);
         if (busy) {
             ImGui::TextDisabled("...");
             ImGui::SetScrollHereY(1.0f);
         }
+        // Follow the tail as new entries land.
+        static size_t lastEntries = 0;
+        const size_t entries = snap.transcript.size() + (snap.streaming.empty() ? 0 : 1);
+        if (entries != lastEntries) {
+            ImGui::SetScrollHereY(1.0f);
+            lastEntries = entries;
+        }
         ImGui::EndChild();
 
-        // Ask-first approval gate.
+        // ---- Ask-first approval gate -------------------------------------------
         if (snap.status == agent::AgentStatus::AwaitingApproval) {
-            ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(2));
-            ImGui::TextWrapped("The assistant wants to run:");
-            ImGui::PopStyleColor();
-            for (const auto& p : snap.pending)
-                ImGui::BulletText("%s %s", p.name.c_str(), p.arguments.dump().c_str());
-            if (ImGui::Button("Approve", ImVec2(120, 0)) && agent_) agent_->approvePending();
-            ImGui::SameLine();
-            if (ImGui::Button("Deny", ImVec2(120, 0)) && agent_) agent_->denyPending();
+            if (theme::beginTitledCard("##approval", "APPROVAL REQUIRED", ImVec2(-1.0f, 96.0f))) {
+                for (const auto& p : snap.pending)
+                    ImGui::BulletText("%s %s", p.name.c_str(), p.arguments.dump().c_str());
+                if (ImGui::Button("Approve", ImVec2(110, 0)) && agent_) agent_->approvePending();
+                ImGui::SameLine();
+                if (ImGui::Button("Deny", ImVec2(110, 0)) && agent_) agent_->denyPending();
+            }
+            theme::endCard();
         }
 
-        // Input row.
+        // ---- Input row: full-width field + send button ---------------------------
         ImGui::BeginDisabled(busy);
-        ImGui::SetNextItemWidth(-1);
+        ImGui::SetNextItemWidth(-46.0f);
         const bool submitted = ImGui::InputTextWithHint(
             "##chat", "Ask about a panel, the compound, or how to do something...", chatBuf_,
             sizeof(chatBuf_), ImGuiInputTextFlags_EnterReturnsTrue);
         ImGui::EndDisabled();
-        if (submitted && !busy && agent_ && chatBuf_[0] != '\0') {
+        ImGui::SameLine(0, 6);
+        ImGui::BeginDisabled(busy || chatBuf_[0] == '\0');
+        const bool sendClicked = ImGui::Button(theme::icon::kSend, ImVec2(40, 0));
+        ImGui::EndDisabled();
+        if ((submitted || sendClicked) && !busy && agent_ && chatBuf_[0] != '\0') {
             agent_->submit(chatBuf_);
             chatBuf_[0] = '\0';
             ImGui::SetKeyboardFocusHere(-1);
@@ -3438,7 +3703,7 @@ void AppShell::drawCommandPalette() {
         ImGui::OpenPopup("##cmdpalette");
         cmdPaletteOpen_ = false;
     }
-    ImGui::SetNextWindowSize(ImVec2(560, 0), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(600, 0), ImGuiCond_Always);
     if (ImGui::BeginPopup("##cmdpalette",
             ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDecoration)) {
         // Auto-focus the search box on appear.
@@ -3458,7 +3723,7 @@ void AppShell::drawCommandPalette() {
         ImGui::Separator();
 
         // Scrollable list of matching panels.
-        ImGui::BeginChild("##cmdlist", ImVec2(0, 320), 0);
+        ImGui::BeginChild("##cmdlist", ImVec2(0, 340), 0);
         bool firstMatch = true;
         const bool enterPressed = ImGui::IsKeyPressed(ImGuiKey_Enter, false);
         for (const auto& p : panels_) {
@@ -3482,24 +3747,31 @@ void AppShell::drawCommandPalette() {
                 return;
             }
 
-            // Selectable row: label + dim group.
-            char rowId[128];
-            snprintf(rowId, sizeof(rowId), "%s##cmdrow_%s", p.label.c_str(), p.id.c_str());
-            if (ImGui::Selectable(rowId, false, 0, ImVec2(0, 24))) {
+            // Selectable row: icon + label, dim group on the right.
+            char rowId[160];
+            snprintf(rowId, sizeof(rowId), "%s  %s##cmdrow_%s", p.icon, p.label.c_str(), p.id.c_str());
+            if (ImGui::Selectable(rowId, false, 0, ImVec2(0, 28))) {
                 state_.activePanel = p.id;
                 ImGui::CloseCurrentPopup();
                 ImGui::EndChild();
                 ImGui::EndPopup();
                 return;
             }
-            ImGui::SameLine(0, 0);
-            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
-            ImGui::Text("  %s", p.group.c_str());
-            ImGui::PopStyleColor();
+            const ImVec2 rMin = ImGui::GetItemRectMin();
+            const ImVec2 rMax = ImGui::GetItemRectMax();
+            const float gw = ImGui::CalcTextSize(p.group.c_str()).x;
+            ImGui::GetWindowDrawList()->AddText(
+                ImVec2(rMax.x - gw - 8.0f, rMin.y + (rMax.y - rMin.y - ImGui::GetTextLineHeight()) * 0.5f),
+                theme::kTextFaint, p.group.c_str());
 
             firstMatch = false;
         }
         ImGui::EndChild();
+
+        ImGui::Separator();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextFaint));
+        ImGui::TextUnformatted("Enter: open first match    Esc: close");
+        ImGui::PopStyleColor();
         ImGui::EndPopup();
     }
 }

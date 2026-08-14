@@ -21,6 +21,16 @@
 #include <imgui.h>
 #include <implot.h>
 
+#ifndef WIN32_LEAN_AND_MEAN
+#  define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <shellapi.h>
+// windows.h still ships the Win16 `near`/`far` macros, which collide with local
+// variable names in the PDBQT parser below.
+#undef near
+#undef far
+
 #include "assay/Design.h"
 #include "bio/Cartoon.h"
 #include "bio/CifReader.h"
@@ -80,12 +90,17 @@ void drawQuantity(const char* label, const Quantity& q) {
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
     ImGui::TextUnformatted(label);
     ImGui::PopStyleColor();
-    ImGui::SameLine();
+    ImGui::SameLine(220.0f);
 
     const ImVec4 col = theme::provenanceColor(q.provenance);
+    // Colored + wrapped: PushStyleColor + TextWrapped (TextColored never wraps,
+    // and an unwrapped provenance string is exactly the text that used to clip
+    // off the panel's right edge).
+    ImGui::PushStyleColor(ImGuiCol_Text, col);
     if (q.provenance == Provenance::NotComputed) {
-        ImGui::TextColored(col, "not computed%s%s", q.source.empty() ? "" : " - needs ",
+        ImGui::TextWrapped("not computed%s%s", q.source.empty() ? "" : " - needs ",
                            q.source.c_str());
+        ImGui::PopStyleColor();
         return;
     }
 
@@ -95,7 +110,8 @@ void drawQuantity(const char* label, const Quantity& q) {
     text += "   (" + std::string(provenanceLabel(q.provenance));
     if (!q.source.empty()) text += " - " + q.source;
     text += ")";
-    ImGui::TextColored(col, "%s", text.c_str());
+    ImGui::TextWrapped("%s", text.c_str());
+    ImGui::PopStyleColor();
 }
 
 namespace {
@@ -395,8 +411,9 @@ bool molViewer3D(AppShell& shell, const chem::Conformer& conf, const std::string
     if (ImGui::SmallButton("+##zoomin")) vp->zoom(1.0f);
     ImGui::SameLine();
     if (ImGui::SmallButton("-##zoomout")) vp->zoom(-1.0f);
-    ImGui::SameLine();
-    ImGui::TextDisabled("(drag: orbit  -  wheel/+/-: zoom  -  right-drag: pan)");
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextFaint));
+    ImGui::TextUnformatted("drag: orbit   wheel/+/-: zoom   right-drag: pan");
+    ImGui::PopStyleColor();
 
     const bool overlayReceptor = receptor && !receptor->empty() && ui.showReceptor;
     render::MolScene scene = render::buildMolScene(conf, ui.spacefill, ui.showH);
@@ -493,34 +510,63 @@ void dashboard(AppShell& shell) {
     const Molecule m = shell.currentMolecule();
 
     // ---- Hero card ----------------------------------------------------------
-    const bool heroVisible = theme::beginCard("hero", ImVec2(-1.0f, 132.0f));
-    if (heroVisible) {
-        // Compound name
+    // Identity + the three things you are most likely to do next, one click away.
+    if (theme::beginCard("hero", ImVec2(-1.0f, 148.0f))) {
+        // Two coordinate spaces in play: SetCursorScreenPos (quick actions) is
+        // absolute; SetCursorPosY (the badge row) is window-relative.
+        const float rowScreenY = ImGui::GetCursorScreenPos().y;
+        const float rowY = ImGui::GetCursorPosY();
+
         theme::pushH2();
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextHi));
         ImGui::TextUnformatted(m.name.c_str());
         ImGui::PopStyleColor();
         theme::popFont();
         ImGui::SameLine(0, 10);
+        ImGui::SetCursorPosY(rowY + 2.0f);
         theme::badge(m.drugClass.c_str());
         ImGui::SameLine(0, 6);
         theme::badge(m.legalStatus.c_str(), theme::kTextDim, theme::kSurfaceHi);
-        // Formula + truncated SMILES
+
+        // Formula + truncated SMILES in the data face.
         std::string smilesTrunc = m.smiles;
-        if (smilesTrunc.size() > 60) smilesTrunc = smilesTrunc.substr(0, 60) + "\xe2\x80\xa6";  // UTF-8 ellipsis
+        if (smilesTrunc.size() > 56) smilesTrunc = smilesTrunc.substr(0, 56) + "\xe2\x80\xa6";
+        ImGui::Spacing();
+        theme::pushMono();
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
         ImGui::Text("%s   %s", m.formula.c_str(), smilesTrunc.c_str());
         ImGui::PopStyleColor();
-        // Inline physchem chips
+        theme::popFont();
+
+        ImGui::Spacing();
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
-        ImGui::Text("MW %.1f   logP %.2f   TPSA %.0f   HBD %d   HBA %d",
-                    m.molWeight, m.logP, m.tpsa, m.hbd, m.hba);
+        ImGui::Text("MW %.1f   logP %.2f   TPSA %.0f   HBD %d   HBA %d   RotB %d",
+                    m.molWeight, m.logP, m.tpsa, m.hbd, m.hba, m.rotatableBonds);
         ImGui::PopStyleColor();
+
+        // Right column: quick actions.
+        const float ax = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - 196.0f;
+        auto quickAction = [&](int i, const char* icon, const char* label, const char* tip,
+                               const char* panelId) {
+            ImGui::SetCursorScreenPos(ImVec2(ax, rowScreenY + static_cast<float>(i) * 36.0f));
+            ImGui::PushID(label);
+            const std::string text = std::string(icon) + "  " + label;
+            if (ImGui::Button(text.c_str(), ImVec2(196, 30)))
+                shell.state().activePanel = panelId;
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip);
+            ImGui::PopID();
+        };
+        quickAction(0, theme::icon::kAnchor, "Dock this compound",
+                    "Open the Docking panel with this compound selected.", "Docking");
+        quickAction(1, theme::icon::kBalance, "Compare compounds",
+                    "Side-by-side against other library compounds.", "Compare");
+        quickAction(2, theme::icon::kCube, "Structure workbench",
+                    "Full identity, physchem table and the live 3D viewer.", "Structure");
     }
     theme::endCard();
     ImGui::Spacing();
 
-    // ---- Responsive metric grid ---------------------------------------------
+    // ---- Metric tiles: exactly one row ---------------------------------------
     if (s.stability && s.absorption && s.admet) {
         const auto stab = s.stability->analyze(m);
         const auto abs  = s.absorption->predict(m);
@@ -528,76 +574,154 @@ void dashboard(AppShell& shell) {
 
         const float spacing = 8.0f;
         const float avail   = ImGui::GetContentRegionAvail().x;
-        const int cols      = std::max(1, static_cast<int>(avail / (215.0f + spacing)));
-        const float cw      = (avail - spacing * (cols - 1)) / static_cast<float>(cols);
+        const float cw      = (avail - spacing * 5.0f) / 6.0f;
 
-        // Helper to lay out a tile, advancing row as needed.
-        int tileIdx = 0;
-        auto nextTile = [&]() {
-            const int col = tileIdx % cols;
-            if (col != 0) ImGui::SameLine(0, spacing);
-            ++tileIdx;
-        };
-
-        // Tile 1 — Stability
-        nextTile();
         theme::metricCard("STABILITY", (f0(stab.overallScore) + "/100").c_str(),
-                          quantityShort(stab.shelfLife).c_str(), theme::kTextHi, cw);
-
-        // Tile 2 — Oral F
-        nextTile();
+                          "rank ordering, no units", theme::kTextHi, cw);
+        ImGui::SameLine(0, spacing);
         theme::metricCard("ORAL F", (f0(abs.bioavailabilityPct) + "%").c_str(),
                           abs.cnsPenetrant ? "BBB-permeant" : "low BBB partition",
                           theme::kTextHi, cw);
-
-        // Tile 3 — HIA
-        nextTile();
+        ImGui::SameLine(0, spacing);
         theme::metricCard("HIA", (f0(abs.hiaPct) + "%").c_str(), "intestinal abs.",
                           theme::kTextHi, cw);
-
-        // Tile 4 — ADMET
+        ImGui::SameLine(0, spacing);
         {
-            nextTile();
             const std::string epCount = std::to_string(adm.endpoints.size()) + " endpoints";
-            const ImVec4 admetCol = theme::verdictColor(static_cast<int>(adm.overall));
-            const ImU32 admetColU32 = ImGui::ColorConvertFloat4ToU32(admetCol);
             theme::metricCard("ADMET", verdictLabel(adm.overall), epCount.c_str(),
-                              admetColU32, cw);
+                              ImGui::ColorConvertFloat4ToU32(
+                                  theme::verdictColor(static_cast<int>(adm.overall))), cw);
         }
-
-        // Tile 5 — Library
-        nextTile();
+        ImGui::SameLine(0, spacing);
         theme::metricCard("LIBRARY",
                           std::to_string(s.library ? s.library->count() : 0).c_str(),
                           "compounds", theme::kTextHi, cw);
-
-        // Tile 6 — Runs
-        nextTile();
+        ImGui::SameLine(0, spacing);
         theme::metricCard("RUNS",
                           std::to_string(s.runs ? s.runs->recent().size() : 0).c_str(),
-                          "this session", theme::kTextHi, cw);
+                          "recorded", theme::kTextHi, cw);
 
-        // ---- Summaries ------------------------------------------------------
         ImGui::Spacing();
-        theme::sectionHeader("Snapshot");
 
-        // Two side-by-side summary cards, each half width.
+        // ---- Middle row: recent activity + workspace status --------------------
         const float halfW = (avail - spacing) * 0.5f;
-        const bool stabilitySummaryVisible =
-            theme::beginCard("##stabsum", ImVec2(halfW, 0.0f), true);
-        if (stabilitySummaryVisible) {
+        if (theme::beginTitledCard("##recent", "RECENT ACTIVITY", ImVec2(halfW, 0.0f),
+                                   "click to open Runs")) {
+            const auto rows = s.runs ? s.runs->recent() : std::vector<RunRecord>{};
+            if (rows.empty()) {
+                ImGui::PushStyleColor(ImGuiCol_Text,
+                                      ImGui::ColorConvertU32ToFloat4(theme::kTextFaint));
+                ImGui::TextWrapped("Nothing recorded yet. Dock a compound or run an analysis and "
+                                   "it lands here, persisted across restarts.");
+                ImGui::PopStyleColor();
+            }
+            const size_t shown = std::min<size_t>(rows.size(), 5);
+            for (size_t i = 0; i < shown; ++i) {
+                const RunRecord& r = rows[i];
+                const ImU32 dot = r.status == "complete" ? theme::kGood
+                                : r.status == "failed"   ? theme::kDanger
+                                                         : theme::kInfo;
+                ImGui::PushID(r.id.c_str());
+                if (ImGui::Selectable("##runrow", false, 0, ImVec2(-1, 22)))
+                    shell.state().activePanel = "Runs";
+                const ImVec2 rMin = ImGui::GetItemRectMin();
+                ImDrawList* dl = ImGui::GetWindowDrawList();
+                const float cy = rMin.y + 11.0f;
+                dl->AddCircleFilled(ImVec2(rMin.x + 6.0f, cy), 3.5f, dot);
+                dl->AddText(ImVec2(rMin.x + 18.0f, cy - ImGui::GetTextLineHeight() * 0.5f),
+                            theme::kText, r.kind.c_str());
+                // Subject, clipped to the remaining width.
+                const float subjX = rMin.x + 18.0f + ImGui::CalcTextSize(r.kind.c_str()).x + 10.0f;
+                dl->AddText(ImVec2(subjX, cy - ImGui::GetTextLineHeight() * 0.5f),
+                            theme::kTextDim, r.subject.c_str());
+                ImGui::PopID();
+            }
+            if (rows.size() > shown) {
+                ImGui::PushStyleColor(ImGuiCol_Text,
+                                      ImGui::ColorConvertU32ToFloat4(theme::kTextFaint));
+                ImGui::Text("+%zu more in Runs", rows.size() - shown);
+                ImGui::PopStyleColor();
+            }
+        }
+        theme::endCard();
+        ImGui::SameLine(0, spacing);
+
+        if (theme::beginTitledCard("##workspace", "WORKSPACE", ImVec2(halfW, 0.0f))) {
+            const bool engineReady = shell.provisioner().vinaReady();
+            auto statusRow = [](const char* icon, const char* label, const char* value,
+                                ImU32 valueColor) {
+                ImGui::PushStyleColor(ImGuiCol_Text,
+                                      ImGui::ColorConvertU32ToFloat4(theme::kTextFaint));
+                ImGui::TextUnformatted(icon);
+                ImGui::PopStyleColor();
+                ImGui::SameLine(0, 10);
+                ImGui::PushStyleColor(ImGuiCol_Text,
+                                      ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
+                ImGui::TextUnformatted(label);
+                ImGui::PopStyleColor();
+                ImGui::SameLine(190.0f);
+                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(valueColor));
+                ImGui::TextUnformatted(value);
+                ImGui::PopStyleColor();
+            };
+            statusRow(theme::icon::kAnchor, "Docking engine",
+                      engineReady ? "provisioned" : "not provisioned",
+                      engineReady ? theme::kGood : theme::kTextDim);
+            statusRow(theme::icon::kBook, "Library",
+                      (std::to_string(s.library ? s.library->count() : 0) + " compounds").c_str(),
+                      theme::kText);
+            statusRow(theme::icon::kHistory, "Runs recorded",
+                      std::to_string(s.runs ? s.runs->recent().size() : 0).c_str(), theme::kText);
+            statusRow(theme::icon::kRobot, "Assistant",
+                      shell.anthropicReady() ? "live (Anthropic)" : "offline",
+                      shell.anthropicReady() ? theme::kGood : theme::kTextDim);
+        }
+        theme::endCard();
+
+        ImGui::Spacing();
+
+        // ---- Snapshot ----------------------------------------------------------
+        const bool stabSumVisible =
+            theme::beginTitledCard("##stabsum", "STABILITY READ", ImVec2(halfW, 132.0f),
+                                   "from the Stability panel");
+        if (stabSumVisible) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kText));
             ImGui::TextWrapped("%s", stab.summary.c_str());
             ImGui::PopStyleColor();
         }
         theme::endCard();
         ImGui::SameLine(0, spacing);
-        const bool absorptionSummaryVisible =
-            theme::beginCard("##abssum", ImVec2(halfW, 0.0f), true);
-        if (absorptionSummaryVisible) {
+        const bool absSumVisible =
+            theme::beginTitledCard("##abssum", "ABSORPTION READ", ImVec2(halfW, 132.0f),
+                                   "from the Absorption / PK panel");
+        if (absSumVisible) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kText));
             ImGui::TextWrapped("%s", abs.summary.c_str());
             ImGui::PopStyleColor();
+        }
+        theme::endCard();
+
+        ImGui::Spacing();
+
+        // ---- Shortcuts: one-click jumps into the common tasks -------------------
+        if (theme::beginTitledCard("##shortcuts", "SHORTCUTS", ImVec2(-1.0f, 0.0f))) {
+            auto shortcut = [&](const char* icon, const char* label, const char* tip,
+                                const char* panelId) {
+                const std::string text = std::string(icon) + "  " + label;
+                if (ImGui::Button(text.c_str(), ImVec2(220, 30)))
+                    shell.state().activePanel = panelId;
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip);
+                ImGui::SameLine(0, 8);
+            };
+            shortcut(theme::icon::kAnchor, ("Dock " + m.name).c_str(),
+                         "Binding-pose scoring against a receptor.", "Docking");
+            shortcut(theme::icon::kTasks, "Run the prep-to-dock workflow",
+                     "Watch the pipeline execute live.", "Workflows");
+            shortcut(theme::icon::kFlask, "Import an assay plate",
+                     "Paste a plate-reader export and fit it.", "Assay");
+            shortcut(theme::icon::kConnect, "Load a protein structure",
+                     "Local PDB / mmCIF: chains, SASA, 3D ribbon.", "Structure3D");
+            ImGui::NewLine();
         }
         theme::endCard();
     } else {
@@ -612,7 +736,7 @@ void dashboard(AppShell& shell) {
         ImGui::SameLine(0, spacing);
         theme::metricCard("RUNS",
                           std::to_string(s.runs ? s.runs->recent().size() : 0).c_str(),
-                          "this session", theme::kTextHi, cw);
+                          "recorded", theme::kTextHi, cw);
     }
 }
 
@@ -631,67 +755,96 @@ void structureWorkbench(AppShell& shell) {
         if (auto parsed = chem::parsePerceived(m.smiles)) conf = chem::embed3D(*parsed);
     }
 
-    if (ImGui::BeginTable("idprop", 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable)) {
-        ImGui::TableSetupColumn("Identity", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("3D structure", ImGuiTableColumnFlags_WidthFixed, 360.0f);
-        ImGui::TableNextRow();
+    const float spacing = 8.0f;
+    const float avail   = ImGui::GetContentRegionAvail().x;
+    const float rightW  = 400.0f;
+    const float leftW   = avail - rightW - spacing;
+    const float topH    = 420.0f;
 
-        ImGui::TableSetColumnIndex(0);
-        if (ImGui::BeginTable("ident", 2, ImGuiTableFlags_BordersInnerH)) {
-            auto row = [](const char* k, const std::string& v) {
-                ImGui::TableNextRow();
-                ImGui::TableSetColumnIndex(0); ImGui::TextDisabled("%s", k);
-                ImGui::TableSetColumnIndex(1); ImGui::TextWrapped("%s", v.c_str());
+    // ---- Left: identity + physchem ------------------------------------------
+    if (theme::beginTitledCard("##ident", "IDENTITY", ImVec2(leftW, topH))) {
+        theme::kvRow("Name", m.name.c_str(), 110.0f);
+        theme::kvRow("Class", m.drugClass.c_str(), 110.0f);
+        theme::kvRow("Legal status", m.legalStatus.c_str(), 110.0f);
+        theme::kvRow("Formula", m.formula.c_str(), 110.0f);
+
+        ImGui::Dummy(ImVec2(0, 8));
+
+        // Physchem grid: label-over-value blocks, three per row.
+        if (ImGui::BeginTable("propsgrid", 3, ImGuiTableFlags_SizingStretchSame)) {
+            auto propCell = [](const char* label, const std::string& value) {
+                ImGui::TableNextColumn();
+                theme::pushSmallStrong();
+                ImGui::PushStyleColor(ImGuiCol_Text,
+                                      ImGui::ColorConvertU32ToFloat4(theme::kTextFaint));
+                ImGui::TextUnformatted(label);
+                ImGui::PopStyleColor();
+                theme::popFont();
+                theme::pushH2();
+                ImGui::PushStyleColor(ImGuiCol_Text,
+                                      ImGui::ColorConvertU32ToFloat4(theme::kTextHi));
+                ImGui::TextUnformatted(value.c_str());
+                ImGui::PopStyleColor();
+                theme::popFont();
+                ImGui::Dummy(ImVec2(0, 6));
             };
-            row("Name", m.name);
-            row("Formula", m.formula);
-            row("SMILES", m.smiles);
-            row("Class", m.drugClass);
-            row("Legal status", m.legalStatus);
-            row("Notes", m.notes);
+            propCell("MW", f2(m.molWeight));
+            propCell("logP", f2(m.logP));
+            propCell("TPSA", f2(m.tpsa));
+            propCell("HBD", std::to_string(m.hbd));
+            propCell("HBA", std::to_string(m.hba));
+            propCell("RotB", std::to_string(m.rotatableBonds));
             ImGui::EndTable();
         }
-        ImGui::Spacing();
-        theme::sectionHeader("Physicochemical");
-        if (ImGui::BeginTable("props", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
-            for (const char* h : {"MW", "logP", "TPSA", "HBD", "HBA", "RotB"})
-                ImGui::TableSetupColumn(h);
-            ImGui::TableHeadersRow();
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted(f2(m.molWeight).c_str());
-            ImGui::TableSetColumnIndex(1); ImGui::TextUnformatted(f2(m.logP).c_str());
-            ImGui::TableSetColumnIndex(2); ImGui::TextUnformatted(f2(m.tpsa).c_str());
-            ImGui::TableSetColumnIndex(3); ImGui::Text("%d", m.hbd);
-            ImGui::TableSetColumnIndex(4); ImGui::Text("%d", m.hba);
-            ImGui::TableSetColumnIndex(5); ImGui::Text("%d", m.rotatableBonds);
-            ImGui::EndTable();
-        }
+    }
+    theme::endCard();
+    ImGui::SameLine(0, spacing);
 
-        ImGui::TableSetColumnIndex(1);
-        theme::sectionHeader("3D Structure");
-        if (!molViewer3D(shell, conf, m.id, viewUi, 300.0f)) {
+    // ---- Right: live 3D viewer ----------------------------------------------
+    if (theme::beginTitledCard("##view3d", "3D STRUCTURE", ImVec2(rightW, topH))) {
+        if (!molViewer3D(shell, conf, m.id, viewUi, topH - 82.0f)) {
             // Graceful fallback when no GPU device is available: 2D schematic.
             moleculeSchematic(m, ImVec2(260, 220));
         }
-        ImGui::EndTable();
     }
+    theme::endCard();
 
     ImGui::Spacing();
-    static std::string exportStatus;
-    if (ImGui::Button("Export full report (.md)")) {
-        const auto path = AppPaths::instance().root() / ("report-" + m.id + ".md");
-        std::ofstream out(path);
-        if (out) {
-            out << buildReportMarkdown(shell.services(), m);
-            exportStatus = "Saved: " + path.string();
-        } else {
-            exportStatus = "Failed to write report.";
+
+    // ---- Full width: identifiers, notes, export -------------------------------
+    if (theme::beginTitledCard("##ids", "IDENTIFIERS & NOTES", ImVec2(-1.0f, 0.0f))) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
+        ImGui::TextUnformatted("SMILES");
+        ImGui::PopStyleColor();
+        theme::pushMono();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kText));
+        ImGui::TextWrapped("%s", m.smiles.c_str());
+        ImGui::PopStyleColor();
+        theme::popFont();
+        if (!m.notes.empty()) {
+            ImGui::Spacing();
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
+            ImGui::TextWrapped("%s", m.notes.c_str());
+            ImGui::PopStyleColor();
+        }
+        ImGui::Spacing();
+        static std::string exportStatus;
+        if (ImGui::Button("Export full report (.md)")) {
+            const auto path = AppPaths::instance().root() / ("report-" + m.id + ".md");
+            std::ofstream out(path);
+            if (out) {
+                out << buildReportMarkdown(shell.services(), m);
+                exportStatus = "Saved: " + path.string();
+            } else {
+                exportStatus = "Failed to write report.";
+            }
+        }
+        if (!exportStatus.empty()) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", exportStatus.c_str());
         }
     }
-    if (!exportStatus.empty()) {
-        ImGui::SameLine();
-        ImGui::TextDisabled("%s", exportStatus.c_str());
-    }
+    theme::endCard();
 }
 
 // --------------------------------------------------------------- Molecule Input
@@ -798,26 +951,58 @@ void stability(AppShell& shell) {
     if (!shell.services().stability) return;
     const auto r = shell.services().stability->analyze(m);
 
-    statCard("OVERALL", f0(r.overallScore) + "/100", "higher = more stable", 200.0f);
+    // Top row: the headline number beside the shelf-life statement, which is a
+    // full sentence with provenance, not a stat.
+    statCard("OVERALL", f0(r.overallScore) + "/100", "higher = more stable", 220.0f);
     ImGui::SameLine();
-    // Not a stat card: a shelf life without its provenance and its missing
-    // prerequisite is the number this phase deleted.
-    drawQuantity("Shelf life", r.shelfLife);
+    if (theme::beginTitledCard("##shelflife", "SHELF LIFE", ImVec2(-1.0f, 104.0f))) {
+        const ImVec4 col = theme::provenanceColor(r.shelfLife.provenance);
+        ImGui::PushStyleColor(ImGuiCol_Text, col);
+        if (r.shelfLife.provenance == Provenance::NotComputed) {
+            ImGui::TextWrapped("not computed - needs %s", r.shelfLife.source.c_str());
+        } else {
+            ImGui::TextWrapped("%s (%s)", quantityShort(r.shelfLife).c_str(),
+                               provenanceLabel(r.shelfLife.provenance));
+        }
+        ImGui::PopStyleColor();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextFaint));
+        ImGui::TextWrapped("A pH window, a temperature ceiling and a shelf life come from rate "
+                           "constants you measured - enter them in the Reaction Network panel's "
+                           "kinetics tab.");
+        ImGui::PopStyleColor();
+    }
+    theme::endCard();
     ImGui::Spacing();
 
-    std::vector<double> vals;
-    std::vector<const char*> labels;
-    for (const auto& f : r.factors) { vals.push_back(f.score); labels.push_back(f.name.c_str()); }
-
-    if (ImPlot::BeginPlot("##stabchart", ImVec2(-1, 200), ImPlotFlags_NoMouseText | ImPlotFlags_NoLegend)) {
-        std::vector<double> pos;
-        for (size_t i = 0; i < labels.size(); ++i) pos.push_back(static_cast<double>(i));
-        ImPlot::SetupAxes(nullptr, "score (0-100)", ImPlotAxisFlags_NoGridLines, 0);
-        ImPlot::SetupAxesLimits(-0.6, static_cast<double>(labels.size()) - 0.4, 0, 100, ImPlotCond_Always);
-        ImPlot::SetupAxisTicks(ImAxis_X1, pos.data(), static_cast<int>(pos.size()), labels.data());
-        ImPlot::PlotBars("score", vals.data(), static_cast<int>(vals.size()), 0.6);
-        ImPlot::EndPlot();
+    // Factor chart with labelled bars in the brand fill.
+    if (theme::beginTitledCard("##stabchart", "FACTOR SCORES", ImVec2(-1.0f, 250.0f),
+                               "rank ordering, 0-100")) {
+        std::vector<double> vals;
+        std::vector<const char*> labels;
+        for (const auto& f : r.factors) { vals.push_back(f.score); labels.push_back(f.name.c_str()); }
+        if (ImPlot::BeginPlot("##stabbars", ImVec2(-1, 190),
+                              ImPlotFlags_NoMouseText | ImPlotFlags_NoLegend)) {
+            std::vector<double> pos;
+            for (size_t i = 0; i < labels.size(); ++i) pos.push_back(static_cast<double>(i));
+            ImPlot::SetupAxes(nullptr, "score (0-100)", ImPlotAxisFlags_NoGridLines, 0);
+            ImPlot::SetupAxesLimits(-0.6, static_cast<double>(labels.size()) - 0.4, 0, 100,
+                                    ImPlotCond_Always);
+            ImPlot::SetupAxisTicks(ImAxis_X1, pos.data(), static_cast<int>(pos.size()),
+                                   labels.data());
+            ImPlotSpec barSpec;
+            barSpec.FillColor = ImGui::ColorConvertU32ToFloat4(theme::kPrimary);
+            barSpec.FillAlpha = 0.85f;
+            ImPlot::PlotBars("score", vals.data(), static_cast<int>(vals.size()), 0.6, 0.0,
+                             barSpec);
+            for (size_t i = 0; i < vals.size(); ++i) {
+                ImPlot::PlotText(f0(vals[i]).c_str(), pos[i], vals[i] + 4.0,
+                                 ImVec2(-ImGui::CalcTextSize(f0(vals[i]).c_str()).x * 0.5f, 0));
+            }
+            ImPlot::EndPlot();
+        }
     }
+    theme::endCard();
+    ImGui::Spacing();
 
     if (ImGui::BeginTable("facs", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
         ImGui::TableSetupColumn("Factor", ImGuiTableColumnFlags_WidthFixed, 180.0f);
@@ -831,9 +1016,17 @@ void stability(AppShell& shell) {
         ImGui::EndTable();
     }
     ImGui::Spacing();
-    theme::sectionHeader("Likely Degradants");
-    for (const auto& d : r.degradants)
-        ImGui::BulletText("%s  -  %s (%s)", d.name.c_str(), d.pathway.c_str(), d.note.c_str());
+
+    if (theme::beginTitledCard("##degradants", "LIKELY DEGRADANTS", ImVec2(-1.0f, 0.0f))) {
+        if (r.degradants.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextFaint));
+            ImGui::TextUnformatted("No degradation route perceived from the structure.");
+            ImGui::PopStyleColor();
+        }
+        for (const auto& d : r.degradants)
+            ImGui::BulletText("%s  -  %s (%s)", d.name.c_str(), d.pathway.c_str(), d.note.c_str());
+    }
+    theme::endCard();
 }
 
 // ------------------------------------------------------------------ Absorption
@@ -4224,19 +4417,7 @@ void docking(AppShell& shell) {
     UiState& st = shell.state();
     if (st.dockTarget.empty() && !targets.empty()) st.dockTarget = targets.front();
 
-    theme::sectionHeader("Target");
-    ImGui::SetNextItemWidth(360);
-    if (ImGui::BeginCombo("##target", st.dockTarget.c_str())) {
-        for (const auto& t : targets) {
-            const bool sel = (t == st.dockTarget);
-            if (ImGui::Selectable(t.c_str(), sel)) st.dockTarget = t;
-            if (sel) ImGui::SetItemDefaultFocus();
-        }
-        ImGui::EndCombo();
-    }
-    ImGui::Spacing();
-
-    // ---- Real-engine provisioning (WP-F/WP-G): vina.exe + prepared receptors -----
+    // ---- Target + engine status, one card --------------------------------------
     {
         auto& prov = shell.provisioner();
         // When a user-triggered (download) provision finishes, drop any dock computed
@@ -4261,38 +4442,59 @@ void docking(AppShell& shell) {
         const int recReady = prov.receptorsReady();
         const int recTotal = prov.receptorsTotal();
         const bool realCapable = vina && recReady > 0;
-        ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(realCapable ? 1 : 2));
-        ImGui::TextUnformatted(realCapable
-            ? "Real docking engine: READY (vina + prepared receptor)"
-            : "Real docking engine: not provisioned - showing labeled descriptor estimate");
-        ImGui::PopStyleColor();
-        ImGui::TextDisabled("vina.exe: %s   receptors (last provision): %d/%d   receptor prep: %s",
-                            vina ? "present" : "absent", recReady, recTotal,
-                            prov.obabelReady() ? "obabel (+H)" : "built-in");
-        ImGui::TextDisabled("selected target %s: receptor %s", st.dockTarget.c_str(),
-                            selReady ? "prepared (real dock)"
-                                     : "not prepared (shows descriptor estimate)");
-        if (prov.running()) {
-            ImGui::TextDisabled("Working: %s", prov.status().c_str());
-        } else {
-            if (ImGui::Button("Provision engine + headline receptors")) {
-                shell.provisionDocking();
-                userProvision = true;
+
+        if (theme::beginTitledCard("##docktarget", "TARGET & ENGINE", ImVec2(-1.0f, 0.0f))) {
+            ImGui::SetNextItemWidth(360);
+            if (ImGui::BeginCombo("##target", st.dockTarget.c_str())) {
+                for (const auto& t : targets) {
+                    const bool sel = (t == st.dockTarget);
+                    if (ImGui::Selectable(t.c_str(), sel)) st.dockTarget = t;
+                    if (sel) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
             }
-            if (!selReady) {
-                // The selected target isn't prepared yet: offer an on-demand provision
-                // of just this receptor (any of the 29 receptor presets, not only headlines).
-                ImGui::SameLine();
-                const std::string lbl = "Provision " + st.dockTarget;
-                if (ImGui::Button(lbl.c_str()) && shell.provisionTarget(st.dockTarget))
+            ImGui::SameLine(0, 14);
+            theme::statusDot(realCapable ? theme::kGood : theme::kWarn);
+            ImGui::SameLine(0, 6);
+            ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(realCapable ? 1 : 2));
+            ImGui::TextUnformatted(realCapable
+                ? "Real engine: ready"
+                : "Not provisioned - labeled descriptor estimate");
+            ImGui::PopStyleColor();
+
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
+            ImGui::Text("vina.exe %s  -  receptors %d/%d  -  prep %s  -  %s receptor %s",
+                        vina ? "present" : "absent", recReady, recTotal,
+                        prov.obabelReady() ? "obabel (+H)" : "built-in",
+                        st.dockTarget.c_str(),
+                        selReady ? "prepared" : "not prepared");
+            ImGui::PopStyleColor();
+
+            if (prov.running()) {
+                ImGui::TextDisabled("Working: %s", prov.status().c_str());
+            } else {
+                if (ImGui::Button("Provision engine + headline receptors")) {
+                    shell.provisionDocking();
                     userProvision = true;
+                }
+                if (!selReady) {
+                    // The selected target isn't prepared yet: offer an on-demand provision
+                    // of just this receptor (any of the 29 receptor presets, not only headlines).
+                    ImGui::SameLine();
+                    const std::string lbl = "Provision " + st.dockTarget;
+                    if (ImGui::Button(lbl.c_str()) && shell.provisionTarget(st.dockTarget))
+                        userProvision = true;
+                }
+                ImGui::SameLine();
+                ImGui::TextDisabled("%s", prov.status().c_str());
             }
-            ImGui::SameLine();
-            ImGui::TextDisabled("%s", prov.status().c_str());
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextFaint));
+            ImGui::TextWrapped("Downloads vina.exe (size-checked) + prepares receptor PDBQTs from "
+                               "RCSB under %%APPDATA%%/BioCAD/runtime. Headline = DAT/NET/SERT/TAAR1; "
+                               "any other target prepares on demand. Best-effort; needs network.");
+            ImGui::PopStyleColor();
         }
-        ImGui::TextDisabled("Downloads vina.exe (size-checked) + prepares receptor PDBQTs from RCSB "
-                            "under %%APPDATA%%/BioCAD/runtime. Headline = DAT/NET/SERT/TAAR1; any "
-                            "other target prepares on demand. Best-effort; needs network.");
+        theme::endCard();
     }
     ImGui::Spacing();
 
@@ -4696,8 +4898,9 @@ void library(AppShell& shell) {
     Services& s = shell.services();
     if (!s.library) return;
     static char filter[64] = {0};
-    ImGui::SetNextItemWidth(320);
-    ImGui::InputTextWithHint("##filter", "Filter by name or class...", filter, sizeof(filter));
+    ImGui::SetNextItemWidth(340);
+    const std::string hint = std::string(theme::icon::kSearch) + "  Filter by name or class...";
+    ImGui::InputTextWithHint("##filter", hint.c_str(), filter, sizeof(filter));
     ImGui::SameLine();
     ImGui::TextDisabled("%zu compounds", s.library->count());
 
@@ -4705,12 +4908,13 @@ void library(AppShell& shell) {
     std::transform(needle.begin(), needle.end(), needle.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
+    // Fill the panel: a fixed 380px table left the bottom half of the window dead.
     if (ImGui::BeginTable("lib", 5,
                           ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
                           ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable,
-                          ImVec2(0, 380))) {
+                          ImVec2(0, -1))) {
         ImGui::TableSetupColumn("Name");
-        ImGui::TableSetupColumn("Formula", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+        ImGui::TableSetupColumn("Formula", ImGuiTableColumnFlags_WidthFixed, 110.0f);
         ImGui::TableSetupColumn("MW", ImGuiTableColumnFlags_WidthFixed, 70.0f);
         ImGui::TableSetupColumn("Class");
         ImGui::TableSetupColumn("Legal");
@@ -4726,7 +4930,10 @@ void library(AppShell& shell) {
             const bool selected = (mol.id == shell.state().selectedMolecule);
             if (ImGui::Selectable(mol.name.c_str(), selected, ImGuiSelectableFlags_SpanAllColumns))
                 shell.state().selectedMolecule = mol.id;
-            ImGui::TableSetColumnIndex(1); ImGui::TextUnformatted(mol.formula.c_str());
+            ImGui::TableSetColumnIndex(1);
+            theme::pushMono();
+            ImGui::TextUnformatted(mol.formula.c_str());
+            theme::popFont();
             ImGui::TableSetColumnIndex(2); ImGui::TextUnformatted(f0(mol.molWeight).c_str());
             ImGui::TableSetColumnIndex(3); ImGui::TextUnformatted(mol.drugClass.c_str());
             ImGui::TableSetColumnIndex(4); ImGui::TextUnformatted(mol.legalStatus.c_str());
@@ -4856,137 +5063,176 @@ void presets(AppShell& shell) {
 
 // -------------------------------------------------------------------- Settings
 void settings(AppShell& shell) {
-    theme::sectionHeader("AI Assistant");
-    ImGui::TextWrapped(
-        "The assistant explains panels, reads the selected compound's real structure-derived "
-        "properties, and navigates/highlights the UI. It never provides synthesis, route, or "
-        "manufacturability guidance - that is out of scope by design.");
-    ImGui::Spacing();
+    if (ImGui::BeginTable("settings-cols", 2, ImGuiTableFlags_SizingStretchSame)) {
+        ImGui::TableNextColumn();
 
-    int provider = shell.agentProviderIndex();
-    const char* providers[] = {"Anthropic (Claude)", "Offline (no API key)"};
-    ImGui::SetNextItemWidth(280);
-    if (ImGui::Combo("Provider", &provider, providers, IM_ARRAYSIZE(providers)))
-        shell.setAgentProviderIndex(provider);
-
-    if (!shell.anthropicTransport()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(2));
-        ImGui::TextWrapped(
-            "This build has no networking (default 'windows' preset). Rebuild with the "
-            "'windows-science' preset to enable the live Anthropic provider; the offline assistant "
-            "still navigates and explains.");
-        ImGui::PopStyleColor();
-    }
-
-    // Model (free text so any model the key supports can be used).
-    static char modelBuf[96];
-    static bool modelInit = false;
-    if (!modelInit) {
-        std::snprintf(modelBuf, sizeof(modelBuf), "%s", shell.agentModel().c_str());
-        modelInit = true;
-    }
-    ImGui::SetNextItemWidth(280);
-    ImGui::InputText("Model", modelBuf, sizeof(modelBuf));
-    ImGui::SameLine();
-    if (ImGui::Button("Set##model")) shell.setAgentModel(modelBuf);
-    ImGui::TextDisabled("Default claude-opus-4-8; claude-haiku-4-5 is faster/cheaper for UI help.");
-    ImGui::Spacing();
-
-    // API key - encrypted at rest via DPAPI; plaintext never persisted or shown.
-    theme::sectionHeader("API Key (encrypted at rest via Windows DPAPI)");
-    static char keyBuf[256] = {0};
-    ImGui::SetNextItemWidth(360);
-    ImGui::InputTextWithHint(
-        "##key", shell.hasApiKey() ? "A key is stored - type to replace..." : "Paste Anthropic API key...",
-        keyBuf, sizeof(keyBuf), ImGuiInputTextFlags_Password);
-    ImGui::SameLine();
-    if (ImGui::Button("Save key") && keyBuf[0] != '\0') {
-        shell.saveApiKey(keyBuf);
-        for (char& c : keyBuf) c = '\0';  // wipe plaintext from the input buffer
-    }
-    if (shell.hasApiKey()) {
-        ImGui::SameLine();
-        if (ImGui::Button("Clear key")) shell.clearApiKey();
-    }
-
-    if (shell.anthropicReady()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(1));
-        ImGui::Text("Live provider active: %s", shell.activeProviderLabel().c_str());
-        ImGui::PopStyleColor();
-    } else {
-        ImGui::TextDisabled("Active provider: %s", shell.activeProviderLabel().c_str());
-    }
-    ImGui::Spacing();
-
-    theme::sectionHeader("Behavior");
-    bool autop = shell.autopilot();
-    if (ImGui::Checkbox("Autopilot - run navigate/highlight tools automatically", &autop))
-        shell.setAutopilot(autop);
-    ImGui::Spacing();
-
-    theme::sectionHeader("Compute (docking engine)");
-    int compute = shell.computeMode();
-    bool computeChanged = false;
-    computeChanged |= ImGui::RadioButton("Auto", &compute, 0); ImGui::SameLine();
-    computeChanged |= ImGui::RadioButton("GPU", &compute, 1); ImGui::SameLine();
-    computeChanged |= ImGui::RadioButton("CPU", &compute, 2);
-    if (computeChanged) shell.setComputeMode(compute);
-#ifdef BIOCAD_HAVE_CUDA
-    ImGui::TextWrapped("Auto: AutoDock Vina (CPU) first, then the GPU engines. GPU: Vina-GPU "
-                       "(OpenCL - the real Vina search on the GPU) when provisioned, else the "
-                       "first-party CUDA rigid-grid dock on this NVIDIA GPU. CPU: Vina/smina only.");
-#else
-    ImGui::TextWrapped("Auto: AutoDock Vina (CPU) first, then the GPU engine. GPU: Vina-GPU "
-                       "(OpenCL - the real Vina search on the GPU) when provisioned, else the labeled "
-                       "descriptor estimate (the first-party CUDA dock needs the windows-cuda build). "
-                       "CPU: Vina/smina only.");
-#endif
-    // Vina-GPU (OpenCL) is a self-contained subprocess engine available in EVERY build;
-    // provisioning downloads its binaries + compiles a kernel for this GPU (off-thread).
-    {
-        const bool busy = shell.vinaGpuProvisioning();
-        const bool vgReady = shell.vinaGpuReady();  // cache-only fs check
-        ImGui::BeginDisabled(busy);
-        if (ImGui::Button(vgReady ? "Re-provision Vina-GPU (OpenCL)"
-                                  : "Provision Vina-GPU (OpenCL GPU engine)"))
-            shell.provisionVinaGpu();
-        ImGui::EndDisabled();
-        ImGui::SameLine();
-        if (vgReady) {
-            ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(1));
-            ImGui::TextUnformatted("ready");
+        // ---- Left: assistant --------------------------------------------------
+        if (theme::beginTitledCard("##set-ai", "AI ASSISTANT", ImVec2(-1.0f, 0.0f))) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
+            ImGui::TextWrapped(
+                "The assistant explains panels, reads the selected compound's real "
+                "structure-derived properties, and navigates/highlights the UI. It never provides "
+                "synthesis, route, or manufacturability guidance - that is out of scope by design.");
             ImGui::PopStyleColor();
-        } else {
-            ImGui::TextDisabled(busy ? "working..." : "not provisioned");
+            ImGui::Spacing();
+
+            int provider = shell.agentProviderIndex();
+            const char* providers[] = {"Anthropic (Claude)", "Offline (no API key)"};
+            ImGui::SetNextItemWidth(280);
+            if (ImGui::Combo("Provider", &provider, providers, IM_ARRAYSIZE(providers)))
+                shell.setAgentProviderIndex(provider);
+
+            if (!shell.anthropicTransport()) {
+                ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(2));
+                ImGui::TextWrapped(
+                    "This build has no networking (default 'windows' preset). Rebuild with the "
+                    "'windows-science' preset to enable the live Anthropic provider; the offline "
+                    "assistant still navigates and explains.");
+                ImGui::PopStyleColor();
+            }
+
+            static char modelBuf[96];
+            static bool modelInit = false;
+            if (!modelInit) {
+                std::snprintf(modelBuf, sizeof(modelBuf), "%s", shell.agentModel().c_str());
+                modelInit = true;
+            }
+            ImGui::SetNextItemWidth(280);
+            ImGui::InputText("Model", modelBuf, sizeof(modelBuf));
+            ImGui::SameLine();
+            if (ImGui::Button("Set##model")) shell.setAgentModel(modelBuf);
+            ImGui::TextDisabled("Default claude-opus-4-8; claude-haiku-4-5 is faster/cheaper.");
+
+            ImGui::Spacing();
+            theme::sectionHeader("API KEY (DPAPI-ENCRYPTED AT REST)");
+            static char keyBuf[256] = {0};
+            ImGui::SetNextItemWidth(-1);
+            ImGui::InputTextWithHint(
+                "##key",
+                shell.hasApiKey() ? "A key is stored - type to replace..." : "Paste Anthropic API key...",
+                keyBuf, sizeof(keyBuf), ImGuiInputTextFlags_Password);
+            if (ImGui::Button("Save key") && keyBuf[0] != '\0') {
+                shell.saveApiKey(keyBuf);
+                for (char& c : keyBuf) c = '\0';  // wipe plaintext from the input buffer
+            }
+            if (shell.hasApiKey()) {
+                ImGui::SameLine();
+                if (ImGui::Button("Clear key")) shell.clearApiKey();
+            }
+
+            if (shell.anthropicReady()) {
+                theme::statusDot(theme::kGood);
+                ImGui::SameLine(0, 6);
+                ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(1));
+                ImGui::Text("Live provider active: %s", shell.activeProviderLabel().c_str());
+                ImGui::PopStyleColor();
+            } else {
+                theme::statusDot(theme::kTextFaint);
+                ImGui::SameLine(0, 6);
+                ImGui::TextDisabled("Active provider: %s", shell.activeProviderLabel().c_str());
+            }
+
+            ImGui::Spacing();
+            bool autop = shell.autopilot();
+            if (ImGui::Checkbox("Autopilot - run navigate/highlight tools automatically", &autop))
+                shell.setAutopilot(autop);
         }
-        ImGui::TextDisabled("%s", shell.vinaGpuStatus().c_str());
-    }
-    ImGui::Spacing();
+        theme::endCard();
 
-    theme::sectionHeader("Storage");
-    ImGui::TextWrapped("All state lives under %%APPDATA%%/BioCAD (db, artifacts, runtime, presets, logs).");
-    ImGui::Spacing();
+        // ---- Right: compute + storage ------------------------------------------
+        ImGui::TableNextColumn();
+        if (theme::beginTitledCard("##set-compute", "COMPUTE (DOCKING ENGINE)",
+                                   ImVec2(-1.0f, 0.0f))) {
+            int compute = shell.computeMode();
+            bool computeChanged = false;
+            computeChanged |= ImGui::RadioButton("Auto", &compute, 0); ImGui::SameLine();
+            computeChanged |= ImGui::RadioButton("GPU", &compute, 1); ImGui::SameLine();
+            computeChanged |= ImGui::RadioButton("CPU", &compute, 2);
+            if (computeChanged) shell.setComputeMode(compute);
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
+#ifdef BIOCAD_HAVE_CUDA
+            ImGui::TextWrapped("Auto: AutoDock Vina (CPU) first, then the GPU engines. GPU: "
+                               "Vina-GPU (OpenCL - the real Vina search on the GPU) when "
+                               "provisioned, else the first-party CUDA rigid-grid dock on this "
+                               "NVIDIA GPU. CPU: Vina/smina only.");
+#else
+            ImGui::TextWrapped("Auto: AutoDock Vina (CPU) first, then the GPU engine. GPU: Vina-GPU "
+                               "(OpenCL - the real Vina search on the GPU) when provisioned, else "
+                               "the labeled descriptor estimate (the first-party CUDA dock needs "
+                               "the windows-cuda build). CPU: Vina/smina only.");
+#endif
+            ImGui::PopStyleColor();
+            // Vina-GPU (OpenCL) is a self-contained subprocess engine available in EVERY build;
+            // provisioning downloads its binaries + compiles a kernel for this GPU (off-thread).
+            const bool busy = shell.vinaGpuProvisioning();
+            const bool vgReady = shell.vinaGpuReady();  // cache-only fs check
+            ImGui::BeginDisabled(busy);
+            if (ImGui::Button(vgReady ? "Re-provision Vina-GPU (OpenCL)"
+                                      : "Provision Vina-GPU (OpenCL GPU engine)"))
+                shell.provisionVinaGpu();
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            theme::statusDot(vgReady ? theme::kGood : (busy ? theme::kWarn : theme::kTextFaint));
+            ImGui::SameLine(0, 6);
+            if (vgReady) {
+                ImGui::PushStyleColor(ImGuiCol_Text, theme::verdictColor(1));
+                ImGui::TextUnformatted("ready");
+                ImGui::PopStyleColor();
+            } else {
+                ImGui::TextDisabled(busy ? "working..." : "not provisioned");
+            }
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextFaint));
+            ImGui::TextWrapped("%s", shell.vinaGpuStatus().c_str());
+            ImGui::PopStyleColor();
+        }
+        theme::endCard();
 
-    theme::sectionHeader("Runtime (self-provisioned components)");
-    auto fmtManifest = [](const ManifestStatus& st) {
-        if (st.total == 0)
-            return std::string("Nothing provisioned yet - use the Docking panel's Provision button.");
-        std::string s = std::to_string(st.present) + "/" + std::to_string(st.total) +
-                        " components verified (size + content hash)";
-        if (!st.missing.empty()) s += ", " + std::to_string(st.missing.size()) + " missing";
-        if (!st.corrupt.empty()) s += ", " + std::to_string(st.corrupt.size()) + " corrupt (healed)";
-        return s + ".";
-    };
-    static std::string mfStatus;
-    static bool mfInit = false;
-    if (!mfInit) {
-        mfInit = true;
-        mfStatus = fmtManifest(Manifest::load(AppPaths::instance().manifest()).verify());
+        ImGui::Spacing();
+
+        if (theme::beginTitledCard("##set-storage", "STORAGE & RUNTIME", ImVec2(-1.0f, 0.0f))) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
+            ImGui::TextWrapped("All state lives under %%APPDATA%%/BioCAD (db, artifacts, runtime, "
+                               "presets, logs).");
+            ImGui::PopStyleColor();
+            if (ImGui::Button("Open data folder")) {
+                ShellExecuteA(nullptr, "explore",
+                              AppPaths::instance().root().string().c_str(),
+                              nullptr, nullptr, SW_SHOW);
+            }
+            ImGui::Spacing();
+
+            auto fmtManifest = [](const ManifestStatus& st) {
+                if (st.total == 0)
+                    return std::string(
+                        "Nothing provisioned yet - use the Docking panel's Provision button.");
+                std::string s = std::to_string(st.present) + "/" + std::to_string(st.total) +
+                                " components verified (size + content hash)";
+                if (!st.missing.empty()) s += ", " + std::to_string(st.missing.size()) + " missing";
+                if (!st.corrupt.empty())
+                    s += ", " + std::to_string(st.corrupt.size()) + " corrupt (healed)";
+                return s + ".";
+            };
+            static std::string mfStatus;
+            static bool mfInit = false;
+            if (!mfInit) {
+                mfInit = true;
+                mfStatus = fmtManifest(Manifest::load(AppPaths::instance().manifest()).verify());
+            }
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
+            ImGui::TextWrapped("%s", mfStatus.c_str());
+            ImGui::PopStyleColor();
+            if (ImGui::Button("Verify + heal runtime"))
+                mfStatus = fmtManifest(docking::selfHealManifest());
+            ImGui::SameLine();
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextFaint));
+            ImGui::TextWrapped("Deletes any corrupt engine/receptor so it re-provisions; "
+                               "manifest.json is the source of truth.");
+            ImGui::PopStyleColor();
+        }
+        theme::endCard();
+
+        ImGui::EndTable();
     }
-    ImGui::TextWrapped("%s", mfStatus.c_str());
-    if (ImGui::Button("Verify + heal runtime")) mfStatus = fmtManifest(docking::selfHealManifest());
-    ImGui::SameLine();
-    ImGui::TextDisabled("Deletes any corrupt engine/receptor so it re-provisions; manifest.json is the source of truth.");
 }
 
 // ------------------------------------------------------------------- Compare

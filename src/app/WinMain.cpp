@@ -276,7 +276,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
 
     // A capture run keeps the window off-screen-ish but realised: SW_SHOWNA avoids
     // stealing focus on a developer desktop while still giving DXGI a valid target.
-    ShowWindow(hwnd, shot.enabled() ? SW_SHOWNA : nCmdShow);
+    // Interactive runs open maximized: this is a dense multi-pane workstation, and
+    // starting as a small floating window forces a manual resize every launch.
+    (void)nCmdShow;  // interactive launches always open maximized (see below)
+    ShowWindow(hwnd, shot.enabled() ? SW_SHOWNA : SW_SHOWMAXIMIZED);
     UpdateWindow(hwnd);
 
     IMGUI_CHECKVERSION();
@@ -298,11 +301,27 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         ImFont* bodyPtr = nullptr;
         ImFont* semiPtr = nullptr;
 
+        // Nerd Font icon glyphs merged into BOTH UI fonts so icons can sit inline
+        // with body or semibold text. Restricted to the Font-Awesome-era BMP
+        // private-use range that every Nerd Font ships (see ui/Theme.h icon::*).
+        const char* nerdFont = "C:\\Windows\\Fonts\\JetBrainsMonoNerdFont-Regular.ttf";
+        static const ImWchar kIconRanges[] = {0xE000, 0xF8FF, 0};
+        const bool haveIcons = std::filesystem::exists(nerdFont);
+        auto mergeIcons = [&](ImFont* into) {
+            if (!haveIcons || into == nullptr) return;
+            ImFontConfig icfg;
+            icfg.MergeMode = true;
+            icfg.PixelSnapH = true;
+            icfg.GlyphOffset.y = 1.0f;  // optically center the boxy icon glyphs
+            io.Fonts->AddFontFromFileTTF(nerdFont, 17.0f, &icfg, kIconRanges);
+        };
+
         if (std::filesystem::exists(segoeBody)) {
             ImFontConfig cfg;
             cfg.OversampleH = 2;
             cfg.OversampleV = 2;
             bodyPtr = io.Fonts->AddFontFromFileTTF(segoeBody, 17.0f, &cfg);
+            mergeIcons(bodyPtr);
         }
 
         if (std::filesystem::exists(segoeSemi)) {
@@ -310,10 +329,27 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
             cfg.OversampleH = 2;
             cfg.OversampleV = 2;
             semiPtr = io.Fonts->AddFontFromFileTTF(segoeSemi, 17.0f, &cfg);
+            mergeIcons(semiPtr);
+        }
+
+        // Monospace data face (SMILES, sequences, raw numbers). Cascadia Mono ships
+        // with Windows Terminal; Consolas is the always-there fallback.
+        const char* monoPaths[] = {"C:\\Windows\\Fonts\\CascadiaMono.ttf",
+                                   "C:\\Windows\\Fonts\\consola.ttf"};
+        ImFont* monoPtr = nullptr;
+        for (const char* mp : monoPaths) {
+            if (std::filesystem::exists(mp)) {
+                ImFontConfig cfg;
+                cfg.OversampleH = 2;
+                cfg.OversampleV = 2;
+                monoPtr = io.Fonts->AddFontFromFileTTF(mp, 15.0f, &cfg);
+                break;
+            }
         }
 
         biocad::theme::fonts().body = bodyPtr;
         biocad::theme::fonts().semi = (semiPtr != nullptr) ? semiPtr : bodyPtr;
+        biocad::theme::fonts().mono = (monoPtr != nullptr) ? monoPtr : bodyPtr;
     }
 
     biocad::theme::apply();

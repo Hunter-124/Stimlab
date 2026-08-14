@@ -5,6 +5,7 @@
 #pragma once
 
 #include <atomic>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -37,7 +38,8 @@ struct PanelInfo {
     std::string id;     // stable key used by the content router + highlight
     std::string label;  // display label
     std::string help;   // one-line description shown by the assistant
-    std::string group;  // navigator section, e.g. "Compound" / "Analysis" / "Discovery"
+    std::string group;  // navigator section, e.g. "Workspace" / "ADME & Safety"
+    const char* icon = nullptr;  // theme::icon::* glyph shown in the navigator
 };
 
 struct UiState {
@@ -174,6 +176,7 @@ private:
     void drawAssistant();
     void drawAboutModal();
     void drawCommandPalette();
+    void drawStatusBar();
 
     void buildAgent();             // construct registry/tools/providers/agent (ctor)
     void registerAgentServiceTools();  // bind dock/admet/analyze/run/list tools to Services
@@ -188,6 +191,10 @@ private:
     Services svc_;
     UiState  state_;
     std::vector<PanelInfo> panels_;
+
+    // Navigator: which task group is collapsed. The group holding the active panel
+    // auto-expands on navigation; everything else is user-controlled.
+    std::map<std::string, bool> navCollapsed_;
 
     ID3D11Device*        renderDev_ = nullptr;
     ID3D11DeviceContext* renderCtx_ = nullptr;

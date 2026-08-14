@@ -9,10 +9,26 @@ ImVec4 rgba(int r, int g, int b, int a = 255) {
     return ImVec4(r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f);
 }
 
+ImVec4 u32ToVec4(ImU32 u) { return ImGui::ColorConvertU32ToFloat4(u); }
+
 // Pick semibold face if loaded, otherwise fall back to body.
 ImFont* semiFace() {
     const Fonts& f = fonts();
     return (f.semi != nullptr) ? f.semi : f.body;
+}
+
+ImFont* monoFace() {
+    const Fonts& f = fonts();
+    return (f.mono != nullptr) ? f.mono : f.body;
+}
+
+// Small-caps style label: 13px semibold, dim.
+void smallCaps(const char* label, ImU32 color) {
+    pushSmallStrong();
+    ImGui::PushStyleColor(ImGuiCol_Text, u32ToVec4(color));
+    ImGui::TextUnformatted(label);
+    ImGui::PopStyleColor();
+    popFont();
 }
 }  // namespace
 
@@ -27,6 +43,7 @@ void pushTitle()       { ImGui::PushFont(semiFace(), 28.0f); }
 void pushH2()          { ImGui::PushFont(semiFace(), 21.0f); }
 void pushValue()       { ImGui::PushFont(semiFace(), 25.0f); }
 void pushSmallStrong() { ImGui::PushFont(semiFace(), 13.0f); }
+void pushMono()        { ImGui::PushFont(monoFace(), 15.0f); }
 void popFont()         { ImGui::PopFont(); }
 
 // ---- Theme application -----------------------------------------------------
@@ -58,26 +75,25 @@ void apply() {
 
     ImVec4* c = s.Colors;
 
-    // Local helpers
-    const ImVec4 bgSunken      = rgba(9,   11,  16);
-    const ImVec4 bg            = rgba(13,  16,  23);
-    const ImVec4 surface       = rgba(20,  24,  33);
-    const ImVec4 surfaceHi     = rgba(28,  34,  45);
-    const ImVec4 surfaceActive = rgba(36,  44,  58);
-    const ImVec4 border        = rgba(38,  45,  58);
-    const ImVec4 borderStrong  = rgba(52,  62,  79);
-    const ImVec4 text          = rgba(197, 205, 217);
-    const ImVec4 textDim       = rgba(138, 149, 167);
-    const ImVec4 primary       = rgba(110, 98,  246);
-    const ImVec4 primaryBright = rgba(139, 130, 255);
-    const ImVec4 primarySoft   = rgba(110, 98,  246, 38);
-    const ImVec4 transparent   = rgba(0,   0,   0,   0);
+    const ImVec4 bgSunken      = u32ToVec4(kBgSunken);
+    const ImVec4 bg            = u32ToVec4(kBg);
+    const ImVec4 surface       = u32ToVec4(kSurface);
+    const ImVec4 surfaceHi     = u32ToVec4(kSurfaceHi);
+    const ImVec4 surfaceActive = u32ToVec4(kSurfaceActive);
+    const ImVec4 border        = u32ToVec4(kBorder);
+    const ImVec4 borderStrong  = u32ToVec4(kBorderStrong);
+    const ImVec4 text          = u32ToVec4(kText);
+    const ImVec4 textDim       = u32ToVec4(kTextDim);
+    const ImVec4 primary       = u32ToVec4(kPrimary);
+    const ImVec4 primaryBright = u32ToVec4(kPrimaryBright);
+    const ImVec4 primarySoft   = u32ToVec4(kPrimarySoft);
+    const ImVec4 transparent   = rgba(0, 0, 0, 0);
 
     c[ImGuiCol_Text]                = text;
     c[ImGuiCol_TextDisabled]        = textDim;
     c[ImGuiCol_WindowBg]            = bg;
     c[ImGuiCol_ChildBg]             = surface;
-    c[ImGuiCol_PopupBg]             = surface;
+    c[ImGuiCol_PopupBg]             = surfaceHi;
     c[ImGuiCol_Border]              = border;
     c[ImGuiCol_BorderShadow]        = transparent;
     c[ImGuiCol_FrameBg]             = surface;
@@ -87,7 +103,7 @@ void apply() {
     c[ImGuiCol_TitleBgActive]       = bgSunken;
     c[ImGuiCol_TitleBgCollapsed]    = bgSunken;
     c[ImGuiCol_MenuBarBg]           = bgSunken;
-    c[ImGuiCol_ScrollbarBg]         = rgba(9, 11, 16, 0);   // transparent over kBgSunken
+    c[ImGuiCol_ScrollbarBg]         = transparent;
     c[ImGuiCol_ScrollbarGrab]       = borderStrong;
     c[ImGuiCol_ScrollbarGrabHovered]= primary;
     c[ImGuiCol_ScrollbarGrabActive] = primaryBright;
@@ -110,12 +126,12 @@ void apply() {
     c[ImGuiCol_TabDimmed]           = surface;
     c[ImGuiCol_TabDimmedSelected]   = surfaceHi;
     c[ImGuiCol_PlotLines]           = primaryBright;
-    c[ImGuiCol_PlotHistogram]       = primaryBright;
-    c[ImGuiCol_TableHeaderBg]       = surfaceHi;
+    c[ImGuiCol_PlotHistogram]       = primary;
+    c[ImGuiCol_TableHeaderBg]       = surfaceActive;
     c[ImGuiCol_TableBorderStrong]   = border;
-    c[ImGuiCol_TableBorderLight]    = surface;
+    c[ImGuiCol_TableBorderLight]    = surfaceHi;
     c[ImGuiCol_TableRowBg]          = transparent;
-    c[ImGuiCol_TableRowBgAlt]       = rgba(255, 255, 255, 6);
+    c[ImGuiCol_TableRowBgAlt]       = rgba(255, 255, 255, 5);
     c[ImGuiCol_DockingPreview]      = primary;
     c[ImGuiCol_TextSelectedBg]      = primarySoft;
     c[ImGuiCol_NavHighlight]        = primary;
@@ -123,11 +139,11 @@ void apply() {
 
 ImVec4 verdictColor(int verdict) {
     switch (static_cast<Verdict>(verdict)) {
-        case Verdict::Good:   return rgba(52,  211, 153);
-        case Verdict::Warn:   return rgba(251, 191, 36);
-        case Verdict::Danger: return rgba(248, 113, 113);
+        case Verdict::Good:   return u32ToVec4(kGood);
+        case Verdict::Warn:   return u32ToVec4(kWarn);
+        case Verdict::Danger: return u32ToVec4(kDanger);
         case Verdict::Info:
-        default:              return rgba(96,  165, 250);
+        default:              return u32ToVec4(kInfo);
     }
 }
 
@@ -136,25 +152,27 @@ ImVec4 verdictColor(int verdict) {
 // scale: provenance says how a number was obtained, not whether it is good news.
 ImVec4 provenanceColor(Provenance p) {
     switch (p) {
-        case Provenance::Measured:    return rgba(52,  211, 153);
-        case Provenance::Predicted:   return rgba(96,  165, 250);
-        case Provenance::Model:       return rgba(192, 132, 252);
-        case Provenance::Heuristic:   return rgba(251, 191, 36);
-        case Provenance::NotComputed: return rgba(138, 149, 167);
+        case Provenance::Measured:    return u32ToVec4(kGood);
+        case Provenance::Predicted:   return u32ToVec4(kInfo);
+        case Provenance::Model:       return u32ToVec4(kAccent2);
+        case Provenance::Heuristic:   return u32ToVec4(kWarn);
+        case Provenance::NotComputed: return u32ToVec4(kTextDim);
     }
-    return rgba(138, 149, 167);
+    return u32ToVec4(kTextDim);
 }
 
 // ---- Widgets ---------------------------------------------------------------
 
 void sectionHeader(const char* label) {
     ImGui::Dummy(ImVec2(0, 2));
-    pushSmallStrong();
-    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(kTextDim));
-    ImGui::TextUnformatted(label);
-    ImGui::PopStyleColor();
-    popFont();
-    ImGui::PushStyleColor(ImGuiCol_Separator, ImGui::ColorConvertU32ToFloat4(kBorder));
+    // 3px accent tick ahead of the small-caps label: sections scan as sections.
+    const ImVec2 p0 = ImGui::GetCursorScreenPos();
+    const float h = ImGui::GetTextLineHeight();
+    ImGui::GetWindowDrawList()->AddRectFilled(
+        p0, ImVec2(p0.x + 3.0f, p0.y + h), kPrimary, 1.5f);
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 10.0f);
+    smallCaps(label, kTextDim);
+    ImGui::PushStyleColor(ImGuiCol_Separator, u32ToVec4(kBorder));
     ImGui::Separator();
     ImGui::PopStyleColor();
     ImGui::Dummy(ImVec2(0, 2));
@@ -187,7 +205,6 @@ void badge(const char* text, ImU32 fg, ImU32 bg) {
 void verdictBadge(int verdict, const char* text) {
     const ImVec4 col = verdictColor(verdict);
     const ImU32 fg = ImGui::ColorConvertFloat4ToU32(col);
-    // Build a faint background at ~20% alpha using the same RGB
     const ImU32 bg = IM_COL32(
         static_cast<int>(col.x * 255.0f),
         static_cast<int>(col.y * 255.0f),
@@ -198,8 +215,12 @@ void verdictBadge(int verdict, const char* text) {
 
 bool beginCard(const char* id, ImVec2 size, bool border) {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16, 13));
-    bool visible = ImGui::BeginChild(id, size,
-        border ? ImGuiChildFlags_Borders : ImGuiChildFlags_None,
+    ImGuiChildFlags cf = border ? ImGuiChildFlags_Borders : ImGuiChildFlags_None;
+    // size.y == 0 means "as tall as the content": without AutoResizeY a zero-height
+    // child eats ALL remaining window space and everything drawn after the card
+    // lands off-screen.
+    if (size.y == 0.0f) cf |= ImGuiChildFlags_AutoResizeY;
+    bool visible = ImGui::BeginChild(id, size, cf,
         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     ImGui::PopStyleVar();  // pop immediately — padding is captured at Begin
     return visible;
@@ -207,6 +228,26 @@ bool beginCard(const char* id, ImVec2 size, bool border) {
 
 void endCard() {
     ImGui::EndChild();
+}
+
+bool beginTitledCard(const char* id, const char* title, ImVec2 size,
+                     const char* rightNote) {
+    const bool visible = beginCard(id, size);
+    if (!visible) return false;
+    if (rightNote != nullptr) {
+        const float noteW = ImGui::CalcTextSize(rightNote).x;
+        const float x = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - noteW;
+        smallCaps(title, kTextDim);
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(x);
+        ImGui::PushStyleColor(ImGuiCol_Text, u32ToVec4(kTextFaint));
+        ImGui::TextUnformatted(rightNote);
+        ImGui::PopStyleColor();
+    } else {
+        smallCaps(title, kTextDim);
+    }
+    ImGui::Dummy(ImVec2(0, 4));
+    return true;
 }
 
 void metricCard(const char* title, const char* value, const char* sub,
@@ -217,32 +258,65 @@ void metricCard(const char* title, const char* value, const char* sub,
         return;
     }
 
-    // Title in small-caps dim style
-    pushSmallStrong();
-    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(kTextDim));
-    ImGui::TextUnformatted(title);
-    ImGui::PopStyleColor();
-    popFont();
+    smallCaps(title, kTextDim);
 
     ImGui::Spacing();
 
-    // Big value in valueColor
     pushValue();
-    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(valueColor));
+    ImGui::PushStyleColor(ImGuiCol_Text, u32ToVec4(valueColor));
     ImGui::TextUnformatted(value);
     ImGui::PopStyleColor();
     popFont();
 
     ImGui::Spacing();
 
-    // Sub text in dim
-    pushSmallStrong();
-    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(kTextDim));
-    ImGui::TextUnformatted(sub);
-    ImGui::PopStyleColor();
-    popFont();
+    smallCaps(sub, kTextDim);
 
     endCard();
+}
+
+void kvRow(const char* label, const char* value, float labelWidth) {
+    ImGui::PushStyleColor(ImGuiCol_Text, u32ToVec4(kTextDim));
+    ImGui::TextUnformatted(label);
+    ImGui::PopStyleColor();
+    ImGui::SameLine(labelWidth);
+    ImGui::PushStyleColor(ImGuiCol_Text, u32ToVec4(kTextHi));
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextUnformatted(value);
+    ImGui::PopTextWrapPos();
+    ImGui::PopStyleColor();
+}
+
+void statusDot(ImU32 color, const char* tooltip) {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImVec2 p = ImGui::GetCursorScreenPos();
+    const float r = 4.0f;
+    const ImVec2 c(p.x + r + 1.0f, p.y + ImGui::GetTextLineHeight() * 0.5f);
+    dl->AddCircleFilled(c, r, color);
+    ImGui::Dummy(ImVec2(r * 2.0f + 2.0f, ImGui::GetTextLineHeight()));
+    if (tooltip != nullptr && ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", tooltip);
+}
+
+void bubble(const char* text, ImU32 bg, ImU32 fg, bool alignRight,
+            float maxWidthFraction) {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const float avail = ImGui::GetContentRegionAvail().x;
+    const float wrapW = avail * maxWidthFraction;
+    const ImVec2 pad(11, 8);
+    // Measure the wrapped text first so the rect fits it exactly.
+    const ImVec2 sz = ImGui::CalcTextSize(text, nullptr, false, wrapW - pad.x * 2.0f);
+    const ImVec2 box(sz.x + pad.x * 2.0f, sz.y + pad.y * 2.0f);
+
+    float x = ImGui::GetCursorScreenPos().x;
+    if (alignRight) x += avail - box.x;
+    const ImVec2 p0(x, ImGui::GetCursorScreenPos().y);
+    const ImVec2 p1(p0.x + box.x, p0.y + box.y);
+    dl->AddRectFilled(p0, p1, bg, 8.0f);
+    dl->AddText(nullptr, 0.0f, ImVec2(p0.x + pad.x, p0.y + pad.y), fg, text,
+                nullptr, wrapW - pad.x * 2.0f);
+    ImGui::SetCursorScreenPos(ImVec2(ImGui::GetCursorScreenPos().x, p1.y + 4.0f));
+    ImGui::Dummy(ImVec2(box.x, 0));
 }
 
 }  // namespace biocad::theme
