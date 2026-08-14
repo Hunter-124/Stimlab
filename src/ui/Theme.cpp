@@ -211,7 +211,11 @@ void endCard() {
 
 void metricCard(const char* title, const char* value, const char* sub,
                 ImU32 valueColor, float width, float height) {
-    beginCard(title, ImVec2(width, height));
+    const bool visible = beginCard(title, ImVec2(width, height));
+    if (!visible) {
+        endCard();
+        return;
+    }
 
     // Title in small-caps dim style
     pushSmallStrong();

@@ -104,7 +104,11 @@ void statCard(const char* title, const std::string& value, const char* sub, floa
               float h = 84.0f, float valueScale = 1.6f) {
     // valueScale parameter kept for call-site compat; ignored — theme fonts govern size.
     (void)valueScale;
-    if (!theme::beginCard(title, ImVec2(w, h > 84.0f ? h : 104.0f))) return;
+    const bool visible = theme::beginCard(title, ImVec2(w, h > 84.0f ? h : 104.0f));
+    if (!visible) {
+        theme::endCard();
+        return;
+    }
     theme::pushSmallStrong();
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextDim));
     ImGui::TextUnformatted(title);
@@ -489,7 +493,8 @@ void dashboard(AppShell& shell) {
     const Molecule m = shell.currentMolecule();
 
     // ---- Hero card ----------------------------------------------------------
-    if (theme::beginCard("hero", ImVec2(-1.0f, 132.0f))) {
+    const bool heroVisible = theme::beginCard("hero", ImVec2(-1.0f, 132.0f));
+    if (heroVisible) {
         // Compound name
         theme::pushH2();
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kTextHi));
@@ -511,8 +516,8 @@ void dashboard(AppShell& shell) {
         ImGui::Text("MW %.1f   logP %.2f   TPSA %.0f   HBD %d   HBA %d",
                     m.molWeight, m.logP, m.tpsa, m.hbd, m.hba);
         ImGui::PopStyleColor();
-        theme::endCard();
     }
+    theme::endCard();
     ImGui::Spacing();
 
     // ---- Responsive metric grid ---------------------------------------------
@@ -578,19 +583,23 @@ void dashboard(AppShell& shell) {
 
         // Two side-by-side summary cards, each half width.
         const float halfW = (avail - spacing) * 0.5f;
-        if (theme::beginCard("##stabsum", ImVec2(halfW, 0.0f), true)) {
+        const bool stabilitySummaryVisible =
+            theme::beginCard("##stabsum", ImVec2(halfW, 0.0f), true);
+        if (stabilitySummaryVisible) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kText));
             ImGui::TextWrapped("%s", stab.summary.c_str());
             ImGui::PopStyleColor();
-            theme::endCard();
         }
+        theme::endCard();
         ImGui::SameLine(0, spacing);
-        if (theme::beginCard("##abssum", ImVec2(halfW, 0.0f), true)) {
+        const bool absorptionSummaryVisible =
+            theme::beginCard("##abssum", ImVec2(halfW, 0.0f), true);
+        if (absorptionSummaryVisible) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(theme::kText));
             ImGui::TextWrapped("%s", abs.summary.c_str());
             ImGui::PopStyleColor();
-            theme::endCard();
         }
+        theme::endCard();
     } else {
         // Services not yet ready — show library/runs tiles only.
         const float spacing = 8.0f;
