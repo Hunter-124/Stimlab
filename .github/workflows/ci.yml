@@ -84,7 +84,7 @@ jobs:
       - name: windows (dynamic) - configure, build, ctest
         shell: pwsh
         run: |
-          cmake --preset windows -DCMAKE_CXX_CLANG_TIDY=clang-tidy
+          cmake --preset windows "-DCMAKE_CXX_CLANG_TIDY=clang-tidy;--extra-arg=-fexceptions"
           cmake --build --preset windows
           ctest --preset windows --output-on-failure
 
