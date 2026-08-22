@@ -81,12 +81,9 @@ jobs:
           }
           echo "BIOCAD_VERSION=$cmakeVer" >> $env:GITHUB_ENV
 
-      - name: windows (dynamic) - configure, build, ctest
+      - name: windows (dynamic) - configure
         shell: pwsh
-        run: |
-          cmake --preset windows
-          cmake --build --preset windows
-          ctest --preset windows --output-on-failure
+        run: cmake --preset windows
 
       - name: clang-tidy first-party sources
         continue-on-error: true
@@ -122,6 +119,14 @@ jobs:
           if ($failed) {
             throw 'clang-tidy reported compiler diagnostics; see findings above'
           }
+
+      - name: windows (dynamic) - build and ctest
+        shell: pwsh
+        run: |
+          cmake --build --preset windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --preset windows --output-on-failure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: windows-static (single self-contained exe) - configure, build, ctest
         shell: pwsh
