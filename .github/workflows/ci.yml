@@ -106,18 +106,18 @@ jobs:
             throw 'compile_commands.json contains no first-party translation units'
           }
 
-          $failed = $false
-          foreach ($file in $files) {
+          $results = $files | ForEach-Object -Parallel {
+            $file = $_
             clang-tidy -p build/windows --quiet `
               --extra-arg-before=-EHsc `
               --extra-arg-before=--driver-mode=cl `
               $file
-            if ($LASTEXITCODE -ne 0) {
-              $failed = $true
-            }
-          }
-          if ($failed) {
-            throw 'clang-tidy reported compiler diagnostics; see findings above'
+            [PSCustomObject]@{ File = $file; ExitCode = $LASTEXITCODE }
+          } -ThrottleLimit ([Environment]::ProcessorCount)
+          $failed = @($results | Where-Object ExitCode -ne 0)
+          if ($failed.Count -gt 0) {
+            $failed | Format-Table -AutoSize
+            throw "clang-tidy reported compiler diagnostics in $($failed.Count) translation units"
           }
 
       - name: windows (dynamic) - build and ctest
