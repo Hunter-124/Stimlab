@@ -84,9 +84,44 @@ jobs:
       - name: windows (dynamic) - configure, build, ctest
         shell: pwsh
         run: |
-          cmake --preset windows "-DCMAKE_CXX_CLANG_TIDY=clang-tidy;--extra-arg-before=-EHsc"
+          cmake --preset windows
           cmake --build --preset windows
           ctest --preset windows --output-on-failure
+
+      - name: clang-tidy first-party sources
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $workspace = [IO.Path]::GetFullPath($env:GITHUB_WORKSPACE)
+          $roots = @(
+            [IO.Path]::GetFullPath((Join-Path $workspace 'src')),
+            [IO.Path]::GetFullPath((Join-Path $workspace 'tests'))
+          )
+          $database = Get-Content build/windows/compile_commands.json -Raw | ConvertFrom-Json
+          $files = $database.file |
+            ForEach-Object { [IO.Path]::GetFullPath($_) } |
+            Where-Object {
+              $file = $_
+              $roots.Where({ $file.StartsWith($_, [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
+            } |
+            Sort-Object -Unique
+          if ($files.Count -eq 0) {
+            throw 'compile_commands.json contains no first-party translation units'
+          }
+
+          $failed = $false
+          foreach ($file in $files) {
+            clang-tidy -p build/windows --quiet `
+              --extra-arg-before=-EHsc `
+              --extra-arg-before=--driver-mode=cl `
+              $file
+            if ($LASTEXITCODE -ne 0) {
+              $failed = $true
+            }
+          }
+          if ($failed) {
+            throw 'clang-tidy reported compiler diagnostics; see findings above'
+          }
 
       - name: windows-static (single self-contained exe) - configure, build, ctest
         shell: pwsh
