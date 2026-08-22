@@ -39,7 +39,12 @@ jobs:
         with:
           arch: x64
 
+      - name: Verify clang-tidy
+        shell: pwsh
+        run: clang-tidy --version
+
       # x-gha binary cache needs these two tokens exported into the job env.
+
       - name: Enable vcpkg GitHub Actions binary cache
         uses: actions/github-script@v7
         with:
@@ -79,7 +84,7 @@ jobs:
       - name: windows (dynamic) - configure, build, ctest
         shell: pwsh
         run: |
-          cmake --preset windows
+          cmake --preset windows -DCMAKE_CXX_CLANG_TIDY=clang-tidy
           cmake --build --preset windows
           ctest --preset windows --output-on-failure
 

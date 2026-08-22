@@ -4,6 +4,7 @@ project(BioCAD
   VERSION 0.2.0
   DESCRIPTION "BioCAD - native workstation for molecular, protein, and pharmacological analysis"
   LANGUAGES CXX)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ---- Global options -------------------------------------------------------
 option(BIOCAD_ENABLE_CUDA    "Enable CUDA-accelerated engines (needs nvcc)" OFF)
